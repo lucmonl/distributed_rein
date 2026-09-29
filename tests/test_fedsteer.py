@@ -215,6 +215,29 @@ def test_formatter_masks_prompt():
     assert batch["alpha"].tolist() == [0.30000001192092896, 0.8999999761581421]
 
 
+# ------------------------------------------------------------------ extractive
+
+def test_fragment_stats_known_cases():
+    from fedsteer.extractive import fragment_stats, fragments, publication
+    art = "The cat sat on the mat . A dog barked loudly ."
+    # verbatim copy of an 8-token span -> one fragment, density = 8
+    st = fragment_stats("the cat sat on the mat .", art)
+    assert st["coverage"] == 1.0 and abs(st["density"] - 7.0) < 1e-9  # 7 tokens: the cat sat on the mat .
+    # two separate copied spans (3 and 2 tokens) plus 1 novel token
+    st = fragment_stats("cat sat on dog barked wow", art)
+    assert abs(st["coverage"] - 5 / 6) < 1e-9 and abs(st["density"] - (9 + 4) / 6) < 1e-9
+    # fully novel
+    assert fragment_stats("completely new words", art)["coverage"] == 0.0
+    # greedy longest match: 'the' occurs twice; the longer continuation must win
+    assert fragments("the mat .".split(), "the cat the mat .".split()) == [3]
+    # whitespace variants do not break fragments
+    assert fragment_stats("the\xa0cat  sat", art)["density"] == 3.0
+    assert publication("http://www.nytimes.com/2013/a.html") == "nytimes.com"
+    assert publication("http://blogs.wsj.com/x") == "wsj.com"
+    assert publication("https://www.dailymail.co.uk/news/x") == "dailymail.co.uk"
+    assert publication("http://www.9news.com.au/x") == "9news.com.au"
+
+
 # --------------------------------------------------------------------- federation
 
 def _trainer(mode, out_dir, **kw):

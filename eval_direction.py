@@ -19,12 +19,16 @@ import yaml
 from scipy.stats import spearmanr
 
 from fedsteer.data import ChatFormatter, ClientQuantiles, read_jsonl
+from fedsteer.extractive import fragment_stats
 from fedsteer.fed import load_snapshot_into
 from fedsteer.lora import SteerLoraConfig
 from fedsteer.model import generate_at_alpha, load_model
 
+# scorer(generated_text, source_record) -> attribute value on the same scale as the
+# training ``score`` field
 SCORERS = {
-    "words": lambda text: float(len(text.split())),
+    "words": lambda text, rec: float(len(text.split())),
+    "density": lambda text, rec: fragment_stats(text, rec["article"])["density"],
 }
 
 
@@ -34,15 +38,39 @@ def latest_snapshot(run: str) -> str:
 
 
 def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantiles) -> dict:
-    """scores: [n_prompts, n_alphas]"""
+    """scores: [n_prompts, n_alphas]
+
+    Percentile metrics map each output's score through the client's own CDF, the
+    same transform that defines alpha in training, so they are bounded and robust
+    to heavy-tailed attributes such as density.
+    """
     order = np.all(np.diff(scores, axis=1) > 0, axis=1).mean()
-    rhos = [spearmanr(alphas, s).correlation for s in scores if np.ptp(s) > 0]
+    # pairwise concordance: fraction of (alpha_i < alpha_j) pairs with score_i < score_j (ties = 1/2)
+    i, j = np.triu_indices(len(alphas), 1)
+    diff = scores[:, j] - scores[:, i]
+    concord = ((diff > 0) + 0.5 * (diff == 0)).mean()
+    pct = np.vectorize(q.cdf)(scores)
+    pct_err = np.abs(pct - np.asarray(alphas)[None, :])
+    # Spearman per article; an article whose outputs do not change with alpha counts as 0
+    # (skipping them, as before, inflated the mean exactly where steering had no effect)
+    constant = np.ptp(scores, axis=1) == 0
+    rhos = [0.0 if c else spearmanr(alphas, s).correlation for s, c in zip(scores, constant)]
+    adj = np.diff(scores, axis=1)
     rng = (scores[:, -1] - scores[:, 0]).mean() / max(q.iqr(), 1e-9)
     targets = np.array([q.quantile(a) for a in alphas])
     mae = np.abs(scores - targets[None, :]).mean() / max(q.iqr(), 1e-9)
     return {
+        "concordance": float(concord),
+        "pct_calib_err": float(pct_err.mean()),
+        "pct_range": float((pct[:, -1] - pct[:, 0]).mean()),
+        "mean_pct_by_alpha": pct.mean(axis=0).round(3).tolist(),
         "order_rate": float(order),
-        "spearman": float(np.mean(rhos)) if rhos else 0.0,
+        "no_effect_rate": float(constant.mean()),              # all alphas give the same score
+        "adjacent_increase_rate": float((adj > 0).mean()),     # P(score goes up | next alpha step)
+        "adjacent_tie_rate": float((adj == 0).mean()),
+        "adjacent_decrease_rate": float((adj < 0).mean()),
+        "endpoint_increase_rate": float((scores[:, -1] > scores[:, 0]).mean()),  # alpha=1 above alpha=0
+        "spearman": float(np.mean(rhos)),
         "norm_range": float(rng),
         "calib_mae_iqr": float(mae),
         "mean_score_by_alpha": scores.mean(axis=0).round(3).tolist(),
@@ -92,22 +120,28 @@ def main():
     results, samples = {}, {}
     for c in cfg["clients"]:
         load_snapshot_into(model, snap, c, shared=shared)
-        prompts = [r["prompt"] for r in by_client[c][: args.max_prompts]]
+        recs = by_client[c][: args.max_prompts]
+        prompts = [r["prompt"] for r in recs]
         grid = np.zeros((len(prompts), len(alphas)))
         samples[c] = []
         for j, a in enumerate(alphas):
             outs = generate_at_alpha(model, fmt, prompts, a, max_new_tokens=args.max_new_tokens,
                                      batch_size=args.batch_size)
-            grid[:, j] = [score(o[0]) for o in outs]
+            grid[:, j] = [score(o[0], rec) for o, rec in zip(outs, recs)]
             samples[c].append({"alpha": a, "output": outs[0][0]})
         results[c] = metrics_for_client(grid, alphas, quantiles[c])
+        results[c]["grid"] = grid.round(4).tolist()
         results[c]["gain"] = float(torch.exp(snap["clients"][c]["gain"]["steer_control.u"]).item())
-        print(c, json.dumps(results[c]), flush=True)
+        print(c, json.dumps({k: v for k, v in results[c].items() if k != "grid"}), flush=True)
 
-    keys = ["order_rate", "spearman", "norm_range", "calib_mae_iqr"]
+    lower_is_better = {"calib_mae_iqr", "pct_calib_err"}
+    lower_is_better |= {"no_effect_rate", "adjacent_tie_rate", "adjacent_decrease_rate"}
+    keys = ["concordance", "spearman", "endpoint_increase_rate", "adjacent_increase_rate", "adjacent_tie_rate",
+            "adjacent_decrease_rate", "no_effect_rate", "pct_calib_err", "pct_range", "order_rate",
+            "norm_range", "calib_mae_iqr"]
     summary = {k: {"mean": float(np.mean([results[c][k] for c in results])),
-                   "worst": float(min(results[c][k] for c in results) if k != "calib_mae_iqr"
-                                  else max(results[c][k] for c in results))} for k in keys}
+                   "worst": float(max(results[c][k] for c in results) if k in lower_is_better
+                                  else min(results[c][k] for c in results))} for k in keys}
     print("SUMMARY", json.dumps(summary), flush=True)
     out = args.out or os.path.join(args.run, f"eval_{os.path.basename(snap_path).removesuffix('.pt')}"
                                    f"{'_' + os.path.basename(args.shared).removesuffix('.pt') if args.shared else ''}.json")

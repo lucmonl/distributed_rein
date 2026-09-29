@@ -22,6 +22,9 @@ Per client *i*, every targeted linear layer is
 | `fedsteer/model.py` | Model loading and `generate_at_alpha` |
 | `train_fed.py` | Training entry point (YAML config plus `--set key=value` overrides) |
 | `eval_direction.py` | Direction quality per client: order rate, Spearman, normalized range, calibration MAE |
+| `fedsteer/extractive.py` | Fragment coverage/density/compression (Grusky et al. 2018, regex tokenizer), publication-from-URL |
+| `scripts/newsroom_stats.py` | Per-publication statistics (gate G0) and scorer validation against Newsroom's precomputed values |
+| `scripts/build_newsroom.py` | Builds `data/newsroom_fed/{data.jsonl,clients.json}`: client selection, temporal splits, held-out rotations |
 | `scripts/make_toy_data.py` | Toy clients with different length ranges (smoke tests) |
 | `tests/test_fedsteer.py` | CPU tests: `python tests/test_fedsteer.py` |
 
@@ -35,6 +38,25 @@ One JSONL file, one record per example:
 
 `score` is the attribute value of `target`. α is computed from the scores of each client's own `train` split.
 
+## Newsroom (flagship task)
+
+```bash
+python scripts/newsroom_stats.py --src data/newsroom/release --out data/newsroom_stats
+python scripts/build_newsroom.py --stats data/newsroom_stats --out data/newsroom_fed
+python train_fed.py --config configs/newsroom_fedavg.yaml
+python eval_direction.py --run runs/newsroom_fedavg_rot0 --scorer density
+```
+
+- **Clients:** 12 publications, evenly spaced by median density among publications with at least 5k usable pairs. They run from telegraph.co.uk (median density 1.3) to nypost.com (32).
+- **Rotations:** `clients.json` defines 3 held-out rotations of 4 clients each, stratified by density. Configs choose one with `rotation: k`.
+- **Splits per client:**
+  - `train`: up to 5k pairs; training uses 2k by default via `max_train_per_client`.
+  - `dev`: 100 pairs.
+  - `test`: 200 articles from the official test split.
+  - `drift`: 600 pairs in 3 stages of 200. Drift pairs come from the latest year(s); the other splits come from strictly earlier years. aol.com is the only exception (almost no pre-2016 data) and is flagged `temporal_split: false`.
+- **Articles:** truncated to 400 words. `score` is density recomputed with `fedsteer.extractive` on the truncated article, the same scorer used at evaluation. Pairs whose summary depends on the removed part are dropped.
+- **Scorer vs. Newsroom's values:** Spearman 0.99 on density. Absolute values differ where spaCy treats unusual whitespace (`\xa0`, tabs) as tokens, which cuts copied fragments apart in the reference values. Our tokenizer ignores whitespace.
+
 ## Commands
 
 ```bash
@@ -46,7 +68,7 @@ sbatch sbatch/toy_smoke.sbatch
 ```
 
 ## Not yet implemented
-- The Newsroom data pipeline and density scorer (the flagship task), and the Amazon task
+- The Amazon task
 - Utility (AlignScore) and specificity metrics
 - E2 (held-out clients with only the gain fitted) and E3 (drift)
 - B1 (prompting), B4 (federated CAA), B5 (pooled reference), A3 (PFL structure with a control token)

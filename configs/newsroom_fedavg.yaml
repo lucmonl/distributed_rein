@@ -1,0 +1,43 @@
+# Flagship: summary extractiveness (fragment density) on Newsroom, publications as clients.
+# Participants = rotation `rotation` of data/newsroom_fed/clients.json (8 of 12; 4 held out).
+#
+# Backbone per plan: Qwen/Qwen3-4B-Instruct-2507 (not yet in the HF cache; download first).
+# Pipeline pilot on the cached 1B model:
+#   python train_fed.py --config configs/newsroom_fedavg.yaml \
+#       --set model_name=meta-llama/Llama-3.2-1B-Instruct out_dir=runs/nr_pilot_llama1b
+model_name: Qwen/Qwen3-4B-Instruct-2507
+data_path: data/newsroom_fed/data.jsonl
+clients_file: data/newsroom_fed/clients.json
+rotation: 0
+clients: null
+out_dir: runs/newsroom_fedavg_rot0
+max_train_per_client: 2000     # data-budget study: 64 / 256 / 2000
+tie_break: average
+system_prompt: null
+max_prompt_tokens: 1024        # articles are truncated to 400 words at build time
+max_target_tokens: 128
+grad_checkpointing: true
+attn_implementation: sdpa
+
+lora:
+  rank_private: 16
+  rank_shared: 16
+  lora_alpha_private: 16
+  lora_alpha_shared: 16
+  shared_seed: 1234
+  gain_min: 0.25
+  gain_max: 4.0
+
+fed:
+  mode: fedavg
+  rounds: 50
+  local_steps: 20
+  batch_size: 8
+  grad_accum: 1
+  lr_private: 2.0e-4
+  lr_shared: 2.0e-4
+  lr_gain: 1.0e-2
+  warmup_steps: 20
+  gain_warmup_rounds: 2
+  save_every: 10
+  seed: 0

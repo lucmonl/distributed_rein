@@ -59,7 +59,14 @@ def main():
     torch.manual_seed(fed_cfg.seed)
 
     records = read_jsonl(cfg["data_path"])
-    clients = cfg.get("clients") or sorted({r["client"] for r in records})
+    clients = cfg.get("clients")
+    if not clients and cfg.get("clients_file"):
+        # participants of a held-out rotation, e.g. data/newsroom_fed/clients.json
+        with open(cfg["clients_file"]) as f:
+            meta = json.load(f)
+        rot = cfg.get("rotation")
+        clients = meta["clients"] if rot is None else meta["rotations"][rot]["participants"]
+    clients = clients or sorted({r["client"] for r in records})
     examples, quantiles = build_clients(records, clients, tie_break=cfg.get("tie_break", "average"),
                                         max_train=cfg.get("max_train_per_client"), seed=fed_cfg.seed)
 
