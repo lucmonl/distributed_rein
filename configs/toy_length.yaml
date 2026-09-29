@@ -1,0 +1,35 @@
+# Smoke test: 4 toy clients, attribute = response length, Llama-3.2-1B-Instruct.
+model_name: meta-llama/Llama-3.2-1B-Instruct
+data_path: data/toy_length.jsonl
+out_dir: runs/toy_length_fedavg
+clients: null                  # null = all clients in the file
+max_train_per_client: null
+tie_break: average
+system_prompt: null
+max_prompt_tokens: 256
+max_target_tokens: 256
+grad_checkpointing: true
+attn_implementation: sdpa
+
+lora:
+  rank_private: 16
+  rank_shared: 16
+  lora_alpha_private: 16
+  lora_alpha_shared: 16
+  shared_seed: 1234
+  gain_min: 0.25
+  gain_max: 4.0
+
+fed:
+  mode: fedavg
+  rounds: 30
+  local_steps: 10
+  batch_size: 8
+  grad_accum: 1
+  lr_private: 2.0e-4
+  lr_shared: 2.0e-4
+  lr_gain: 1.0e-2
+  warmup_steps: 10
+  gain_warmup_rounds: 2
+  save_every: 10
+  seed: 0
