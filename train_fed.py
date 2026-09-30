@@ -18,6 +18,7 @@ from fedsteer.data import ChatFormatter, build_clients, read_jsonl
 from fedsteer.fed import FedConfig, FedSteerTrainer
 from fedsteer.lora import SteerLoraConfig
 from fedsteer.model import load_model
+from fedsteer.monitor import MonitorConfig, make_monitor
 
 
 def _parse_value(v: str):
@@ -89,7 +90,13 @@ def main():
     print(f"train examples: { {c: len(v) for c, v in examples.items()} }")
     print(f"trainable params (one client's view): {n_train / 1e6:.2f}M", flush=True)
 
-    trainer = FedSteerTrainer(model, fmt, examples, fed_cfg, out_dir)
+    eval_fn = None
+    if cfg.get("monitor"):
+        mon_cfg = _dataclass_from(MonitorConfig, cfg["monitor"])
+        eval_fn = make_monitor(records, clients, quantiles, fmt, mon_cfg)
+        print(f"monitor: {asdict(mon_cfg)}", flush=True)
+
+    trainer = FedSteerTrainer(model, fmt, examples, fed_cfg, out_dir, eval_fn=eval_fn)
     trainer.fit()
 
 

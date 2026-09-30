@@ -11,6 +11,9 @@ Every targeted ``nn.Linear`` becomes
 * ``s``         private positive gain of the current client, ``exp(u)`` clamped.
 * ``alpha``     per-example control value in [0, 1], read from ``SteerControl``.
 
+With a warp (``SteerLoraConfig.warp``, see fedsteer/warp.py) the coefficient
+``s * alpha`` becomes ``s * h(alpha)`` with a private monotone h, h(0)=0, h(1)=1.
+
 The layers read ``alpha`` and ``s`` from a single ``SteerControl`` module that is
 registered once on the model, so no model forward signature has to change.
 """
@@ -27,9 +30,13 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from .warp import AlphaWarp, make_warp
+
 PRIVATE_KEYS = ("lora_A_p", "lora_B_p")
 SHARED_KEYS = ("lora_B_d",)
 GAIN_KEY = "steer_control.u"
+CONTROL_PREFIX = "steer_control."          # gain u and warp parameters: private per client
+WARP_PREFIX = "steer_control.warp."
 
 
 @dataclass
@@ -45,16 +52,28 @@ class SteerLoraConfig:
     shared_seed: int = 1234  # every client must use the same seed so A_d is identical
     gain_min: float = 0.25
     gain_max: float = 4.0
+    # private monotone reparameterization of alpha (fedsteer/warp.py):
+    # none | kumaraswamy (A) | kumaraswamy_mix (B) | step (C)
+    warp: str = "none"
+    warp_shape_min: float = 0.2      # Kumaraswamy p, q range
+    warp_shape_max: float = 20.0
+    warp_mix_w_init: float = 0.5     # B: initial mixture weight (identity holds for any w at init)
+    warp_step_c_init: float = 0.5    # C: initial switch location
+    warp_step_tau_init: float = 0.2  # C: initial step width
+    warp_step_tau_min: float = 0.02
+    warp_step_tau_max: float = 1.0
 
 
 class SteerControl(nn.Module):
-    """Holds the client gain parameter and the alpha of the current batch."""
+    """Holds the client's private control parameters (gain u, warp h) and the alpha
+    of the current batch."""
 
-    def __init__(self, gain_min: float, gain_max: float):
+    def __init__(self, gain_min: float, gain_max: float, warp: Optional[AlphaWarp] = None):
         super().__init__()
         self.u = nn.Parameter(torch.zeros(()))
         self.log_min = math.log(gain_min)
         self.log_max = math.log(gain_max)
+        self.warp = warp if warp is not None else AlphaWarp()
         self._alpha: Optional[torch.Tensor] = None
 
     def gain(self) -> torch.Tensor:
@@ -71,10 +90,16 @@ class SteerControl(nn.Module):
         finally:
             self._alpha = prev
 
-    def alpha_for(self, y: torch.Tensor) -> torch.Tensor:
+    def coef_for(self, y: torch.Tensor) -> torch.Tensor:
+        """Per-example coefficient s * h(alpha), broadcastable against ``y``."""
+        return self.alpha_for(y, warped=True) * self.gain()
+
+    def alpha_for(self, y: torch.Tensor, warped: bool = False) -> torch.Tensor:
         if self._alpha is None:
             raise RuntimeError("alpha is not set; wrap the forward in `control.use_alpha(...)`")
         a = self._alpha.to(device=y.device)
+        if warped:
+            a = self.warp(a)
         if a.numel() == 1:
             return a.reshape(())
         batch = y.shape[0]
@@ -121,8 +146,7 @@ class SteerLinear(nn.Module):
         h = h.to(dt)
         priv = F.linear(F.linear(h, self.lora_A_p.to(dt)), self.lora_B_p.to(dt)) * self.scale_p
         shared = F.linear(F.linear(h, self.lora_A_d.to(dt)), self.lora_B_d.to(dt)) * self.scale_d
-        ctl = self._control
-        coef = ctl.alpha_for(shared) * ctl.gain()
+        coef = self._control.coef_for(shared)
         return y + (priv + coef.to(shared.dtype) * shared).to(y.dtype)
 
     def extra_repr(self) -> str:
@@ -134,7 +158,11 @@ def inject_steer_lora(model: nn.Module, cfg: SteerLoraConfig) -> SteerControl:
     """Freeze the model and replace targeted Linear layers with SteerLinear."""
     for p in model.parameters():
         p.requires_grad_(False)
-    control = SteerControl(cfg.gain_min, cfg.gain_max).to(next(model.parameters()).device)
+    warp = make_warp(cfg.warp, shape_min=cfg.warp_shape_min, shape_max=cfg.warp_shape_max,
+                     mix_w_init=cfg.warp_mix_w_init, step_c_init=cfg.warp_step_c_init,
+                     step_tau_init=cfg.warp_step_tau_init, step_tau_min=cfg.warp_step_tau_min,
+                     step_tau_max=cfg.warp_step_tau_max)
+    control = SteerControl(cfg.gain_min, cfg.gain_max, warp).to(next(model.parameters()).device)
     targets = []
     for name, module in model.named_modules():
         if isinstance(module, nn.Linear) and name.split(".")[-1] in cfg.target_modules:
@@ -173,7 +201,9 @@ def get_private_adapter_state(model: nn.Module) -> dict[str, torch.Tensor]:
 
 
 def get_gain_state(model: nn.Module) -> dict[str, torch.Tensor]:
-    return {GAIN_KEY: model.steer_control.u.detach().float().cpu().clone()}
+    """All private control parameters: the gain ``u`` and, if configured, the warp."""
+    return {n: p.detach().float().cpu().clone()
+            for n, p in model.named_parameters() if n.startswith(CONTROL_PREFIX)}
 
 
 @torch.no_grad()
@@ -206,7 +236,7 @@ def direction_products(model: nn.Module, shared_state: Optional[dict[str, torch.
 
 
 def trainable_parameter_groups(model: nn.Module) -> dict[str, list[nn.Parameter]]:
-    groups: dict[str, list[nn.Parameter]] = {"private": [], "shared": [], "gain": []}
+    groups: dict[str, list[nn.Parameter]] = {"private": [], "shared": [], "gain": [], "warp": []}
     for n, p in model.named_parameters():
         key = n.split(".")[-1]
         if key in PRIVATE_KEYS:
@@ -215,4 +245,6 @@ def trainable_parameter_groups(model: nn.Module) -> dict[str, list[nn.Parameter]
             groups["shared"].append(p)
         elif n == GAIN_KEY:
             groups["gain"].append(p)
+        elif n.startswith(WARP_PREFIX):
+            groups["warp"].append(p)
     return groups

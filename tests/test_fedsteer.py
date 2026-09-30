@@ -35,13 +35,14 @@ def tokenizer():
     return _TOK
 
 
-def tiny_model(seed=0, lora_seed=1234, rank=4):
+def tiny_model(seed=0, lora_seed=1234, rank=4, warp="none"):
     torch.manual_seed(seed)
     cfg = LlamaConfig(vocab_size=len(tokenizer()), hidden_size=32, intermediate_size=64, num_hidden_layers=2,
                       num_attention_heads=4, num_key_value_heads=2, max_position_embeddings=512,
                       tie_word_embeddings=True)
     model = LlamaForCausalLM(cfg)
-    inject_steer_lora(model, SteerLoraConfig(rank_private=rank, rank_shared=rank, shared_seed=lora_seed))
+    inject_steer_lora(model, SteerLoraConfig(rank_private=rank, rank_shared=rank, shared_seed=lora_seed,
+                                             warp=warp))
     return model
 
 
@@ -215,6 +216,152 @@ def test_formatter_masks_prompt():
     assert batch["alpha"].tolist() == [0.30000001192092896, 0.8999999761581421]
 
 
+# ----------------------------------------------------------------------- warps
+
+WARPS = ("none", "kumaraswamy", "kumaraswamy_mix", "step")
+
+
+def _randomize_warp(w, seed):
+    g = torch.Generator().manual_seed(seed)
+    with torch.no_grad():
+        for n, p in w.named_parameters():
+            if n == "w_raw":
+                p.copy_(torch.rand((), generator=g))                       # in [0, 1]
+            else:
+                p.copy_(torch.randn((), generator=g) * 1.5)                # includes steep / extreme shapes
+
+
+def test_warps_identity_at_init():
+    from fedsteer.warp import make_warp
+    x = torch.linspace(0, 1, 101)
+    for kind in WARPS:
+        assert torch.allclose(make_warp(kind)(x), x, atol=1e-6), kind
+
+
+def test_warps_monotone_with_exact_endpoints():
+    from fedsteer.warp import make_warp
+    x = torch.linspace(0, 1, 2001)
+    for kind in WARPS[1:]:
+        for seed in range(20):
+            w = make_warp(kind)
+            _randomize_warp(w, seed)
+            h = w(x)
+            assert torch.all(h[1:] - h[:-1] >= -1e-6), (kind, seed)
+            assert abs(h[0].item()) < 1e-6 and abs(h[-1].item() - 1) < 1e-5, (kind, seed, h[0], h[-1])
+            assert torch.all((h >= -1e-6) & (h <= 1 + 1e-6)), kind
+
+
+def test_warp_gradients_finite_and_correct():
+    from fedsteer.warp import make_warp
+    for kind in WARPS[1:]:
+        w = make_warp(kind)
+        _randomize_warp(w, 3)
+        with torch.no_grad():                   # keep w strictly inside (0, 1) for the step warp
+            if hasattr(w, "w_raw"):
+                w.w_raw.fill_(0.6)
+        x = torch.tensor([0.0, 0.3, 0.7, 1.0])
+        w(x).sum().backward()
+        for n, p in w.named_parameters():
+            assert p.grad is not None and torch.isfinite(p.grad).all(), (kind, n, p.grad)
+        # finite differences at an interior alpha
+        for n, p in w.named_parameters():
+            w.zero_grad()
+            w(torch.tensor([0.37])).sum().backward()
+            g = p.grad.item()
+            eps = 1e-3
+            with torch.no_grad():
+                p += eps
+                up = w(torch.tensor([0.37])).item()
+                p -= 2 * eps
+                dn = w(torch.tensor([0.37])).item()
+                p += eps
+            fd = (up - dn) / (2 * eps)
+            assert abs(g - fd) < 1e-3 + 2e-2 * abs(fd), (kind, n, g, fd)
+
+
+def test_warp_identity_model_matches_linear_model():
+    ids = torch.randint(0, 1000, (2, 6))
+    ref = tiny_model(warp="none")
+    randomize_lora(ref)
+    for kind in WARPS[1:]:
+        m = tiny_model(warp=kind)
+        randomize_lora(m)
+        for a in (0.0, 0.4, 1.0):
+            assert torch.allclose(logits(m, ids, a), logits(ref, ids, a), atol=1e-5), (kind, a)
+
+
+def test_warp_changes_coefficient_not_endpoints():
+    m = tiny_model(warp="kumaraswamy_mix")
+    randomize_lora(m)
+    ids = torch.randint(0, 1000, (1, 6))
+    before = {a: logits(m, ids, a) for a in (0.0, 0.5, 1.0)}
+    _randomize_warp(m.steer_control.warp, 7)
+    after = {a: logits(m, ids, a) for a in (0.0, 0.5, 1.0)}
+    assert torch.allclose(before[0.0], after[0.0], atol=1e-5)       # h(0) = 0
+    assert torch.allclose(before[1.0], after[1.0], atol=1e-4)       # h(1) = 1
+    assert not torch.allclose(before[0.5], after[0.5], atol=1e-5)   # interior alphas move
+
+
+def test_fed_training_with_warp_is_private_and_warms_up():
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("fedavg", d, warp="kumaraswamy_mix", rounds=3, warp_warmup_rounds=1, lr_warp=0.2)
+        tr.fit()
+        wkeys = [k for k in tr.clients["c0"]["gain"] if k.startswith("steer_control.warp.")]
+        assert len(wkeys) == 3
+        assert not any(k.startswith("steer_control") for k in tr.server)                 # never aggregated
+        init = {"steer_control.warp.log_p": 0.0, "steer_control.warp.log_q": 0.0, "steer_control.warp.w_logit": 0.0}
+        for c in ("c0", "c1"):
+            assert any(abs(tr.clients[c]["gain"][k].item() - init[k]) > 1e-6 for k in wkeys), c
+        assert any(tr.clients["c0"]["gain"][k] != tr.clients["c1"]["gain"][k] for k in wkeys)
+        assert "warp" in tr.history[-1]["clients"]["c0"] and "warp_penalty" in tr.history[-1]["clients"]["c0"]
+        assert "warp_penalty" not in tr.history[0]["clients"]["c0"]                     # round 0: warm-up
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("fedavg", d, warp="kumaraswamy_mix", rounds=2, warp_warmup_rounds=5, lr_warp=0.2)
+        tr.fit()
+        assert all(tr.clients[c]["gain"][k].item() == 0.0 for c in ("c0", "c1")
+                   for k in tr.clients[c]["gain"] if k.startswith("steer_control.warp."))
+
+
+def test_isotonic_remap():
+    from fedsteer.calibrate import fit_remap, invert_monotone, isotonic_increasing
+    assert isotonic_increasing([1, 3, 2, 4]).tolist() == [1, 2.5, 2.5, 4]
+    assert isotonic_increasing([3, 2, 1]).tolist() == [2, 2, 2]
+    grid = [0, 0.5, 1]
+    assert invert_monotone(grid, [0.2, 0.4, 0.8], 0.6) == 0.75
+    assert invert_monotone(grid, [0.2, 0.4, 0.8], 0.1) == 0.0      # below the achievable range: clip
+    assert invert_monotone(grid, [0.2, 0.4, 0.8], 0.9) == 1.0
+    r = fit_remap(grid, [0.3, 0.2, 0.9], [0.5])                    # non-monotone input is pooled first
+    assert r["fitted"] == [0.25, 0.25, 0.9] and 0.5 < r["mapped_alpha"]["0.5"] < 1.0
+
+
+def test_eval_snapshot_with_warp_and_posthoc_remap():
+    import importlib.util
+    from types import SimpleNamespace
+    from fedsteer.metrics import SCORERS
+    spec = importlib.util.spec_from_file_location(
+        "eval_direction", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "eval_direction.py"))
+    ev = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ev)
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("fedavg", d, warp="kumaraswamy_mix", rounds=2, warp_warmup_rounds=1, lr_warp=0.2)
+        tr.fit()
+        _, qs = build_clients(toy_records(), ["c0", "c1"])
+        recs = {c: [r for r in toy_records() if r["client"] == c][:3] for c in ("c0", "c1")}
+        args = SimpleNamespace(max_prompts=3, max_new_tokens=4, batch_size=4, dev_loss=True, shared=None, split="test",
+                               remap_prompts=3, remap_grid=3)
+        snap = os.path.join(d, "snapshots", "round_0002.pt")
+        model = tiny_model(warp="kumaraswamy_mix")
+        fmt = ChatFormatter(tokenizer())
+        res = ev.evaluate_snapshot(model, fmt, snap, None, recs, ["c0", "c1"], qs, [0.0, 0.5, 1.0],
+                                   SCORERS["words"], args, remap_by_client=recs)
+        r = res["clients"]["c0"]
+        assert "warp" in r and r["warp"]["kind"] == "kumaraswamy_mix"
+        assert set(r["remap"]["mapped_alpha"]) == {"0.0", "0.5", "1.0"}
+        assert all(0.0 <= a <= 1.0 for a in r["remap"]["mapped_alpha"].values())
+        assert [smp["alpha"] for smp in res["samples"]["c0"]] == [0.0, 0.5, 1.0]   # metrics use target alphas
+        assert "loss" in res["summary"]
+
+
 # ------------------------------------------------------------------ extractive
 
 def test_fragment_stats_known_cases():
@@ -241,7 +388,7 @@ def test_fragment_stats_known_cases():
 # --------------------------------------------------------------------- federation
 
 def _trainer(mode, out_dir, **kw):
-    model = tiny_model()
+    model = tiny_model(warp=kw.pop("warp", "none"))
     ex, _ = build_clients(toy_records(), ["c0", "c1"])
     cfg = FedConfig(mode=mode, rounds=kw.pop("rounds", 3), local_steps=3, batch_size=4, bf16=False,
                     warmup_steps=1, gain_warmup_rounds=1, save_every=1, lr_private=5e-3, lr_shared=5e-3, **kw)
@@ -300,6 +447,46 @@ def test_resume_is_exact():
         for c in full.clients:
             for k, v in full.clients[c]["private"].items():
                 assert torch.allclose(v, resumed.clients[c]["private"][k], atol=1e-6), (c, k)
+
+
+def test_metrics_edge_cases():
+    from fedsteer.metrics import constant_output_pct_err, metrics_for_client
+    q = ClientQuantiles.fit(list(range(1, 101)))
+    alphas = [0.1, 0.5, 0.9]
+    perfect = metrics_for_client([[q.quantile(a) for a in alphas]] * 3, alphas, q)
+    assert perfect["concordance"] == 1.0 and perfect["pct_calib_err"] < 0.02 and perfect["spearman"] > 0.99
+    flat = metrics_for_client([[50.0] * 3] * 3, alphas, q)
+    # constant rows count as rho = 0 (not skipped), and are flagged as no-effect
+    assert flat["spearman"] == 0.0 and flat["no_effect_rate"] == 1.0 and flat["concordance"] == 0.5
+    assert abs(flat["pct_calib_err"] - constant_output_pct_err(alphas)) < 0.02
+
+
+def test_monitor_logs_heldout_loss_and_steering():
+    from fedsteer.monitor import MonitorConfig, make_monitor
+    recs = toy_records()
+    for i, r in enumerate(recs):
+        if i % 4 == 0:
+            r["split"] = "dev"
+    ex, qs = build_clients(recs, ["c0", "c1"])
+    fmt = ChatFormatter(tokenizer())
+    mon = make_monitor(recs, ["c0", "c1"], qs, fmt,
+                       MonitorConfig(loss_every=1, steer_every=2, steer_prompts=2, scorer="words",
+                                     max_new_tokens=4, batch_size=4))
+    with tempfile.TemporaryDirectory() as d:
+        model = tiny_model()
+        cfg = FedConfig(rounds=2, local_steps=1, batch_size=2, bf16=False, warmup_steps=1, save_every=1)
+        tr = FedSteerTrainer(model, fmt, ex, cfg, d, eval_fn=mon)
+        tr.fit()
+        e1, e2 = tr.history[0]["eval"], tr.history[1]["eval"]
+        assert "loss_mean" in e1 and "steer_summary" not in e1          # round 1: loss only
+        assert "loss_mean" in e2 and "steer_summary" in e2              # round 2: loss + steering
+        assert all(torch.isfinite(torch.tensor(v["loss"])) for v in e2["clients"].values())
+    # the monitor must not change the training trajectory: rerun without it and compare
+    with tempfile.TemporaryDirectory() as d:
+        tr2 = FedSteerTrainer(tiny_model(), fmt, ex, cfg, d)
+        tr2.fit()
+    for k in tr.server:
+        assert torch.allclose(tr.server[k], tr2.server[k], atol=1e-6), k
 
 
 def test_snapshot_eval_and_generation():

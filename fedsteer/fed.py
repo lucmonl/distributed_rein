@@ -12,6 +12,9 @@ Modes
               keeps its own B_d.  The one-shot merged direction (baseline B3) is
               the average of these, written at the end of training.
 
+Private alpha warp (``lora.warp``, fedsteer/warp.py): trained like the gain, with
+its own learning rate, a warm-up and a penalty toward the identity (``warp_reg``).
+
 Ablations (orthogonal to mode): ``fix_gain`` (A1: s_i = 1) and ``share_private``
 (A2: the adapter P is also aggregated, i.e. no private adaptation).
 """
@@ -30,6 +33,7 @@ from typing import Callable, Optional
 import torch
 
 from .data import ClientStream
+from .monitor import format_monitor
 from .lora import (
     GAIN_KEY,
     average_states,
@@ -58,6 +62,9 @@ class FedConfig:
     max_grad_norm: float = 1.0
     gain_warmup_rounds: int = 2      # keep u_i = 0 while D is still ~0
     fix_gain: bool = False           # ablation A1
+    lr_warp: float = 1e-2            # private alpha warp (only if lora.warp != none)
+    warp_warmup_rounds: int = 5      # keep h_i = identity until D carries signal
+    warp_reg: float = 1e-2           # weight of mean (h(a) - a)^2 penalty toward the identity
     share_private: bool = False      # ablation A2
     aggregation: str = "uniform"     # uniform | size
     server_lr: float = 1.0           # new = old + server_lr * (avg - old)
@@ -106,8 +113,10 @@ class FedSteerTrainer:
                 {"params": groups["private"], "lr": cfg.lr_private, "weight_decay": cfg.weight_decay, "name": "private"},
                 {"params": groups["shared"], "lr": cfg.lr_shared, "weight_decay": cfg.weight_decay, "name": "shared"},
                 {"params": groups["gain"], "lr": cfg.lr_gain, "weight_decay": 0.0, "name": "gain"},
-            ]
+            ] + ([{"params": groups["warp"], "lr": cfg.lr_warp, "weight_decay": 0.0, "name": "warp"}]
+                 if groups["warp"] else [])
         )
+        self.warp_params = groups["warp"]
         self._base_lrs = [g["lr"] for g in self.opt.param_groups]
 
         self.streams = {
@@ -179,7 +188,10 @@ class FedSteerTrainer:
         model.train()
         gain_trainable = not cfg.fix_gain and self.round >= cfg.gain_warmup_rounds
         self.control.u.requires_grad_(gain_trainable)
-        losses = []
+        warp_trainable = bool(self.warp_params) and self.round >= cfg.warp_warmup_rounds
+        for p in self.warp_params:
+            p.requires_grad_(warp_trainable)
+        losses, penalties = [], []
         for _ in range(cfg.local_steps):
             f = self._lr_factor(c["steps"])
             for g, lr in zip(self.opt.param_groups, self._base_lrs):
@@ -190,7 +202,12 @@ class FedSteerTrainer:
                 with self.control.use_alpha(batch.pop("alpha")), \
                         torch.autocast(self.device.type, dtype=torch.bfloat16, enabled=cfg.bf16):
                     loss = model(**batch).loss / cfg.grad_accum
-                    loss.backward()
+                    total = loss
+                    if warp_trainable and cfg.warp_reg > 0:
+                        pen = self.control.warp.penalty()
+                        total = total + cfg.warp_reg * pen / cfg.grad_accum
+                        penalties.append(pen.item())
+                    total.backward()
                 step_loss += loss.item()
             params = [p for g in self.opt.param_groups for p in g["params"] if p.grad is not None]
             torch.nn.utils.clip_grad_norm_(params, cfg.max_grad_norm)
@@ -198,7 +215,12 @@ class FedSteerTrainer:
             self.opt.zero_grad(set_to_none=True)
             c["steps"] += 1
             losses.append(step_loss)
-        return {"loss": sum(losses) / len(losses), "gain": float(self.control.gain().item())}
+        out = {"loss": sum(losses) / len(losses), "gain": float(self.control.gain().item())}
+        if self.warp_params:
+            out["warp"] = self.control.warp.describe()
+            if penalties:
+                out["warp_penalty"] = sum(penalties) / len(penalties)
+        return out
 
     def _select(self) -> list[str]:
         k = self.cfg.clients_per_round
@@ -260,7 +282,7 @@ class FedSteerTrainer:
                      if "client_direction_cos_mean" in log else "")
             print(f"[round {log['round']:4d}] mean loss {sum(losses) / len(losses):.4f} "
                   f"| delta cos {log.get('client_delta_cos_mean', float('nan')):.3f}{extra} "
-                  f"| {log['time_s']:.1f}s", flush=True)
+                  f"| {log['time_s']:.1f}s{format_monitor(log.get('eval', {}))}", flush=True)
             if self.round % self.cfg.save_every == 0 or self.round == self.cfg.rounds:
                 self.save()
         if self.cfg.mode == "local":

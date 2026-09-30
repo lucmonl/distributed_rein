@@ -12,6 +12,20 @@ Per client *i*, every targeted linear layer is
 - `B_d`: the shared direction, the only thing aggregated
 - `α`: each training example's client-local percentile of the attribute score
 
+**Private α warp (optional; `lora.warp`).** The coefficient `s_i · α` becomes `s_i · h_i(α)`, where h_i is a private increasing map with h(0) = 0 and h(1) = 1 ([fedsteer/warp.py](fedsteer/warp.py)). It lets each client place where its behaviour changes fastest; for Newsroom, that's where rewriting switches to copying the lead sentence.
+
+| `warp` | h(α) | Private params |
+|---|---|---|
+| `none` | α (the original linear model) | 0 |
+| `kumaraswamy` (A) | 1 − (1 − α^p)^q | 2 |
+| `kumaraswamy_mix` (B, the method) | (1 − w)·α + w·[1 − (1 − α^p)^q] | 3 |
+| `step` (C) | (1 − w)·α + w·S((α − c)/τ), c = switch point | 3 |
+
+- Every warp starts as the identity, so it doesn't change the model until it is trained.
+- Training settings in `fed:`: `lr_warp`, `warp_warmup_rounds` (the warp stays the identity until D carries signal) and `warp_reg` (penalty toward the identity).
+- Warp parameters are stored with the client's gain and are never aggregated.
+- Option F is a post-hoc isotonic remap with no training change, used as an ablation: `eval_direction.py --posthoc_remap`. It fits the remap on dev and evaluates on test.
+
 ## Layout
 
 | Path | What |
@@ -25,6 +39,11 @@ Per client *i*, every targeted linear layer is
 | `fedsteer/extractive.py` | Fragment coverage/density/compression (Grusky et al. 2018, regex tokenizer), publication-from-URL |
 | `scripts/newsroom_stats.py` | Per-publication statistics (gate G0) and scorer validation against Newsroom's precomputed values |
 | `scripts/build_newsroom.py` | Builds `data/newsroom_fed/{data.jsonl,clients.json}`: client selection, temporal splits, held-out rotations |
+| `fedsteer/warp.py` | Private monotone α warps (A/B/C) |
+| `fedsteer/calibrate.py` | Post-hoc isotonic α remap (option F) |
+| `fedsteer/metrics.py` | Scorers and direction-quality metrics, shared by the monitor and `eval_direction.py` |
+| `fedsteer/monitor.py` | Held-out monitor during training: dev loss every round, a small steering check every few rounds |
+| `scripts/summarize_sweep.py` | Table of a checkpoint sweep and dev-based checkpoint selection |
 | `scripts/make_toy_data.py` | Toy clients with different length ranges (smoke tests) |
 | `tests/test_fedsteer.py` | CPU tests: `python tests/test_fedsteer.py` |
 
@@ -45,6 +64,7 @@ python scripts/newsroom_stats.py --src data/newsroom/release --out data/newsroom
 python scripts/build_newsroom.py --stats data/newsroom_stats --out data/newsroom_fed
 python train_fed.py --config configs/newsroom_fedavg.yaml
 python eval_direction.py --run runs/newsroom_fedavg_rot0 --scorer density
+python eval_direction.py --run runs/newsroom_fedavg_rot0 --scorer density --suffix v2   # keep older eval files
 ```
 
 - **Clients:** 12 publications, evenly spaced by median density among publications with at least 5k usable pairs. They run from telegraph.co.uk (median density 1.3) to nypost.com (32).
@@ -56,6 +76,20 @@ python eval_direction.py --run runs/newsroom_fedavg_rot0 --scorer density
   - `drift`: 600 pairs in 3 stages of 200. Drift pairs come from the latest year(s); the other splits come from strictly earlier years. aol.com is the only exception (almost no pre-2016 data) and is flagged `temporal_split: false`.
 - **Articles:** truncated to 400 words. `score` is density recomputed with `fedsteer.extractive` on the truncated article, the same scorer used at evaluation. Pairs whose summary depends on the removed part are dropped.
 - **Scorer vs. Newsroom's values:** Spearman 0.99 on density. Absolute values differ where spaCy treats unusual whitespace (`\xa0`, tabs) as tokens, which cuts copied fragments apart in the reference values. Our tokenizer ignores whitespace.
+
+## Choosing checkpoints (held-out monitoring and sweeps)
+
+Training loss only measures fit to data the model trains on. Over several passes through the data it mostly measures memorization. Checkpoints are chosen on the **dev** split and reported on **test**.
+
+- **During training:** the `monitor:` config section logs dev loss every round and a steering check every `steer_every` rounds (20 dev articles × α ∈ {0.1, 0.5, 0.9}). It prints them on each round's log line and stores them in `train_log.jsonl` under `eval`.
+- **After training:**
+  ```bash
+  python eval_direction.py --run runs/X --scorer density --split dev --dev_loss --max_prompts 100 \
+      --snapshot runs/X/snapshots/round_00{2,4,6}0.pt
+  python scripts/summarize_sweep.py --run runs/X --select pct_calib_err
+  ```
+  `sbatch/sweep_pilot.sbatch` runs the whole procedure, including the test evaluation of the selected checkpoint.
+- **Reading the metrics:** the percentile calibration error of a model that always outputs the client median is 0.30 on the α grid {0, .25, .5, .75, 1} and 0.27 on {0.1, 0.5, 0.9}. A useful knob must beat that.
 
 ## Commands
 

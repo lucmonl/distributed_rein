@@ -27,6 +27,18 @@ lora:
   shared_seed: 1234
   gain_min: 0.25
   gain_max: 4.0
+  # Private monotone reparameterization of alpha: coefficient = s_i * h_i(alpha)
+  # (fedsteer/warp.py).  none = original linear model (ablation).
+  #   kumaraswamy      (A) h = 1 - (1 - a^p)^q                     2 params
+  #   kumaraswamy_mix  (B) h = (1 - w) a + w [1 - (1 - a^p)^q]      3 params  <- method
+  #   step             (C) h = (1 - w) a + w S((a - c) / tau)       3 params, c = switch point
+  # Option F (post-hoc isotonic remap, no training change): eval_direction.py --posthoc_remap
+  warp: kumaraswamy_mix
+  warp_shape_min: 0.2
+  warp_shape_max: 20.0
+  warp_mix_w_init: 0.5
+  warp_step_c_init: 0.5
+  warp_step_tau_init: 0.2
 
 fed:
   mode: fedavg
@@ -39,5 +51,21 @@ fed:
   lr_gain: 1.0e-2
   warmup_steps: 20
   gain_warmup_rounds: 2
+  lr_warp: 1.0e-2
+  warp_warmup_rounds: 5       # h_i stays the identity until D carries signal
+  warp_reg: 1.0e-2            # penalty mean (h(a) - a)^2 toward the identity
   save_every: 10
   seed: 0
+
+# Held-out monitoring (fedsteer/monitor.py): dev loss every round, and a small
+# steering check (20 dev articles x 3 alphas, greedy) every `steer_every` rounds.
+monitor:
+  split: dev
+  loss_every: 1
+  loss_max_examples: 100
+  steer_every: 5
+  steer_prompts: 20
+  steer_alphas: [0.1, 0.5, 0.9]
+  scorer: density
+  max_new_tokens: 96
+  batch_size: 16

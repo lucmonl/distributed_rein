@@ -3,9 +3,16 @@
     python eval_direction.py --run runs/toy_length_fedavg --scorer words
     python eval_direction.py --run runs/toy_local --shared runs/toy_local/merged_shared.pt   # baseline B3
 
-For every client and test prompt, generate at each alpha on the grid, score the
-outputs, and report steerability (order rate, Spearman), normalized range and
-calibration MAE against the client's own quantiles F_i^{-1}(alpha).
+    # warp option F (ablation): remap alpha post hoc using the dev split, then evaluate on test
+    python eval_direction.py --run runs/X --scorer density --posthoc_remap
+
+    # checkpoint sweep on the dev split (one model load, several snapshots)
+    python eval_direction.py --run runs/X --split dev --dev_loss \
+        --snapshot runs/X/snapshots/round_0020.pt runs/X/snapshots/round_0040.pt
+
+For every client and prompt, generate at each alpha on the grid, score the outputs
+and report direction-quality metrics (fedsteer.metrics).  Select checkpoints on
+``--split dev``; report on ``--split test``.
 """
 
 import argparse
@@ -16,20 +23,14 @@ from collections import defaultdict
 import numpy as np
 import torch
 import yaml
-from scipy.stats import spearmanr
 
+from fedsteer.calibrate import fit_remap
 from fedsteer.data import ChatFormatter, ClientQuantiles, read_jsonl
-from fedsteer.extractive import fragment_stats
 from fedsteer.fed import load_snapshot_into
 from fedsteer.lora import SteerLoraConfig
+from fedsteer.metrics import SCORERS, constant_output_pct_err, metrics_for_client, summarize
 from fedsteer.model import generate_at_alpha, load_model
-
-# scorer(generated_text, source_record) -> attribute value on the same scale as the
-# training ``score`` field
-SCORERS = {
-    "words": lambda text, rec: float(len(text.split())),
-    "density": lambda text, rec: fragment_stats(text, rec["article"])["density"],
-}
+from fedsteer.monitor import mean_loss
 
 
 def latest_snapshot(run: str) -> str:
@@ -37,51 +38,60 @@ def latest_snapshot(run: str) -> str:
     return os.path.join(d, sorted(os.listdir(d))[-1])
 
 
-def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantiles) -> dict:
-    """scores: [n_prompts, n_alphas]
+def score_grid(model, fmt, recs, alphas, score, args):
+    prompts = [r["prompt"] for r in recs]
+    grid = np.zeros((len(prompts), len(alphas)))
+    first = []
+    for j, a in enumerate(alphas):
+        outs = generate_at_alpha(model, fmt, prompts, a, max_new_tokens=args.max_new_tokens,
+                                 batch_size=args.batch_size)
+        grid[:, j] = [score(o[0], rec) for o, rec in zip(outs, recs)]
+        first.append(outs[0][0])
+    return grid, first
 
-    Percentile metrics map each output's score through the client's own CDF, the
-    same transform that defines alpha in training, so they are bounded and robust
-    to heavy-tailed attributes such as density.
-    """
-    order = np.all(np.diff(scores, axis=1) > 0, axis=1).mean()
-    # pairwise concordance: fraction of (alpha_i < alpha_j) pairs with score_i < score_j (ties = 1/2)
-    i, j = np.triu_indices(len(alphas), 1)
-    diff = scores[:, j] - scores[:, i]
-    concord = ((diff > 0) + 0.5 * (diff == 0)).mean()
-    pct = np.vectorize(q.cdf)(scores)
-    pct_err = np.abs(pct - np.asarray(alphas)[None, :])
-    # Spearman per article; an article whose outputs do not change with alpha counts as 0
-    # (skipping them, as before, inflated the mean exactly where steering had no effect)
-    constant = np.ptp(scores, axis=1) == 0
-    rhos = [0.0 if c else spearmanr(alphas, s).correlation for s, c in zip(scores, constant)]
-    adj = np.diff(scores, axis=1)
-    rng = (scores[:, -1] - scores[:, 0]).mean() / max(q.iqr(), 1e-9)
-    targets = np.array([q.quantile(a) for a in alphas])
-    mae = np.abs(scores - targets[None, :]).mean() / max(q.iqr(), 1e-9)
-    return {
-        "concordance": float(concord),
-        "pct_calib_err": float(pct_err.mean()),
-        "pct_range": float((pct[:, -1] - pct[:, 0]).mean()),
-        "mean_pct_by_alpha": pct.mean(axis=0).round(3).tolist(),
-        "order_rate": float(order),
-        "no_effect_rate": float(constant.mean()),              # all alphas give the same score
-        "adjacent_increase_rate": float((adj > 0).mean()),     # P(score goes up | next alpha step)
-        "adjacent_tie_rate": float((adj == 0).mean()),
-        "adjacent_decrease_rate": float((adj < 0).mean()),
-        "endpoint_increase_rate": float((scores[:, -1] > scores[:, 0]).mean()),  # alpha=1 above alpha=0
-        "spearman": float(np.mean(rhos)),
-        "norm_range": float(rng),
-        "calib_mae_iqr": float(mae),
-        "mean_score_by_alpha": scores.mean(axis=0).round(3).tolist(),
-        "target_by_alpha": targets.round(3).tolist(),
-    }
+
+def evaluate_snapshot(model, fmt, snap_path, shared, by_client, clients, quantiles, alphas, score, args,
+                      remap_by_client=None):
+    snap = torch.load(snap_path, map_location="cpu", weights_only=False)
+    results, samples = {}, {}
+    for c in clients:
+        load_snapshot_into(model, snap, c, shared=shared)
+        recs = by_client[c][: args.max_prompts]
+        gen_alphas, remap = alphas, None
+        if remap_by_client is not None:
+            # option F: which output percentile does each alpha achieve on the calibration split?
+            cal = remap_by_client[c][: args.remap_prompts]
+            cal_grid_alphas = np.linspace(0, 1, args.remap_grid).tolist()
+            cal_scores, _ = score_grid(model, fmt, cal, cal_grid_alphas, score, args)
+            achieved = np.vectorize(quantiles[c].cdf)(cal_scores).mean(axis=0)
+            remap = fit_remap(cal_grid_alphas, achieved, alphas)
+            gen_alphas = [remap["mapped_alpha"][str(a)] for a in alphas]
+        grid, first = score_grid(model, fmt, recs, gen_alphas, score, args)
+        samples[c] = [{"alpha": a, "generated_at": g, "output": o} for a, g, o in zip(alphas, gen_alphas, first)]
+        results[c] = metrics_for_client(grid, alphas, quantiles[c])   # scored against the *target* alphas
+        results[c]["grid"] = grid.round(4).tolist()
+        results[c]["gain"] = float(torch.exp(snap["clients"][c]["gain"]["steer_control.u"]).item())
+        if model.steer_control.warp.kind != "none":
+            results[c]["warp"] = model.steer_control.warp.describe()
+        if remap is not None:
+            results[c]["remap"] = remap
+        if args.dev_loss:
+            labeled = [dict(r, alpha=quantiles[c].cdf(r["score"])) for r in by_client[c]]
+            results[c]["loss"] = mean_loss(model, fmt, labeled, batch_size=args.batch_size)
+        print(c, json.dumps({k: v for k, v in results[c].items() if k != "grid"}), flush=True)
+    summary = summarize(results)
+    summary["constant_output_pct_err"] = constant_output_pct_err(alphas)
+    if args.dev_loss:
+        summary["loss"] = {"mean": float(np.mean([r["loss"] for r in results.values()])),
+                           "worst": float(max(r["loss"] for r in results.values()))}
+    return {"snapshot": snap_path, "round": snap["round"], "shared": args.shared, "split": args.split,
+            "alphas": alphas, "clients": results, "summary": summary, "samples": samples}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
-    ap.add_argument("--snapshot", default=None, help="defaults to the latest snapshot")
+    ap.add_argument("--snapshot", nargs="*", default=None, help="one or more snapshots (default: latest)")
     ap.add_argument("--shared", default=None, help="override direction (e.g. merged_shared.pt)")
     ap.add_argument("--scorer", default="words", choices=sorted(SCORERS))
     ap.add_argument("--split", default="test")
@@ -89,21 +99,28 @@ def main():
     ap.add_argument("--max_prompts", type=int, default=50)
     ap.add_argument("--max_new_tokens", type=int, default=256)
     ap.add_argument("--batch_size", type=int, default=32)
-    ap.add_argument("--out", default=None)
+    ap.add_argument("--dev_loss", action="store_true", help="also report held-out loss on --split")
+    ap.add_argument("--posthoc_remap", action="store_true",
+                    help="warp option F: isotonic alpha remap fitted on --remap_split, applied on --split")
+    ap.add_argument("--remap_split", default="dev")
+    ap.add_argument("--remap_grid", type=int, default=11, help="alphas probed on the calibration split")
+    ap.add_argument("--remap_prompts", type=int, default=50)
+    ap.add_argument("--suffix", default="", help="appended to output file names, e.g. test200")
+    ap.add_argument("--out", default=None, help="output file (single snapshot only)")
     args = ap.parse_args()
 
     with open(os.path.join(args.run, "config.yaml")) as f:
         cfg = yaml.safe_load(f)
     with open(os.path.join(args.run, "client_quantiles.json")) as f:
         quantiles = {c: ClientQuantiles(v) for c, v in json.load(f).items()}
-    snap_path = args.snapshot or latest_snapshot(args.run)
-    snap = torch.load(snap_path, map_location="cpu", weights_only=False)
+    snaps = args.snapshot or [latest_snapshot(args.run)]
+    if args.out and len(snaps) > 1:
+        raise ValueError("--out only works with a single snapshot")
     shared = None
     if args.shared:
         shared = torch.load(args.shared, map_location="cpu")
         shared = {k: v for k, v in shared.items() if k.endswith("lora_B_d")}
     alphas = [float(a) for a in args.alphas.split(",")]
-    score = SCORERS[args.scorer]
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, tok = load_model(cfg["model_name"], SteerLoraConfig(**cfg["lora"]), device=device,
@@ -112,43 +129,31 @@ def main():
                         max_prompt_tokens=cfg.get("max_prompt_tokens", 1024),
                         max_target_tokens=cfg.get("max_target_tokens", 256))
 
-    by_client = defaultdict(list)
+    if args.posthoc_remap and args.remap_split == args.split:
+        raise ValueError("fit the remap on a different split than the one evaluated")
+    by_client, remap_by_client = defaultdict(list), (defaultdict(list) if args.posthoc_remap else None)
     for r in read_jsonl(cfg["data_path"]):
-        if r.get("split") == args.split and r["client"] in cfg["clients"]:
+        if r["client"] not in cfg["clients"]:
+            continue
+        if r.get("split") == args.split:
             by_client[r["client"]].append(r)
+        elif args.posthoc_remap and r.get("split") == args.remap_split:
+            remap_by_client[r["client"]].append(r)
 
-    results, samples = {}, {}
-    for c in cfg["clients"]:
-        load_snapshot_into(model, snap, c, shared=shared)
-        recs = by_client[c][: args.max_prompts]
-        prompts = [r["prompt"] for r in recs]
-        grid = np.zeros((len(prompts), len(alphas)))
-        samples[c] = []
-        for j, a in enumerate(alphas):
-            outs = generate_at_alpha(model, fmt, prompts, a, max_new_tokens=args.max_new_tokens,
-                                     batch_size=args.batch_size)
-            grid[:, j] = [score(o[0], rec) for o, rec in zip(outs, recs)]
-            samples[c].append({"alpha": a, "output": outs[0][0]})
-        results[c] = metrics_for_client(grid, alphas, quantiles[c])
-        results[c]["grid"] = grid.round(4).tolist()
-        results[c]["gain"] = float(torch.exp(snap["clients"][c]["gain"]["steer_control.u"]).item())
-        print(c, json.dumps({k: v for k, v in results[c].items() if k != "grid"}), flush=True)
-
-    lower_is_better = {"calib_mae_iqr", "pct_calib_err"}
-    lower_is_better |= {"no_effect_rate", "adjacent_tie_rate", "adjacent_decrease_rate"}
-    keys = ["concordance", "spearman", "endpoint_increase_rate", "adjacent_increase_rate", "adjacent_tie_rate",
-            "adjacent_decrease_rate", "no_effect_rate", "pct_calib_err", "pct_range", "order_rate",
-            "norm_range", "calib_mae_iqr"]
-    summary = {k: {"mean": float(np.mean([results[c][k] for c in results])),
-                   "worst": float(max(results[c][k] for c in results) if k in lower_is_better
-                                  else min(results[c][k] for c in results))} for k in keys}
-    print("SUMMARY", json.dumps(summary), flush=True)
-    out = args.out or os.path.join(args.run, f"eval_{os.path.basename(snap_path).removesuffix('.pt')}"
-                                   f"{'_' + os.path.basename(args.shared).removesuffix('.pt') if args.shared else ''}.json")
-    with open(out, "w") as f:
-        json.dump({"snapshot": snap_path, "shared": args.shared, "alphas": alphas, "clients": results,
-                   "summary": summary, "samples": samples}, f, indent=1)
-    print(f"wrote {out}")
+    for snap_path in snaps:
+        print(f"== {snap_path} ({args.split})", flush=True)
+        res = evaluate_snapshot(model, fmt, snap_path, shared, by_client, cfg["clients"], quantiles,
+                                alphas, SCORERS[args.scorer], args, remap_by_client)
+        print("SUMMARY", json.dumps(res["summary"]), flush=True)
+        tag = os.path.basename(snap_path).removesuffix(".pt")
+        tag += f"_{os.path.basename(args.shared).removesuffix('.pt')}" if args.shared else ""
+        tag += "" if args.split == "test" else f"_{args.split}"
+        tag += "_remap" if args.posthoc_remap else ""
+        tag += f"_{args.suffix}" if args.suffix else ""
+        out = args.out or os.path.join(args.run, f"eval_{tag}.json")
+        with open(out, "w") as f:
+            json.dump(res, f, indent=1)
+        print(f"wrote {out}", flush=True)
 
 
 if __name__ == "__main__":
