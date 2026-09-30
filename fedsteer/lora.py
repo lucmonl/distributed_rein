@@ -13,6 +13,8 @@ Every targeted ``nn.Linear`` becomes
 
 With a warp (``SteerLoraConfig.warp``, see fedsteer/warp.py) the coefficient
 ``s * alpha`` becomes ``s * h(alpha)`` with a private monotone h, h(0)=0, h(1)=1.
+With ``SteerLoraConfig.offset`` it becomes ``o + s * h(alpha)``: a private offset o
+sets where along the shared direction the client's alpha = 0 starts.
 
 The layers read ``alpha`` and ``s`` from a single ``SteerControl`` module that is
 registered once on the model, so no model forward signature has to change.
@@ -35,6 +37,7 @@ from .warp import AlphaWarp, make_warp
 PRIVATE_KEYS = ("lora_A_p", "lora_B_p")
 SHARED_KEYS = ("lora_B_d",)
 GAIN_KEY = "steer_control.u"
+OFFSET_KEY = "steer_control.o"
 CONTROL_PREFIX = "steer_control."          # gain u and warp parameters: private per client
 WARP_PREFIX = "steer_control.warp."
 
@@ -55,6 +58,8 @@ class SteerLoraConfig:
     # private monotone reparameterization of alpha (fedsteer/warp.py):
     # none | kumaraswamy (A) | kumaraswamy_mix (B) | step (C)
     warp: str = "none"
+    offset: bool = False             # private offset o_i: coefficient = o_i + s_i * h_i(alpha)
+    offset_max: float = 2.0          # |o_i| is clamped to this (coefficient units)
     warp_shape_min: float = 0.2      # Kumaraswamy p, q range
     warp_shape_max: float = 20.0
     warp_mix_w_init: float = 0.5     # B: initial mixture weight (identity holds for any w at init)
@@ -68,9 +73,12 @@ class SteerControl(nn.Module):
     """Holds the client's private control parameters (gain u, warp h) and the alpha
     of the current batch."""
 
-    def __init__(self, gain_min: float, gain_max: float, warp: Optional[AlphaWarp] = None):
+    def __init__(self, gain_min: float, gain_max: float, warp: Optional[AlphaWarp] = None,
+                 offset: bool = False, offset_max: float = 2.0):
         super().__init__()
         self.u = nn.Parameter(torch.zeros(()))
+        self.o = nn.Parameter(torch.zeros(())) if offset else None
+        self.offset_max = offset_max
         self.log_min = math.log(gain_min)
         self.log_max = math.log(gain_max)
         self.warp = warp if warp is not None else AlphaWarp()
@@ -90,9 +98,15 @@ class SteerControl(nn.Module):
         finally:
             self._alpha = prev
 
+    def offset(self) -> torch.Tensor:
+        if self.o is None:
+            return torch.zeros((), device=self.u.device)
+        return self.o.clamp(-self.offset_max, self.offset_max)
+
     def coef_for(self, y: torch.Tensor) -> torch.Tensor:
-        """Per-example coefficient s * h(alpha), broadcastable against ``y``."""
-        return self.alpha_for(y, warped=True) * self.gain()
+        """Per-example coefficient o + s * h(alpha), broadcastable against ``y``."""
+        coef = self.alpha_for(y, warped=True) * self.gain()
+        return coef + self.offset() if self.o is not None else coef
 
     def alpha_for(self, y: torch.Tensor, warped: bool = False) -> torch.Tensor:
         if self._alpha is None:
@@ -162,7 +176,8 @@ def inject_steer_lora(model: nn.Module, cfg: SteerLoraConfig) -> SteerControl:
                      mix_w_init=cfg.warp_mix_w_init, step_c_init=cfg.warp_step_c_init,
                      step_tau_init=cfg.warp_step_tau_init, step_tau_min=cfg.warp_step_tau_min,
                      step_tau_max=cfg.warp_step_tau_max)
-    control = SteerControl(cfg.gain_min, cfg.gain_max, warp).to(next(model.parameters()).device)
+    control = SteerControl(cfg.gain_min, cfg.gain_max, warp, offset=cfg.offset,
+                           offset_max=cfg.offset_max).to(next(model.parameters()).device)
     targets = []
     for name, module in model.named_modules():
         if isinstance(module, nn.Linear) and name.split(".")[-1] in cfg.target_modules:
@@ -243,7 +258,7 @@ def trainable_parameter_groups(model: nn.Module) -> dict[str, list[nn.Parameter]
             groups["private"].append(p)
         elif key in SHARED_KEYS:
             groups["shared"].append(p)
-        elif n == GAIN_KEY:
+        elif n in (GAIN_KEY, OFFSET_KEY):
             groups["gain"].append(p)
         elif n.startswith(WARP_PREFIX):
             groups["warp"].append(p)

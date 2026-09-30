@@ -3,6 +3,8 @@ training monitor and eval_direction.py so both report identical numbers."""
 
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
 from scipy.stats import spearmanr
 
@@ -16,19 +18,23 @@ SCORERS = {
     "density": lambda text, rec: fragment_stats(text, rec["article"])["density"],
 }
 
-LOWER_IS_BETTER = {"calib_mae_iqr", "pct_calib_err", "no_effect_rate", "adjacent_tie_rate",
-                   "adjacent_decrease_rate"}
-SUMMARY_KEYS = ["concordance", "spearman", "endpoint_increase_rate", "adjacent_increase_rate",
-                "adjacent_tie_rate", "adjacent_decrease_rate", "no_effect_rate", "pct_calib_err", "pct_range",
-                "order_rate", "norm_range", "calib_mae_iqr"]
+LOWER_IS_BETTER = {"calib_mae_iqr", "pct_calib_err", "pct_err_in_support", "pct_err_out_support",
+                   "no_effect_rate", "adjacent_tie_rate", "adjacent_decrease_rate"}
+SUMMARY_KEYS = ["pct_err_in_support", "pct_err_out_support", "reach_rate", "concordance", "spearman",
+                "endpoint_increase_rate", "adjacent_increase_rate", "adjacent_tie_rate", "adjacent_decrease_rate",
+                "no_effect_rate", "pct_calib_err", "pct_range", "order_rate", "norm_range", "calib_mae_iqr"]
 
 
-def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantiles) -> dict:
+def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantiles,
+                       support: Optional[tuple[float, float]] = None) -> dict:
     """scores: [n_prompts, n_alphas]
 
-    Percentile metrics map each output's score through the client's own CDF, the
-    same transform that defines alpha in training, so they are bounded and robust
-    to heavy-tailed attributes such as density.
+    ``q`` is the reference CDF that defines alpha (the client's own CDF, or the shared
+    mixture in global mode).  Percentile metrics map each output's score through it,
+    the same transform used for the training labels, so they are bounded and robust
+    to heavy-tailed attributes such as density.  ``support`` (lo, hi) splits the alpha
+    grid into the part covered by the client's own data and the part it can only
+    reach through the shared direction.
     """
     scores = np.asarray(scores, dtype=float)
     order = np.all(np.diff(scores, axis=1) > 0, axis=1).mean()
@@ -45,7 +51,24 @@ def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantil
     rng = (scores[:, -1] - scores[:, 0]).mean() / max(q.iqr(), 1e-9)
     targets = np.array([q.quantile(a) for a in alphas])
     mae = np.abs(scores - targets[None, :]).mean() / max(q.iqr(), 1e-9)
+    out = {}
+    if support is not None:
+        # in-support: alphas inside the part of the axis the client's own data covers;
+        # out-of-support: alphas the client can only reach through the shared direction
+        lo, hi = support
+        a = np.asarray(alphas)
+        ins = (a >= lo) & (a <= hi)
+        out["support"] = [round(float(lo), 4), round(float(hi), 4)]
+        out["pct_err_in_support"] = float(pct_err[:, ins].mean()) if ins.any() else None
+        out["pct_err_out_support"] = float(pct_err[:, ~ins].mean()) if (~ins).any() else None
+        # reach: at out-of-support alphas, did the output leave the client's own range in
+        # the requested direction?
+        below, above = a < lo, a > hi
+        hits = [pct[:, below] < lo] if below.any() else []
+        hits += [pct[:, above] > hi] if above.any() else []
+        out["reach_rate"] = float(np.concatenate([h.ravel() for h in hits]).mean()) if hits else None
     return {
+        **out,
         "concordance": float(concord),
         "pct_calib_err": float(pct_err.mean()),
         "pct_range": float((pct[:, -1] - pct[:, 0]).mean()),
@@ -72,7 +95,7 @@ def constant_output_pct_err(alphas: list[float]) -> float:
 def summarize(results: dict[str, dict], keys=SUMMARY_KEYS) -> dict:
     out = {}
     for k in keys:
-        vals = [r[k] for r in results.values() if k in r]
+        vals = [r[k] for r in results.values() if r.get(k) is not None]
         if vals:
             worst = max(vals) if k in LOWER_IS_BETTER else min(vals)
             out[k] = {"mean": float(np.mean(vals)), "worst": float(worst)}

@@ -13,6 +13,9 @@
 For every client and prompt, generate at each alpha on the grid, score the outputs
 and report direction-quality metrics (fedsteer.metrics).  Select checkpoints on
 ``--split dev``; report on ``--split test``.
+
+Results go to ``<run>/evals/eval_<snapshot>[_<split>][_remap][_<suffix>]__<stamp>.json``
+(stamp = time plus SLURM job id), so repeated evaluations never overwrite each other.
 """
 
 import argparse
@@ -25,12 +28,13 @@ import torch
 import yaml
 
 from fedsteer.calibrate import fit_remap
-from fedsteer.data import ChatFormatter, ClientQuantiles, read_jsonl
+from fedsteer.data import ChatFormatter, ClientQuantiles, alpha_reference_from_json, client_support, read_jsonl
 from fedsteer.fed import load_snapshot_into
 from fedsteer.lora import SteerLoraConfig
 from fedsteer.metrics import SCORERS, constant_output_pct_err, metrics_for_client, summarize
 from fedsteer.model import generate_at_alpha, load_model
 from fedsteer.monitor import mean_loss
+from fedsteer.runinfo import make_stamp, provenance
 
 
 def latest_snapshot(run: str) -> str:
@@ -51,7 +55,9 @@ def score_grid(model, fmt, recs, alphas, score, args):
 
 
 def evaluate_snapshot(model, fmt, snap_path, shared, by_client, clients, quantiles, alphas, score, args,
-                      remap_by_client=None):
+                      remap_by_client=None, supports=None):
+    """``quantiles[c]``: the reference CDF that defines alpha for client c;
+    ``supports[c]``: (lo, hi) part of the alpha axis covered by c's own data (global mode)."""
     snap = torch.load(snap_path, map_location="cpu", weights_only=False)
     results, samples = {}, {}
     for c in clients:
@@ -68,7 +74,8 @@ def evaluate_snapshot(model, fmt, snap_path, shared, by_client, clients, quantil
             gen_alphas = [remap["mapped_alpha"][str(a)] for a in alphas]
         grid, first = score_grid(model, fmt, recs, gen_alphas, score, args)
         samples[c] = [{"alpha": a, "generated_at": g, "output": o} for a, g, o in zip(alphas, gen_alphas, first)]
-        results[c] = metrics_for_client(grid, alphas, quantiles[c])   # scored against the *target* alphas
+        results[c] = metrics_for_client(grid, alphas, quantiles[c],   # scored against the *target* alphas
+                                        support=supports.get(c) if supports else None)
         results[c]["grid"] = grid.round(4).tolist()
         results[c]["gain"] = float(torch.exp(snap["clients"][c]["gain"]["steer_control.u"]).item())
         if model.steer_control.warp.kind != "none":
@@ -112,7 +119,16 @@ def main():
     with open(os.path.join(args.run, "config.yaml")) as f:
         cfg = yaml.safe_load(f)
     with open(os.path.join(args.run, "client_quantiles.json")) as f:
-        quantiles = {c: ClientQuantiles(v) for c, v in json.load(f).items()}
+        local_q = {c: ClientQuantiles(v) for c, v in json.load(f).items()}
+    ref_path = os.path.join(args.run, "alpha_reference.json")
+    ref = alpha_reference_from_json(json.load(open(ref_path))) if os.path.exists(ref_path) else None
+    if ref is None:                                   # local alpha: each client's own CDF
+        quantiles, supports = local_q, None
+    else:                                             # global alpha: one shared reference
+        quantiles = {c: ref for c in local_q}
+        supports = {c: client_support(local_q[c], ref) for c in local_q}
+        print("alpha mode: global; client supports:",
+              {c: [round(x, 3) for x in v] for c, v in supports.items()}, flush=True)
     snaps = args.snapshot or [latest_snapshot(args.run)]
     if args.out and len(snaps) > 1:
         raise ValueError("--out only works with a single snapshot")
@@ -140,17 +156,22 @@ def main():
         elif args.posthoc_remap and r.get("split") == args.remap_split:
             remap_by_client[r["client"]].append(r)
 
+    stamp = make_stamp()
+    os.makedirs(os.path.join(args.run, "evals"), exist_ok=True)
     for snap_path in snaps:
         print(f"== {snap_path} ({args.split})", flush=True)
         res = evaluate_snapshot(model, fmt, snap_path, shared, by_client, cfg["clients"], quantiles,
-                                alphas, SCORERS[args.scorer], args, remap_by_client)
+                                alphas, SCORERS[args.scorer], args, remap_by_client, supports)
         print("SUMMARY", json.dumps(res["summary"]), flush=True)
         tag = os.path.basename(snap_path).removesuffix(".pt")
         tag += f"_{os.path.basename(args.shared).removesuffix('.pt')}" if args.shared else ""
         tag += "" if args.split == "test" else f"_{args.split}"
         tag += "_remap" if args.posthoc_remap else ""
         tag += f"_{args.suffix}" if args.suffix else ""
-        out = args.out or os.path.join(args.run, f"eval_{tag}.json")
+        out = args.out or os.path.join(args.run, "evals", f"eval_{tag}__{stamp}.json")
+        if os.path.exists(out):
+            raise FileExistsError(out)
+        res["provenance"] = provenance(args=vars(args))
         with open(out, "w") as f:
             json.dump(res, f, indent=1)
         print(f"wrote {out}", flush=True)

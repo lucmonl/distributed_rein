@@ -10,7 +10,11 @@ Per client *i*, every targeted linear layer is
 - `s_i = exp(u_i)`: private gain, clamped to [1/4, 4]
 - `A_d`: shared, frozen, generated from a common seed. Because A_d never changes, averaging `B_d` averages the direction products exactly.
 - `B_d`: the shared direction, the only thing aggregated
-- `α`: each training example's client-local percentile of the attribute score
+- `α`: a percentile of the attribute score, under one of two protocols (`alpha_mode`):
+  - **`global` (the method):** the percentile under the equal-weight mixture of the participants' score distributions. The server builds it by averaging per-client normalized histograms, so no examples are shared. α then means the same behaviour on every client, and each client's data covers only part of the α axis (its *support*).
+  - **`local` (ablation):** each client's own percentile. The same α can mean different behaviour on different clients.
+- Optional private **offset** (`lora.offset`): the coefficient becomes `o_i + s_i · h_i(α)`, so a client's α = 0 can start partway along the direction.
+- **Adapter mode** (`fed.adapter`): `private` (the method: P_i stays on the client), `shared` (P is aggregated too; formerly `share_private`), or `none` (no task adapter; clients have only the gain, offset and warp scalars).
 
 **Private α warp (optional; `lora.warp`).** The coefficient `s_i · α` becomes `s_i · h_i(α)`, where h_i is a private increasing map with h(0) = 0 and h(1) = 1 ([fedsteer/warp.py](fedsteer/warp.py)). It lets each client place where its behaviour changes fastest; for Newsroom, that's where rewriting switches to copying the lead sentence.
 
@@ -25,6 +29,13 @@ Per client *i*, every targeted linear layer is
 - Training settings in `fed:`: `lr_warp`, `warp_warmup_rounds` (the warp stays the identity until D carries signal) and `warp_reg` (penalty toward the identity).
 - Warp parameters are stored with the client's gain and are never aggregated.
 - Option F is a post-hoc isotonic remap with no training change, used as an ablation: `eval_direction.py --posthoc_remap`. It fits the remap on dev and evaluates on test.
+
+## Outputs and experiment log
+
+- **Experiment log:** [`exp_log/EXPERIMENT_LOG.md`](exp_log/EXPERIMENT_LOG.md) records every change and job: job id, run folder, results.
+- **Run folders:** a config's `out_dir` is a prefix. Each run writes to `runs/<prefix>_<YYYYmmdd-HHMMSS>[_j<jobid>]/`, and `run_info.json` records the job, host, command and git commit. Continue a run with `python train_fed.py --resume <run_dir>`.
+- **Evaluations:** written to `<run>/evals/eval_…__<stamp>.json`. Nothing is overwritten.
+- **Standard job:** `sbatch --export=ALL,CONFIG=configs/newsroom_fedavg.yaml,OVERRIDES="fed.rounds=30" sbatch/train_eval.sbatch` trains, sweeps the snapshots on dev, selects a checkpoint and evaluates it on test.
 
 ## Layout
 
@@ -62,9 +73,8 @@ One JSONL file, one record per example:
 ```bash
 python scripts/newsroom_stats.py --src data/newsroom/release --out data/newsroom_stats
 python scripts/build_newsroom.py --stats data/newsroom_stats --out data/newsroom_fed
-python train_fed.py --config configs/newsroom_fedavg.yaml
-python eval_direction.py --run runs/newsroom_fedavg_rot0 --scorer density
-python eval_direction.py --run runs/newsroom_fedavg_rot0 --scorer density --suffix v2   # keep older eval files
+python train_fed.py --config configs/newsroom_fedavg.yaml       # -> runs/newsroom_fedavg_rot0_<stamp>/
+python eval_direction.py --run runs/newsroom_fedavg_rot0_<stamp> --scorer density
 ```
 
 - **Clients:** 12 publications, evenly spaced by median density among publications with at least 5k usable pairs. They run from telegraph.co.uk (median density 1.3) to nypost.com (32).
@@ -89,6 +99,7 @@ Training loss only measures fit to data the model trains on. Over several passes
   python scripts/summarize_sweep.py --run runs/X --select pct_calib_err
   ```
   `sbatch/sweep_pilot.sbatch` runs the whole procedure, including the test evaluation of the selected checkpoint.
+- **Global α:** evaluation splits the α grid into *in-support* and *out-of-support* values for each client. It reports `pct_err_in_support`, `pct_err_out_support` and `reach_rate`: the share of outputs at out-of-support α that leave the client's own range in the requested direction. This is where federated vs. local-only training is decided.
 - **Reading the metrics:** the percentile calibration error of a model that always outputs the client median is 0.30 on the α grid {0, .25, .5, .75, 1} and 0.27 on {0.1, 0.5, 0.9}. A useful knob must beat that.
 
 ## Commands
@@ -96,8 +107,8 @@ Training loss only measures fit to data the model trains on. Over several passes
 ```bash
 python tests/test_fedsteer.py
 python scripts/make_toy_data.py --out data/toy_length.jsonl --clients 4
-python train_fed.py --config configs/toy_length.yaml
-python eval_direction.py --run runs/toy_length_fedavg --scorer words
+python train_fed.py --config configs/toy_length.yaml            # -> runs/toy_length_fedavg_<stamp>/
+python eval_direction.py --run runs/toy_length_fedavg_<stamp> --scorer words
 sbatch sbatch/toy_smoke.sbatch
 ```
 

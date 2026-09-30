@@ -2,8 +2,12 @@
 
     python train_fed.py --config configs/toy_length.yaml
     python train_fed.py --config configs/toy_length.yaml --set fed.mode=local out_dir=runs/toy_local
+    python train_fed.py --resume runs/toy_local_20260929-221530 --set fed.rounds=60
 
-Re-running with the same ``out_dir`` resumes from ``out_dir/state.pt``.
+``out_dir`` in the config is a prefix: every run writes to a new directory
+``<out_dir>_<YYYYmmdd-HHMMSS>[_j<SLURM_JOB_ID>]`` (fedsteer/runinfo.py), so runs never
+overwrite each other.  ``--resume`` continues an existing run from its state.pt, using
+the config stored in that directory (plus any ``--set`` overrides).
 """
 
 import argparse
@@ -14,11 +18,12 @@ from dataclasses import asdict, fields
 import torch
 import yaml
 
-from fedsteer.data import ChatFormatter, build_clients, read_jsonl
+from fedsteer.data import ChatFormatter, build_clients, fit_local_quantiles, read_jsonl
 from fedsteer.fed import FedConfig, FedSteerTrainer
 from fedsteer.lora import SteerLoraConfig
 from fedsteer.model import load_model
 from fedsteer.monitor import MonitorConfig, make_monitor
+from fedsteer.runinfo import make_stamp, record_run_info
 
 
 def _parse_value(v: str):
@@ -48,15 +53,34 @@ def _dataclass_from(cls, d: dict):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", required=True)
+    ap.add_argument("--config", help="new run from this config")
+    ap.add_argument("--resume", help="continue this existing run directory")
     ap.add_argument("--set", nargs="*", default=[], help="overrides, e.g. fed.rounds=10")
     args = ap.parse_args()
-    cfg = load_config(args.config, args.set)
+    if bool(args.config) == bool(args.resume):
+        ap.error("give exactly one of --config or --resume")
+
+    if args.resume:
+        out_dir = args.resume.rstrip("/")
+        if not os.path.exists(os.path.join(out_dir, "config.yaml")):
+            ap.error(f"{out_dir} has no config.yaml")
+        cfg = load_config(os.path.join(out_dir, "config.yaml"), args.set)
+        cfg["out_dir"] = out_dir
+        event = "resumed"
+    else:
+        cfg = load_config(args.config, args.set)
+        cfg["out_prefix"] = cfg["out_dir"]
+        out_dir = f"{cfg['out_dir'].rstrip('/')}_{make_stamp()}"
+        if os.path.exists(out_dir) and os.listdir(out_dir):
+            raise FileExistsError(f"{out_dir} already exists; use --resume to continue it")
+        cfg["out_dir"] = out_dir
+        event = "created"
 
     lora_cfg = _dataclass_from(SteerLoraConfig, cfg.get("lora", {}))
     fed_cfg = _dataclass_from(FedConfig, cfg.get("fed", {}))
-    out_dir = cfg["out_dir"]
     os.makedirs(out_dir, exist_ok=True)
+    record_run_info(out_dir, event, config=args.config or args.resume, overrides=args.set)
+    print(f"run directory: {out_dir} ({event})", flush=True)
     torch.manual_seed(fed_cfg.seed)
 
     records = read_jsonl(cfg["data_path"])
@@ -68,14 +92,20 @@ def main():
         rot = cfg.get("rotation")
         clients = meta["clients"] if rot is None else meta["rotations"][rot]["participants"]
     clients = clients or sorted({r["client"] for r in records})
+    alpha_mode = cfg.get("alpha_mode", "local")
     examples, quantiles = build_clients(records, clients, tie_break=cfg.get("tie_break", "average"),
-                                        max_train=cfg.get("max_train_per_client"), seed=fed_cfg.seed)
+                                        max_train=cfg.get("max_train_per_client"), seed=fed_cfg.seed,
+                                        alpha_mode=alpha_mode)
+    local_q = fit_local_quantiles(records, clients)
 
     resolved = dict(cfg, clients=clients, lora=asdict(lora_cfg), fed=asdict(fed_cfg))
     with open(os.path.join(out_dir, "config.yaml"), "w") as f:
         yaml.safe_dump(resolved, f, sort_keys=False)
-    with open(os.path.join(out_dir, "client_quantiles.json"), "w") as f:
-        json.dump({c: q.sorted_scores for c, q in quantiles.items()}, f)
+    with open(os.path.join(out_dir, "client_quantiles.json"), "w") as f:      # each client's own CDF
+        json.dump({c: q.sorted_scores for c, q in local_q.items()}, f)
+    with open(os.path.join(out_dir, "alpha_reference.json"), "w") as f:       # the CDF that defines alpha
+        ref = next(iter(quantiles.values()))
+        json.dump(ref.to_json() if alpha_mode == "global" else {"mode": "local"}, f)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, tok = load_model(cfg["model_name"], lora_cfg, device=device,

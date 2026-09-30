@@ -3,6 +3,10 @@ the selected checkpoint.
 
     python scripts/summarize_sweep.py --run runs/nr_pilot_llama1b [--split dev] [--select pct_calib_err]
     python scripts/summarize_sweep.py --run runs/X --print_best      # prints only the best snapshot path
+    python scripts/summarize_sweep.py --run runs/X --match j11006740  # only files from one job
+
+Reads <run>/evals/eval_round_XXXX_<split>__<stamp>.json (and legacy files in <run>/);
+if a round was evaluated several times, the newest matching file is used.
 
 Selection uses the dev split only; evaluate the chosen snapshot on test afterwards.
 """
@@ -24,17 +28,30 @@ def main():
     ap.add_argument("--select", default="pct_calib_err",
                     help="summary metric (mean over clients) used to pick the checkpoint")
     ap.add_argument("--print_best", action="store_true")
+    ap.add_argument("--match", default="", help="only use eval files whose name contains this (e.g. a job id)")
     args = ap.parse_args()
 
-    files = sorted(glob.glob(os.path.join(args.run, f"eval_round_[0-9][0-9][0-9][0-9]_{args.split}.json")))
+    pat = f"eval_round_[0-9][0-9][0-9][0-9]_{args.split}"
+    cands = glob.glob(os.path.join(args.run, "evals", pat + "__*.json")) + \
+        glob.glob(os.path.join(args.run, pat + ".json"))
+    cands = [f for f in cands if args.match in os.path.basename(f)]
+    latest = {}
+    for f in cands:                                   # newest file per round
+        rnd = int(re.search(r"round_(\d+)", os.path.basename(f)).group(1))
+        if rnd not in latest or os.path.getmtime(f) > os.path.getmtime(latest[rnd]):
+            latest[rnd] = f
+    files = [latest[r] for r in sorted(latest)]
     if not files:
-        sys.exit(f"no eval_round_*_{args.split}.json files in {args.run}")
+        sys.exit(f"no eval_round_*_{args.split} files in {args.run} matching '{args.match}'")
     rows = []
     for f in files:
         d = json.load(open(f))
-        rnd = int(re.search(r"round_(\d+)", f).group(1))
+        rnd = int(re.search(r"round_(\d+)", os.path.basename(f)).group(1))
         s = d["summary"]
-        rows.append({"round": rnd, "snapshot": d["snapshot"],
+        snap = d["snapshot"]
+        if not os.path.exists(snap):   # path stored before a run folder was renamed
+            snap = os.path.join(args.run, "snapshots", f"round_{rnd:04d}.pt")
+        rows.append({"round": rnd, "snapshot": snap,
                      **{k: s[k]["mean"] for k in ("loss", "spearman", "concordance", "endpoint_increase_rate",
                                                   "adjacent_tie_rate", "pct_calib_err", "pct_range") if k in s},
                      "spearman_worst": s["spearman"]["worst"], "pct_err_worst": s["pct_calib_err"]["worst"],

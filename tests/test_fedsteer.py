@@ -14,6 +14,7 @@ import tempfile
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import numpy as np
 import torch
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
 
@@ -35,14 +36,14 @@ def tokenizer():
     return _TOK
 
 
-def tiny_model(seed=0, lora_seed=1234, rank=4, warp="none"):
+def tiny_model(seed=0, lora_seed=1234, rank=4, warp="none", offset=False):
     torch.manual_seed(seed)
     cfg = LlamaConfig(vocab_size=len(tokenizer()), hidden_size=32, intermediate_size=64, num_hidden_layers=2,
                       num_attention_heads=4, num_key_value_heads=2, max_position_embeddings=512,
                       tie_word_embeddings=True)
     model = LlamaForCausalLM(cfg)
     inject_steer_lora(model, SteerLoraConfig(rank_private=rank, rank_shared=rank, shared_seed=lora_seed,
-                                             warp=warp))
+                                             warp=warp, offset=offset))
     return model
 
 
@@ -362,6 +363,127 @@ def test_eval_snapshot_with_warp_and_posthoc_remap():
         assert "loss" in res["summary"]
 
 
+# ------------------------------------------------- offset, adapter modes, global alpha
+
+def test_offset_shifts_the_alpha_zero_point():
+    m = tiny_model(offset=True)
+    randomize_lora(m)
+    layer = next(mm for _, mm in steer_layers(m))
+    x = torch.randn(2, 3, layer.base.in_features)
+    with m.steer_control.use_alpha(0.0):
+        y_off0 = layer(x)
+    with torch.no_grad():
+        m.steer_control.o.fill_(0.5)
+    with m.steer_control.use_alpha(0.0):
+        y_half = layer(x)
+    with m.steer_control.use_alpha(0.5):           # o = 0.5 at alpha 0 == o = 0 at alpha 0.5 (s = 1)
+        with torch.no_grad():
+            m.steer_control.o.fill_(0.0)
+        y_ref = layer(x)
+    assert torch.allclose(y_half, y_ref, atol=1e-5) and not torch.allclose(y_half, y_off0)
+    with torch.no_grad():
+        m.steer_control.o.fill_(10.0)              # clamped to offset_max = 2
+    assert abs(m.steer_control.offset().item() - 2.0) < 1e-6
+
+
+def test_offset_is_private_and_trained_after_warmup():
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("fedavg", d, offset=True, rounds=3)
+        tr.fit()
+        o = {c: tr.clients[c]["gain"]["steer_control.o"].item() for c in ("c0", "c1")}
+        assert all(v != 0.0 for v in o.values()) and o["c0"] != o["c1"]
+        assert not any(k.startswith("steer_control") for k in tr.server)
+        assert "offset" in tr.history[-1]["clients"]["c0"]
+
+
+def test_adapter_none_trains_only_direction_and_scalars():
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("fedavg", d, adapter="none", rounds=2)
+        tr.fit()
+        assert tr.clients["c0"]["private"] == {}
+        assert all(p.abs().sum() == 0 for n, p in tr.model.named_parameters() if n.endswith("lora_B_p"))
+        assert any(v.abs().sum() > 0 for v in tr.server.values())
+        assert not any(k.endswith("lora_B_p") for k in tr.server)
+
+
+def test_adapter_shared_equals_share_private_alias():
+    with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+        a = _trainer("fedavg", d1, adapter="shared", rounds=2)
+        a.fit()
+        b = _trainer("fedavg", d2, share_private=True, rounds=2)
+        b.fit()
+        assert any(k.endswith("lora_B_p") for k in a.server)
+        assert all(torch.allclose(a.server[k], b.server[k]) for k in a.server)
+
+
+def test_global_alpha_has_shared_meaning():
+    from fedsteer.data import GlobalQuantiles, alpha_reference_from_json, client_support, fit_local_quantiles
+    recs = toy_records()          # c1 has systematically larger scores than c0
+    ex_l, _ = build_clients(recs, ["c0", "c1"], alpha_mode="local")
+    ex_g, refs = build_clients(recs, ["c0", "c1"], alpha_mode="global")
+    ref = refs["c0"]
+    assert refs["c1"] is ref
+    by_score = {}
+    for c in ("c0", "c1"):
+        for e in ex_g[c]:
+            by_score.setdefault(e["score"], set()).add(round(e["alpha"], 9))
+    assert all(len(v) == 1 for v in by_score.values())       # same score -> same alpha on every client
+    shared = set(e["score"] for e in ex_g["c0"]) & set(e["score"] for e in ex_g["c1"])
+    s = next(iter(shared))
+    la = {c: next(e["alpha"] for e in ex_l[c] if e["score"] == s) for c in ("c0", "c1")}
+    assert la["c0"] > la["c1"]                               # local alpha differs for the same score
+    mean_a = {c: np.mean([e["alpha"] for e in ex_g[c]]) for c in ("c0", "c1")}
+    assert mean_a["c0"] < 0.5 < mean_a["c1"]                  # clients occupy different parts of the axis
+    assert abs((mean_a["c0"] + mean_a["c1"]) / 2 - 0.5) < 0.02  # equal-weight mixture is uniform overall
+    local = fit_local_quantiles(recs, ["c0", "c1"])
+    lo0, hi0 = client_support(local["c0"], ref)
+    lo1, hi1 = client_support(local["c1"], ref)
+    assert lo0 < lo1 and hi0 < hi1
+    ref2 = alpha_reference_from_json(ref.to_json())
+    assert all(abs(ref2.cdf(x) - ref.cdf(x)) < 1e-12 for x in range(0, 12))
+    assert ref.quantile(ref.cdf(5.0)) <= 5.0
+
+
+def test_support_split_metrics():
+    from fedsteer.metrics import metrics_for_client
+    q = ClientQuantiles.fit(list(range(1, 101)))
+    alphas = [0.1, 0.5, 0.9]
+    # client whose data covers [0.4, 1.0]; its outputs reach 0.2 when asked for 0.1
+    scores = [[q.quantile(0.2), q.quantile(0.5), q.quantile(0.9)]] * 4
+    m = metrics_for_client(scores, alphas, q, support=(0.4, 1.0))
+    assert m["support"] == [0.4, 1.0]
+    assert m["pct_err_out_support"] > 0.05 and m["pct_err_in_support"] < 0.02
+    assert m["reach_rate"] == 1.0                             # 0.2 < 0.4: left its own range downward
+    m2 = metrics_for_client([[q.quantile(0.45), q.quantile(0.5), q.quantile(0.9)]] * 4, alphas, q,
+                            support=(0.4, 1.0))
+    assert m2["reach_rate"] == 0.0
+
+
+def test_run_stamps_and_provenance():
+    import json as _json
+    from fedsteer.runinfo import make_stamp, record_run_info
+    os.environ["FEDSTEER_STAMP"] = "20260101-000000_j123"
+    try:
+        assert make_stamp() == "20260101-000000_j123"
+    finally:
+        del os.environ["FEDSTEER_STAMP"]
+    old = os.environ.pop("SLURM_JOB_ID", None)
+    try:
+        assert "_j" not in make_stamp() and len(make_stamp()) == 15
+        os.environ["SLURM_JOB_ID"] = "999"
+        assert make_stamp().endswith("_j999")
+    finally:
+        os.environ.pop("SLURM_JOB_ID", None)
+        if old is not None:
+            os.environ["SLURM_JOB_ID"] = old
+    with tempfile.TemporaryDirectory() as d:
+        record_run_info(d, "created", config="c.yaml")
+        record_run_info(d, "resumed", overrides=["fed.rounds=5"])
+        info = _json.load(open(os.path.join(d, "run_info.json")))
+        assert [e["event"] for e in info["events"]] == ["created", "resumed"]
+        assert "commit" in info["events"][0]["git"]
+
+
 # ------------------------------------------------------------------ extractive
 
 def test_fragment_stats_known_cases():
@@ -388,7 +510,7 @@ def test_fragment_stats_known_cases():
 # --------------------------------------------------------------------- federation
 
 def _trainer(mode, out_dir, **kw):
-    model = tiny_model(warp=kw.pop("warp", "none"))
+    model = tiny_model(warp=kw.pop("warp", "none"), offset=kw.pop("offset", False))
     ex, _ = build_clients(toy_records(), ["c0", "c1"])
     cfg = FedConfig(mode=mode, rounds=kw.pop("rounds", 3), local_steps=3, batch_size=4, bf16=False,
                     warmup_steps=1, gain_warmup_rounds=1, save_every=1, lr_private=5e-3, lr_shared=5e-3, **kw)

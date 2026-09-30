@@ -13,6 +13,11 @@ clients: null
 out_dir: runs/newsroom_fedavg_rot0
 max_train_per_client: 2000     # data-budget study: 64 / 256 / 2000
 tie_break: average
+# How alpha is computed from the attribute score (fedsteer/data.py):
+#   global: percentile under the equal-weight mixture of the participants' CDFs (shared
+#           protocol; alpha means the same behavior on every client)   <- method
+#   local:  percentile under each client's own CDF (ablation)
+alpha_mode: global
 system_prompt: null
 max_prompt_tokens: 1024        # articles are truncated to 400 words at build time
 max_target_tokens: 128
@@ -34,6 +39,8 @@ lora:
   #   step             (C) h = (1 - w) a + w S((a - c) / tau)       3 params, c = switch point
   # Option F (post-hoc isotonic remap, no training change): eval_direction.py --posthoc_remap
   warp: kumaraswamy_mix
+  offset: true                # private offset o_i: coefficient = o_i + s_i * h_i(alpha)
+  offset_max: 2.0
   warp_shape_min: 0.2
   warp_shape_max: 20.0
   warp_mix_w_init: 0.5
@@ -42,6 +49,7 @@ lora:
 
 fed:
   mode: fedavg
+  adapter: private            # private (method) | shared (A2) | none
   rounds: 50
   local_steps: 20
   batch_size: 8

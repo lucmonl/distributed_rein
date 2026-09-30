@@ -15,8 +15,11 @@ Modes
 Private alpha warp (``lora.warp``, fedsteer/warp.py): trained like the gain, with
 its own learning rate, a warm-up and a penalty toward the identity (``warp_reg``).
 
-Ablations (orthogonal to mode): ``fix_gain`` (A1: s_i = 1) and ``share_private``
-(A2: the adapter P is also aggregated, i.e. no private adaptation).
+Adapter mode (``adapter``): ``private`` (default; P_i stays on the client), ``shared``
+(P is aggregated like the direction; ablation A2, formerly ``share_private``) or
+``none`` (no task adapter; only the base model, the direction and private scalars).
+
+Ablation (orthogonal to mode): ``fix_gain`` (A1: s_i = 1).
 """
 
 from __future__ import annotations
@@ -65,7 +68,8 @@ class FedConfig:
     lr_warp: float = 1e-2            # private alpha warp (only if lora.warp != none)
     warp_warmup_rounds: int = 5      # keep h_i = identity until D carries signal
     warp_reg: float = 1e-2           # weight of mean (h(a) - a)^2 penalty toward the identity
-    share_private: bool = False      # ablation A2
+    adapter: str = "private"         # private | shared (A2) | none
+    share_private: bool = False      # deprecated alias for adapter: shared
     aggregation: str = "uniform"     # uniform | size
     server_lr: float = 1.0           # new = old + server_lr * (avg - old)
     reset_shared_opt_state: bool = True
@@ -106,8 +110,18 @@ class FedSteerTrainer:
         self.rng = random.Random(cfg.seed)
         os.makedirs(out_dir, exist_ok=True)
 
+        self.adapter = "shared" if cfg.share_private else cfg.adapter
+        if self.adapter not in ("private", "shared", "none"):
+            raise ValueError(f"unknown adapter mode {cfg.adapter}")
         groups = trainable_parameter_groups(model)
-        self.shared_params = groups["shared"] + (groups["private"] if cfg.share_private else [])
+        if self.adapter == "none":
+            with torch.no_grad():
+                for p in groups["private"]:
+                    p.requires_grad_(False)
+                for name, p in model.named_parameters():
+                    if name.endswith("lora_B_p"):
+                        p.zero_()                      # B_p = 0: the adapter contributes nothing
+        self.shared_params = groups["shared"] + (groups["private"] if self.adapter == "shared" else [])
         self.opt = torch.optim.AdamW(
             [
                 {"params": groups["private"], "lr": cfg.lr_private, "weight_decay": cfg.weight_decay, "name": "private"},
@@ -126,7 +140,7 @@ class FedSteerTrainer:
         # Server state.  All clients start from the same private initialization so
         # that the only initial difference between clients is their data.
         self.server = self._server_state_from_model()
-        init_private = get_private_adapter_state(model)
+        init_private = get_private_adapter_state(model) if self.adapter == "private" else {}
         self.clients: dict[str, dict] = {
             c: {"private": copy.deepcopy(init_private), "gain": get_gain_state(model),
                 "shared_local": None, "opt": None, "steps": 0}
@@ -138,14 +152,14 @@ class FedSteerTrainer:
     # ------------------------------------------------------------------ state
     def _server_state_from_model(self) -> dict[str, torch.Tensor]:
         st = get_shared_state(self.model)
-        if self.cfg.share_private:
+        if self.adapter == "shared":
             st.update(get_private_adapter_state(self.model))
         return st
 
     def load_client(self, cid: str, shared: Optional[dict] = None) -> None:
         """Put client ``cid`` into the model (for training or evaluation)."""
         c = self.clients[cid]
-        if not self.cfg.share_private:
+        if self.adapter == "private":
             load_state(self.model, c["private"])
         load_state(self.model, c["gain"])
         if shared is None:
@@ -154,7 +168,7 @@ class FedSteerTrainer:
 
     def _save_client(self, cid: str) -> None:
         c = self.clients[cid]
-        if not self.cfg.share_private:
+        if self.adapter == "private":
             c["private"] = get_private_adapter_state(self.model)
         c["gain"] = get_gain_state(self.model)
         if self.cfg.mode == "local":
@@ -188,6 +202,8 @@ class FedSteerTrainer:
         model.train()
         gain_trainable = not cfg.fix_gain and self.round >= cfg.gain_warmup_rounds
         self.control.u.requires_grad_(gain_trainable)
+        if self.control.o is not None:                  # offset follows the gain warm-up, not fix_gain
+            self.control.o.requires_grad_(self.round >= cfg.gain_warmup_rounds)
         warp_trainable = bool(self.warp_params) and self.round >= cfg.warp_warmup_rounds
         for p in self.warp_params:
             p.requires_grad_(warp_trainable)
@@ -216,6 +232,8 @@ class FedSteerTrainer:
             c["steps"] += 1
             losses.append(step_loss)
         out = {"loss": sum(losses) / len(losses), "gain": float(self.control.gain().item())}
+        if self.control.o is not None:
+            out["offset"] = float(self.control.offset().item())
         if self.warp_params:
             out["warp"] = self.control.warp.describe()
             if penalties:
@@ -338,10 +356,16 @@ def load_snapshot_into(model, snapshot: dict, client: str, shared: Optional[dict
     """
     cs = snapshot["clients"][client]
     fc = snapshot["fed_config"]
-    if fc["share_private"]:
+    adapter = "shared" if fc.get("share_private") else fc.get("adapter", "private")
+    if adapter == "shared":
         load_state(model, {k: v for k, v in snapshot["server"].items() if not k.endswith("lora_B_d")})
-    else:
+    elif adapter == "private":
         load_state(model, cs["private"])
+    else:                                              # none: the adapter must contribute nothing
+        with torch.no_grad():
+            for name, p in model.named_parameters():
+                if name.endswith("lora_B_p"):
+                    p.zero_()
     load_state(model, cs["gain"])
     if shared is None:
         shared = cs["shared_local"] if fc["mode"] == "local" else snapshot["server"]

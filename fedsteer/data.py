@@ -6,8 +6,16 @@ Input format: one JSONL file with records
      "target": str, "score": float, ...}
 
 ``score`` is the attribute value a(y) of the target (e.g. extractive density).
-The control coordinate is the client-local percentile of the score among that
-client's *train* examples:  alpha_i(y) = F_i(a(y)).
+The control coordinate alpha is a percentile of the score, under one of two
+protocols (``alpha_mode``):
+
+* ``local``   alpha_i(y) = F_i(a(y)), the client's own train CDF.  The same alpha
+              can mean different behavior on different clients.
+* ``global``  alpha(y) = F(a(y)) with F = (1/M) sum_i F_i, the equal-weight mixture
+              of the participants' CDFs.  alpha has the same meaning everywhere and
+              each client's data covers part of [0, 1].  F is what the server gets
+              by averaging per-client normalized score histograms, so no examples
+              are shared; held-out clients reuse the same F.
 """
 
 from __future__ import annotations
@@ -59,30 +67,91 @@ class ClientQuantiles:
         return self.quantile(0.75) - self.quantile(0.25)
 
 
-def build_clients(records: list[dict], clients: Sequence[str], tie_break: str = "average",
-                  max_train: Optional[int] = None, seed: int = 0
-                  ) -> tuple[dict[str, list[dict]], dict[str, ClientQuantiles]]:
-    """Return per-client train examples (with ``alpha`` filled) and client CDFs.
+class GlobalQuantiles:
+    """Equal-weight mixture of client CDFs, F(x) = mean_i F_i(x); same interface as
+    ClientQuantiles (cdf / quantile / iqr)."""
 
-    Quantiles are fitted on the *full* train split of each client, so subsampling
+    def __init__(self, clients: dict[str, ClientQuantiles]):
+        if not clients:
+            raise ValueError("need at least one client")
+        self.clients = dict(clients)
+        self._support = sorted({s for q in self.clients.values() for s in q.sorted_scores})
+
+    def cdf(self, score: float, rng: Optional[random.Random] = None) -> float:
+        return sum(q.cdf(score, rng) for q in self.clients.values()) / len(self.clients)
+
+    def quantile(self, alpha: float) -> float:
+        """Smallest observed score whose mixture CDF reaches alpha (bisection)."""
+        xs = self._support
+        lo, hi = 0, len(xs) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if self.cdf(xs[mid]) >= alpha:
+                hi = mid
+            else:
+                lo = mid + 1
+        return xs[lo]
+
+    def iqr(self) -> float:
+        return self.quantile(0.75) - self.quantile(0.25)
+
+    def to_json(self) -> dict:
+        return {"mode": "global", "clients": {c: q.sorted_scores for c, q in self.clients.items()}}
+
+
+def alpha_reference_from_json(d: dict):
+    """Inverse of GlobalQuantiles.to_json (or {'mode': 'local'} -> None)."""
+    if d.get("mode") == "global":
+        return GlobalQuantiles({c: ClientQuantiles(v) for c, v in d["clients"].items()})
+    return None
+
+
+def client_support(local_q: ClientQuantiles, ref, lo: float = 0.05, hi: float = 0.95) -> tuple[float, float]:
+    """The part of the alpha axis a client's own data covers: its lo..hi local
+    quantiles expressed on the reference scale."""
+    return ref.cdf(local_q.quantile(lo)), ref.cdf(local_q.quantile(hi))
+
+
+def build_clients(records: list[dict], clients: Sequence[str], tie_break: str = "average",
+                  max_train: Optional[int] = None, seed: int = 0, alpha_mode: str = "local"
+                  ) -> tuple[dict[str, list[dict]], dict]:
+    """Return per-client train examples (with ``alpha`` filled) and, per client, the
+    reference CDF that defines its alpha (the client's own CDF in ``local`` mode,
+    the shared mixture in ``global`` mode).
+
+    CDFs are fitted on the *full* train split of each client, so subsampling
     (``max_train``, used for the data-budget study) keeps alpha on the same scale.
     """
+    if alpha_mode not in ("local", "global"):
+        raise ValueError(f"unknown alpha_mode {alpha_mode}")
     rng = random.Random(seed)
     by_client: dict[str, list[dict]] = {c: [] for c in clients}
     for r in records:
         if r.get("split", "train") == "train" and r["client"] in by_client:
             by_client[r["client"]].append(r)
-    quantiles, out = {}, {}
+    local = {}
     for c, rows in by_client.items():
         if not rows:
             raise ValueError(f"client {c} has no train examples")
-        q = ClientQuantiles.fit([r["score"] for r in rows])
+        local[c] = ClientQuantiles.fit([r["score"] for r in rows])
+    ref = GlobalQuantiles(local) if alpha_mode == "global" else None
+    refs, out = {}, {}
+    for c, rows in by_client.items():
+        q = ref if ref is not None else local[c]
         tb_rng = random.Random(f"{seed}-{c}") if tie_break == "random" else None
         rows = [dict(r, alpha=q.cdf(r["score"], tb_rng)) for r in rows]
         rng.shuffle(rows)
         out[c] = rows[:max_train] if max_train else rows
-        quantiles[c] = q
-    return out, quantiles
+        refs[c] = q
+    return out, refs
+
+
+def fit_local_quantiles(records: list[dict], clients: Sequence[str]) -> dict[str, ClientQuantiles]:
+    scores: dict[str, list[float]] = {c: [] for c in clients}
+    for r in records:
+        if r.get("split", "train") == "train" and r["client"] in scores:
+            scores[r["client"]].append(r["score"])
+    return {c: ClientQuantiles.fit(v) for c, v in scores.items()}
 
 
 # ---------------------------------------------------------------------------
