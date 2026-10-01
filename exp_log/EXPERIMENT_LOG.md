@@ -444,3 +444,13 @@ ImportError: cannot import name 'text_tie_metrics' from 'fedsteer.metrics'
 **What to compare:** per client, in-support / out-of-support error, reach rate, near-ties and quality, with the copy-heavy clients (nypost.com, reuters.com, cbc.ca) and theguardian.com as key cases. Also federated vs local within each arm.
 
 **Status:** queued behind 11060306/11060307/11061046 (`dali` has 3 GPUs).
+
+## 18. Plan updated (2026-10-01)
+
+`federated-steering-plan.md` was rewritten to match the current design and results. No code or jobs changed.
+- Claims reframed around **coverage** ("each client's data is skewed, and the skews differ").
+- Model section: global α, calibration g(α) = o + s·h(α) with private/shared modes, adapter modes, regularizers (not part of the method yet).
+- Data facts (budgets, drift 3×200, nypost.com format convention, density–length coupling).
+- Current metric suite and selection procedure.
+- A ✅/🔄/⏳ status on every claim, metric, baseline, figure and gate; next steps; a changelog pointing to this log.
+- The gap review behind the update: G1 (prompting, B1) is untested and the top priority; B3 isn't evaluated; E2, E3, B4, B5, A1–A3, seeds and the Qwen3-4B backbone are pending.
