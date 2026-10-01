@@ -11,6 +11,11 @@ the config stored in that directory (plus any ``--set`` overrides).
 """
 
 import argparse
+import os
+import sys
+
+# import the fedsteer package that sits next to this script (job code snapshots)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import os
 from dataclasses import asdict, fields
@@ -18,11 +23,12 @@ from dataclasses import asdict, fields
 import torch
 import yaml
 
-from fedsteer.data import ChatFormatter, build_clients, fit_local_quantiles, read_jsonl
+from fedsteer.data import ChatFormatter, build_clients, client_support, fit_local_quantiles, read_jsonl
 from fedsteer.fed import FedConfig, FedSteerTrainer
 from fedsteer.lora import SteerLoraConfig
 from fedsteer.model import load_model
 from fedsteer.monitor import MonitorConfig, make_monitor
+from fedsteer.regularize import RegConfig
 from fedsteer.runinfo import make_stamp, record_run_info
 
 
@@ -78,6 +84,11 @@ def main():
 
     lora_cfg = _dataclass_from(SteerLoraConfig, cfg.get("lora", {}))
     fed_cfg = _dataclass_from(FedConfig, cfg.get("fed", {}))
+    reg_cfg = _dataclass_from(RegConfig, cfg.get("reg") or {})
+    mon_cfg = _dataclass_from(MonitorConfig, cfg["monitor"]) if cfg.get("monitor") else None
+    if mon_cfg and mon_cfg.full_every and mon_cfg.full_every % fed_cfg.save_every:
+        raise ValueError(f"monitor.full_every ({mon_cfg.full_every}) must be a multiple of fed.save_every "
+                         f"({fed_cfg.save_every}) so every evaluated round has a snapshot")
     os.makedirs(out_dir, exist_ok=True)
     record_run_info(out_dir, event, config=args.config or args.resume, overrides=args.set)
     print(f"run directory: {out_dir} ({event})", flush=True)
@@ -98,7 +109,9 @@ def main():
                                         alpha_mode=alpha_mode)
     local_q = fit_local_quantiles(records, clients)
 
-    resolved = dict(cfg, clients=clients, lora=asdict(lora_cfg), fed=asdict(fed_cfg))
+    resolved = dict(cfg, clients=clients, lora=asdict(lora_cfg), fed=asdict(fed_cfg), reg=asdict(reg_cfg))
+    if mon_cfg:
+        resolved["monitor"] = asdict(mon_cfg)
     with open(os.path.join(out_dir, "config.yaml"), "w") as f:
         yaml.safe_dump(resolved, f, sort_keys=False)
     with open(os.path.join(out_dir, "client_quantiles.json"), "w") as f:      # each client's own CDF
@@ -121,12 +134,14 @@ def main():
     print(f"trainable params (one client's view): {n_train / 1e6:.2f}M", flush=True)
 
     eval_fn = None
-    if cfg.get("monitor"):
-        mon_cfg = _dataclass_from(MonitorConfig, cfg["monitor"])
-        eval_fn = make_monitor(records, clients, quantiles, fmt, mon_cfg)
+    if mon_cfg:
+        supports = ({c: client_support(local_q[c], quantiles[c]) for c in clients}
+                    if alpha_mode == "global" else None)
+        eval_fn = make_monitor(records, clients, quantiles, fmt, mon_cfg, supports=supports, out_dir=out_dir)
         print(f"monitor: {asdict(mon_cfg)}", flush=True)
+    print(f"reg: {asdict(reg_cfg)}", flush=True)
 
-    trainer = FedSteerTrainer(model, fmt, examples, fed_cfg, out_dir, eval_fn=eval_fn)
+    trainer = FedSteerTrainer(model, fmt, examples, fed_cfg, out_dir, eval_fn=eval_fn, reg=reg_cfg)
     trainer.fit()
 
 

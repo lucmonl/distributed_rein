@@ -19,6 +19,13 @@ Adapter mode (``adapter``): ``private`` (default; P_i stays on the client), ``sh
 (P is aggregated like the direction; ablation A2, formerly ``share_private``) or
 ``none`` (no task adapter; only the base model, the direction and private scalars).
 
+Calibration mode (``calibration``): the coefficient g(alpha) = o + s * h(alpha) on the
+shared direction (gain s, optional offset o, warp h) is either ``private`` (one per
+client, fitted on its own data) or ``shared`` (one for all clients, averaged by the
+server every round like the direction).  Under the global alpha scale, ``shared``
+keeps everything about the attribute shared and only house style private (P_i).
+``shared`` is undefined in ``local`` mode (nothing is aggregated there).
+
 Ablation (orthogonal to mode): ``fix_gain`` (A1: s_i = 1).
 """
 
@@ -37,8 +44,10 @@ import torch
 
 from .data import ClientStream
 from .monitor import format_monitor
+from .regularize import WEIGHT, RegConfig, penalty_terms
 from .lora import (
     GAIN_KEY,
+    steer_layers,
     average_states,
     get_gain_state,
     get_private_adapter_state,
@@ -69,6 +78,7 @@ class FedConfig:
     warp_warmup_rounds: int = 5      # keep h_i = identity until D carries signal
     warp_reg: float = 1e-2           # weight of mean (h(a) - a)^2 penalty toward the identity
     adapter: str = "private"         # private | shared (A2) | none
+    calibration: str = "private"     # private | shared: gain/offset/warp per client or one for all
     share_private: bool = False      # deprecated alias for adapter: shared
     aggregation: str = "uniform"     # uniform | size
     server_lr: float = 1.0           # new = old + server_lr * (avg - old)
@@ -96,11 +106,14 @@ def _flat(state: dict[str, torch.Tensor]) -> torch.Tensor:
 class FedSteerTrainer:
     def __init__(self, model, formatter, client_examples: dict[str, list[dict]],
                  cfg: FedConfig, out_dir: str,
-                 eval_fn: Optional[Callable[["FedSteerTrainer", int], dict]] = None):
+                 eval_fn: Optional[Callable[["FedSteerTrainer", int], dict]] = None,
+                 reg: Optional[RegConfig] = None):
         if cfg.mode not in ("fedavg", "local"):
             raise ValueError(f"unknown mode {cfg.mode}")
         self.model = model
         self.cfg = cfg
+        self.reg = reg or RegConfig()
+        self.layers = [m for _, m in steer_layers(model)]
         self.out_dir = out_dir
         self.eval_fn = eval_fn
         self.device = next(model.parameters()).device
@@ -113,6 +126,12 @@ class FedSteerTrainer:
         self.adapter = "shared" if cfg.share_private else cfg.adapter
         if self.adapter not in ("private", "shared", "none"):
             raise ValueError(f"unknown adapter mode {cfg.adapter}")
+        self.calibration = cfg.calibration
+        if self.calibration not in ("private", "shared"):
+            raise ValueError(f"unknown calibration mode {cfg.calibration}")
+        if self.calibration == "shared" and cfg.mode == "local":
+            raise ValueError("calibration=shared is undefined in local mode (nothing is aggregated); "
+                             "local training always has per-client calibration: use calibration=private")
         groups = trainable_parameter_groups(model)
         if self.adapter == "none":
             with torch.no_grad():
@@ -121,11 +140,14 @@ class FedSteerTrainer:
                 for name, p in model.named_parameters():
                     if name.endswith("lora_B_p"):
                         p.zero_()                      # B_p = 0: the adapter contributes nothing
-        self.shared_params = groups["shared"] + (groups["private"] if self.adapter == "shared" else [])
+        self.shared_params = groups["shared"] + (groups["private"] if self.adapter == "shared" else []) \
+            + (groups["gain"] + groups["warp"] if self.calibration == "shared" else [])
         self.opt = torch.optim.AdamW(
             [
-                {"params": groups["private"], "lr": cfg.lr_private, "weight_decay": cfg.weight_decay, "name": "private"},
-                {"params": groups["shared"], "lr": cfg.lr_shared, "weight_decay": cfg.weight_decay, "name": "shared"},
+                {"params": groups["private"], "lr": cfg.lr_private,
+                 "weight_decay": cfg.weight_decay + self.reg.private_wd, "name": "private"},
+                {"params": groups["shared"], "lr": cfg.lr_shared,
+                 "weight_decay": cfg.weight_decay + self.reg.shared_wd, "name": "shared"},
                 {"params": groups["gain"], "lr": cfg.lr_gain, "weight_decay": 0.0, "name": "gain"},
             ] + ([{"params": groups["warp"], "lr": cfg.lr_warp, "weight_decay": 0.0, "name": "warp"}]
                  if groups["warp"] else [])
@@ -154,6 +176,8 @@ class FedSteerTrainer:
         st = get_shared_state(self.model)
         if self.adapter == "shared":
             st.update(get_private_adapter_state(self.model))
+        if self.calibration == "shared":
+            st.update(get_gain_state(self.model))      # gain u, offset o, warp parameters
         return st
 
     def load_client(self, cid: str, shared: Optional[dict] = None) -> None:
@@ -161,7 +185,8 @@ class FedSteerTrainer:
         c = self.clients[cid]
         if self.adapter == "private":
             load_state(self.model, c["private"])
-        load_state(self.model, c["gain"])
+        if self.calibration == "private":
+            load_state(self.model, c["gain"])          # shared calibration comes with the server state
         if shared is None:
             shared = c["shared_local"] if (self.cfg.mode == "local" and c["shared_local"] is not None) else self.server
         load_state(self.model, shared)
@@ -170,7 +195,8 @@ class FedSteerTrainer:
         c = self.clients[cid]
         if self.adapter == "private":
             c["private"] = get_private_adapter_state(self.model)
-        c["gain"] = get_gain_state(self.model)
+        if self.calibration == "private":
+            c["gain"] = get_gain_state(self.model)
         if self.cfg.mode == "local":
             c["shared_local"] = self._server_state_from_model()
         c["opt"] = _to_cpu(self.opt.state_dict())
@@ -208,6 +234,11 @@ class FedSteerTrainer:
         for p in self.warp_params:
             p.requires_grad_(warp_trainable)
         losses, penalties = [], []
+        reg_vals: dict[str, list[float]] = {}
+        # FedProx anchor: the direction as broadcast by the server at the start of this round
+        anchors = ([m.lora_B_d.detach().float().clone() for m in self.layers]
+                   if self.reg.fedprox_mu > 0 and cfg.mode == "fedavg" else None)
+        offset_active = self.control.o is not None and self.round >= cfg.gain_warmup_rounds
         for _ in range(cfg.local_steps):
             f = self._lr_factor(c["steps"])
             for g, lr in zip(self.opt.param_groups, self._base_lrs):
@@ -223,6 +254,12 @@ class FedSteerTrainer:
                         pen = self.control.warp.penalty()
                         total = total + cfg.warp_reg * pen / cfg.grad_accum
                         penalties.append(pen.item())
+                    if self.reg.any_penalty():
+                        terms = penalty_terms(self.reg, self.layers, self.control, anchors,
+                                              gain_trainable, offset_active)
+                        for name, val in terms.items():
+                            total = total + getattr(self.reg, WEIGHT[name]) * val / cfg.grad_accum
+                            reg_vals.setdefault(name, []).append(float(val.item()))
                     total.backward()
                 step_loss += loss.item()
             params = [p for g in self.opt.param_groups for p in g["params"] if p.grad is not None]
@@ -238,6 +275,8 @@ class FedSteerTrainer:
             out["warp"] = self.control.warp.describe()
             if penalties:
                 out["warp_penalty"] = sum(penalties) / len(penalties)
+        if reg_vals:
+            out["reg"] = {k: sum(v) / len(v) for k, v in reg_vals.items()}   # unweighted term values
         return out
 
     def _select(self) -> list[str]:
@@ -366,7 +405,10 @@ def load_snapshot_into(model, snapshot: dict, client: str, shared: Optional[dict
             for name, p in model.named_parameters():
                 if name.endswith("lora_B_p"):
                     p.zero_()
-    load_state(model, cs["gain"])
+    if fc.get("calibration", "private") == "shared":
+        load_state(model, {k: v for k, v in snapshot["server"].items() if k.startswith("steer_control.")})
+    else:
+        load_state(model, cs["gain"])
     if shared is None:
         shared = cs["shared_local"] if fc["mode"] == "local" else snapshot["server"]
         shared = {k: v for k, v in shared.items() if k.endswith("lora_B_d")}

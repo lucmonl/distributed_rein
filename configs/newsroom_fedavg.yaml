@@ -29,6 +29,7 @@ lora:
   rank_shared: 16
   lora_alpha_private: 16
   lora_alpha_shared: 16
+  dropout: 0.0                # LoRA dropout on the layer input (both branches)
   shared_seed: 1234
   gain_min: 0.25
   gain_max: 4.0
@@ -50,6 +51,8 @@ lora:
 fed:
   mode: fedavg
   adapter: private            # private (method) | shared (A2) | none
+  calibration: private        # private: gain/offset/warp per client | shared: one mapping for all
+                              # clients, averaged by the server like D (undefined in local mode)
   rounds: 50
   local_steps: 20
   batch_size: 8
@@ -62,16 +65,40 @@ fed:
   lr_warp: 1.0e-2
   warp_warmup_rounds: 5       # h_i stays the identity until D carries signal
   warp_reg: 1.0e-2            # penalty mean (h(a) - a)^2 toward the identity
-  save_every: 10
+  save_every: 10              # snapshot rounds (= full dev-evaluation rounds)
   seed: 0
 
-# Held-out monitoring (fedsteer/monitor.py): dev loss every round, and a small
-# steering check (20 dev articles x 3 alphas, greedy) every `steer_every` rounds.
+# Per-component regularizers (fedsteer/regularize.py); all 0 = off.
+#   private_wd  weight decay on private factors A_p, B_p (~ nuclear norm of P_i)
+#   shared_wd   weight decay on B_d (~ norm of D)
+#   decorr      cos^2(P_i, D) per layer: keep the attribute in D, not in P_i
+#   fedprox_mu  (mu/2)||B_d - B_d^server||^2 during local steps (FedProx)
+#   gain_l2 / offset_l2   priors u_i -> 0 (s_i -> 1), o_i -> 0
+# LoRA dropout is lora.dropout; LR decay is fed.lr_schedule: cosine.
+reg:
+  private_wd: 0.0
+  shared_wd: 0.0
+  decorr: 0.0
+  fedprox_mu: 0.0
+  gain_l2: 0.0
+  offset_l2: 0.0
+
+# Held-out monitoring (fedsteer/monitor.py):
+#   loss_every   dev loss every round (cheap)
+#   full_every   full dev evaluation (100 articles x 5 alphas, support split, dev loss, all
+#                texts) at snapshot rounds -> <run>/evals/eval_round_XXXX_dev__<stamp>.json;
+#                replaces the separate post-training sweep.  Multiple of fed.save_every.
+#   steer_every  small 20-article check (off: the full evaluation covers it)
 monitor:
   split: dev
   loss_every: 1
   loss_max_examples: 100
-  steer_every: 5
+  full_every: 10
+  full_prompts: 100
+  full_alphas: [0.0, 0.25, 0.5, 0.75, 1.0]
+  full_max_new_tokens: 128
+  full_batch_size: 32
+  steer_every: 0
   steer_prompts: 20
   steer_alphas: [0.1, 0.5, 0.9]
   scorer: density

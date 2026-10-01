@@ -3,13 +3,15 @@ training monitor and eval_direction.py so both report identical numbers."""
 
 from __future__ import annotations
 
-from typing import Optional
+import re
+from difflib import SequenceMatcher
+from typing import Optional, Sequence
 
 import numpy as np
 from scipy.stats import spearmanr
 
 from .data import ClientQuantiles
-from .extractive import fragment_stats
+from .extractive import fragment_stats, tokenize
 
 # scorer(generated_text, source_record) -> attribute value on the same scale as the
 # training ``score`` field
@@ -19,10 +21,13 @@ SCORERS = {
 }
 
 LOWER_IS_BETTER = {"calib_mae_iqr", "pct_calib_err", "pct_err_in_support", "pct_err_out_support",
-                   "no_effect_rate", "adjacent_tie_rate", "adjacent_decrease_rate"}
+                   "no_effect_rate", "adjacent_tie_rate", "adjacent_decrease_rate",
+                   "text_tie_rate", "near_tie_rate", "near_no_effect_rate", "endpoint_near_tie_rate"}
 SUMMARY_KEYS = ["pct_err_in_support", "pct_err_out_support", "reach_rate", "concordance", "spearman",
                 "endpoint_increase_rate", "adjacent_increase_rate", "adjacent_tie_rate", "adjacent_decrease_rate",
-                "no_effect_rate", "pct_calib_err", "pct_range", "order_rate", "norm_range", "calib_mae_iqr"]
+                "no_effect_rate", "pct_calib_err", "pct_range", "order_rate", "norm_range", "calib_mae_iqr",
+                "text_tie_rate", "near_tie_rate", "near_no_effect_rate", "endpoint_near_tie_rate",
+                "adjacent_increase_rate_nt", "concordance_nt"]
 
 
 def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantiles,
@@ -100,3 +105,72 @@ def summarize(results: dict[str, dict], keys=SUMMARY_KEYS) -> dict:
             worst = max(vals) if k in LOWER_IS_BETTER else min(vals)
             out[k] = {"mean": float(np.mean(vals)), "worst": float(worst)}
     return out
+
+
+# ---------------------------------------------------------------------------
+# Near-ties: outputs that differ only trivially across alpha
+# ---------------------------------------------------------------------------
+
+_QUOTES = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-",
+                         "\u00a0": " "})
+_ELLIPSIS = re.compile(r"\s*(\.\.\.|\u2026)\s*$")
+NEAR_TIE_THRESHOLD = 0.95
+
+
+def normalize_output(text: str) -> str:
+    """Unify quotes/dashes/whitespace; if the text ends in an ellipsis (a cut-off lead, as in
+    nypost.com's summaries), drop the ellipsis and the possibly truncated last word."""
+    t = " ".join(text.translate(_QUOTES).split())
+    if _ELLIPSIS.search(t):
+        t = _ELLIPSIS.sub("", t)
+        t = t.rsplit(" ", 1)[0] if " " in t else ""
+    return t
+
+
+def near_identical(a: str, b: str, threshold: float = NEAR_TIE_THRESHOLD) -> bool:
+    """True if two outputs are the same up to normalization and a small token-level edit
+    (difflib ratio >= threshold on tokens; 0.95 ~ at most ~5% of tokens differ)."""
+    na, nb = normalize_output(a), normalize_output(b)
+    if na == nb:
+        return True
+    ta, tb = tokenize(na), tokenize(nb)
+    if not ta or not tb:
+        return False
+    return SequenceMatcher(None, ta, tb, autojunk=False).ratio() >= threshold
+
+
+def text_tie_metrics(outputs: Sequence[Sequence[str]], scores, alphas: Sequence[float],
+                     threshold: float = NEAR_TIE_THRESHOLD) -> dict:
+    """outputs[article][alpha] texts; scores[article][alpha] attribute scores.
+
+    text_tie_rate          adjacent alphas give exactly the same text
+    near_tie_rate          adjacent alphas give near-identical text
+    near_no_effect_rate    every adjacent pair near-identical (alpha effectively had no effect)
+    endpoint_near_tie_rate lowest and highest alpha near-identical
+    adjacent_increase_rate_nt / concordance_nt: the score-based rates with near-identical
+        pairs counted as ties, so trivial changes (a few extra copied characters) no longer
+        count as successful steering
+    """
+    scores = np.asarray(scores, dtype=float)
+    n, k = scores.shape
+    exact = np.array([[outputs[i][j] == outputs[i][j + 1] for j in range(k - 1)] for i in range(n)])
+    near = np.array([[near_identical(outputs[i][j], outputs[i][j + 1], threshold) for j in range(k - 1)]
+                     for i in range(n)])
+    adj = np.diff(scores, axis=1)
+    inc_nt = (adj > 0) & ~near
+    ii, jj = np.triu_indices(k, 1)
+    conc = []
+    for i in range(n):
+        for a, b in zip(ii, jj):
+            if near_identical(outputs[i][a], outputs[i][b], threshold) or scores[i, b] == scores[i, a]:
+                conc.append(0.5)
+            else:
+                conc.append(float(scores[i, b] > scores[i, a]))
+    return {
+        "text_tie_rate": float(exact.mean()),
+        "near_tie_rate": float(near.mean()),
+        "near_no_effect_rate": float(near.all(axis=1).mean()),
+        "endpoint_near_tie_rate": float(np.mean([near_identical(o[0], o[-1], threshold) for o in outputs])),
+        "adjacent_increase_rate_nt": float(inc_nt.mean()),
+        "concordance_nt": float(np.mean(conc)),
+    }

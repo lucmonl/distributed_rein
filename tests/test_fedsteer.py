@@ -484,6 +484,170 @@ def test_run_stamps_and_provenance():
         assert "commit" in info["events"][0]["git"]
 
 
+# ------------------------------------------------------- regularizers, full eval, quality
+
+def test_decorrelation_matches_bruteforce_cosine():
+    from fedsteer.regularize import decorrelation
+    m = tiny_model()
+    randomize_lora(m)
+    layers = [mm for _, mm in steer_layers(m)]
+    brute = []
+    for l in layers:
+        P = l.lora_B_p @ l.lora_A_p
+        D = l.lora_B_d @ l.lora_A_d
+        brute.append(((P * D).sum() ** 2 / ((P * P).sum() * (D * D).sum())).item())
+    assert abs(decorrelation(layers).item() - np.mean(brute)) < 1e-5
+    with torch.no_grad():                       # make P exactly parallel to D in every layer
+        for l in layers:
+            r = min(l.lora_A_p.shape[0], l.lora_A_d.shape[0])
+            l.lora_A_p[:r].copy_(l.lora_A_d[:r]); l.lora_A_p[r:].zero_()
+            l.lora_B_p[:, :r].copy_(2 * l.lora_B_d[:, :r]); l.lora_B_p[:, r:].zero_()
+    assert abs(decorrelation(layers).item() - 1.0) < 1e-4
+
+
+def test_fedprox_zero_at_anchor():
+    from fedsteer.regularize import fedprox
+    m = tiny_model()
+    randomize_lora(m)
+    layers = [mm for _, mm in steer_layers(m)]
+    anchors = [l.lora_B_d.detach().clone() for l in layers]
+    assert fedprox(layers, anchors).item() == 0.0
+    with torch.no_grad():
+        layers[0].lora_B_d.add_(0.1)
+    expected = 0.5 * (0.1 ** 2) * layers[0].lora_B_d.numel()
+    assert abs(fedprox(layers, anchors).item() - expected) < 1e-5
+
+
+def test_training_with_all_regularizers_logs_terms():
+    from fedsteer.regularize import RegConfig
+    reg = RegConfig(private_wd=0.05, shared_wd=0.01, decorr=0.1, fedprox_mu=0.1, gain_l2=0.01, offset_l2=0.01)
+    with tempfile.TemporaryDirectory() as d:
+        model = tiny_model(offset=True)
+        ex, _ = build_clients(toy_records(), ["c0", "c1"])
+        cfg = FedConfig(rounds=3, local_steps=2, batch_size=2, bf16=False, warmup_steps=1, gain_warmup_rounds=1,
+                        save_every=1)
+        tr = FedSteerTrainer(model, ChatFormatter(tokenizer()), ex, cfg, d, reg=reg)
+        wd = {g["name"]: g["weight_decay"] for g in tr.opt.param_groups}
+        assert wd["private"] == 0.05 and wd["shared"] == 0.01
+        tr.fit()
+        r0, r2 = tr.history[0]["clients"]["c0"]["reg"], tr.history[2]["clients"]["c0"]["reg"]
+        assert set(r0) == {"decorr", "fedprox"}                       # gain/offset priors wait for warm-up
+        assert set(r2) == {"decorr", "fedprox", "gain_l2", "offset_l2"}
+        assert all(np.isfinite(v) for v in r2.values())
+
+
+def test_monitor_full_eval_writes_selectable_files():
+    import json as _json
+    import subprocess
+    from fedsteer.monitor import MonitorConfig, make_monitor
+    recs = toy_records()
+    for i, r in enumerate(recs):
+        r["url"] = f"u{i}"
+        if i % 4 == 0:
+            r["split"] = "dev"
+    ex, qs = build_clients(recs, ["c0", "c1"])
+    fmt = ChatFormatter(tokenizer())
+    with tempfile.TemporaryDirectory() as d:
+        mon = make_monitor(recs, ["c0", "c1"], qs, fmt,
+                           MonitorConfig(loss_every=1, steer_every=0, full_every=2, full_prompts=3,
+                                         full_alphas=[0.0, 1.0], full_max_new_tokens=4, full_batch_size=4,
+                                         scorer="words"), out_dir=d)
+        cfg = FedConfig(rounds=2, local_steps=1, batch_size=2, bf16=False, warmup_steps=1, save_every=2)
+        tr = FedSteerTrainer(tiny_model(), fmt, ex, cfg, d, eval_fn=mon)
+        tr.fit()
+        files = os.listdir(os.path.join(d, "evals"))
+        assert len(files) == 1 and files[0].startswith("eval_round_0002_dev__")
+        ev = _json.load(open(os.path.join(d, "evals", files[0])))
+        c0 = ev["clients"]["c0"]
+        assert len(c0["outputs"]) == 3 and len(c0["outputs"][0]) == 2 and len(c0["record_ids"]) == 3
+        assert "loss" in c0 and "loss" in ev["summary"] and ev["snapshot"].endswith("snapshots/round_0002.pt")
+        assert os.path.exists(ev["snapshot"])
+        assert "full" in tr.history[1]["eval"] and "full" not in tr.history[0]["eval"]
+        py = sys.executable
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        best = subprocess.run([py, os.path.join(root, "scripts", "summarize_sweep.py"), "--run", d, "--print_best"],
+                              capture_output=True, text=True).stdout.strip()
+        assert best.endswith("round_0002.pt"), best
+
+
+def test_quality_text_utils():
+    from fedsteer.quality import chunk_words, split_sentences, surface
+    assert split_sentences("A b c. U.S. growth rose. \"Yes,\" she said. End!") == \
+        ["A b c.", "U.S. growth rose.", '"Yes," she said.', "End!"]
+    art = " ".join(f"Sentence number {i} has five words." for i in range(200))
+    chunks = chunk_words(art, 350)
+    assert all(len(c.split()) <= 350 for c in chunks) and " ".join(chunks) == " ".join(split_sentences(art))
+    s = surface("the cat sat the cat sat the cat sat")
+    assert s["length"] == 9 and s["rep3"] > 0.5 and s["empty"] == 0.0
+    assert surface("")["empty"] == 1.0
+
+
+def test_near_tie_metrics():
+    from fedsteer.metrics import near_identical, normalize_output, text_tie_metrics
+    a = ("The lawyers of the woman accusing high-powered attorney Sanford Rubenstein of rape have penned a letter "
+         "to Manhattan District Attorney Cyrus Vance, pleading with his office to make an arrest. \u201cHer...")
+    b = a[:-3] + " com..."
+    assert a != b and near_identical(a, b)                                  # cut-off at a different point
+    assert normalize_output("One two three \u2026") == "One two"            # ellipsis + cut word dropped
+    one_word = a.replace("have penned", "had penned")
+    assert near_identical(a, one_word)                                      # 1 token of ~40 differs
+    longer = ("The council voted to approve the budget on Tuesday. Mayor Smith said work starts in May "
+              "and will finish by the end of the year.")
+    assert not near_identical("The council voted to approve the budget on Tuesday.", longer)   # real change
+    assert not near_identical("Council rejects budget.", "Mayor praises schools.")
+    outputs = [[a, b, longer], ["x y z", "x y z", "x y z"]]
+    scores = [[30.0, 31.0, 40.0], [5.0, 5.0, 5.0]]
+    m = text_tie_metrics(outputs, scores, [0.0, 0.5, 1.0])
+    assert m["text_tie_rate"] == 0.5                  # article 2's two pairs are exact ties
+    assert m["near_tie_rate"] == 0.75                 # + article 1's first pair
+    assert m["near_no_effect_rate"] == 0.5 and m["endpoint_near_tie_rate"] == 0.5
+    assert m["adjacent_increase_rate_nt"] == 0.25     # only a->longer... (b -> longer) counts as an increase
+    # concordance: article 1 pairs (a,b) near-tie 0.5, (a,long) 1, (b,long) 1; article 2 all ties 0.5
+    assert abs(m["concordance_nt"] - (0.5 + 1 + 1 + 0.5 * 3) / 6) < 1e-9
+
+
+def test_shared_calibration_is_one_mapping_for_all_clients():
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("fedavg", d, calibration="shared", warp="kumaraswamy_mix", offset=True, rounds=3,
+                      warp_warmup_rounds=1, lr_warp=0.2)
+        tr.fit()
+        ctl_keys = [k for k in tr.server if k.startswith("steer_control.")]
+        assert set(ctl_keys) == {"steer_control.u", "steer_control.o", "steer_control.warp.log_p",
+                                 "steer_control.warp.log_q", "steer_control.warp.w_logit"}
+        assert any(tr.server[k].abs().item() > 0 for k in ctl_keys)           # it was trained
+        # clients never store their own calibration in shared mode
+        init = {k: v for k, v in tr.clients["c0"]["gain"].items()}
+        assert all(v.abs().item() == 0 for v in init.values())
+        # every client sees the same calibration when loaded
+        vals = []
+        for c in ("c0", "c1"):
+            tr.load_client(c)
+            vals.append({n: p.detach().clone() for n, p in tr.model.named_parameters() if n.startswith("steer_control.")})
+        assert all(torch.equal(vals[0][k], vals[1][k]) for k in vals[0])
+        # snapshots restore the shared calibration for any client
+        snap = torch.load(os.path.join(d, "snapshots", "round_0003.pt"), weights_only=False)
+        m = tiny_model(warp="kumaraswamy_mix", offset=True)
+        load_snapshot_into(m, snap, "c1")
+        got = {n: p for n, p in m.named_parameters() if n.startswith("steer_control.")}
+        assert all(torch.allclose(got[k], tr.server[k]) for k in ctl_keys)
+
+
+def test_shared_calibration_refused_in_local_mode():
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            _trainer("local", d, calibration="shared")
+        except ValueError as e:
+            assert "local mode" in str(e)
+        else:
+            raise AssertionError("expected ValueError")
+
+
+def test_no_offset_model_has_no_offset_parameter():
+    m = tiny_model(offset=False)
+    assert m.steer_control.o is None
+    assert not any(n == "steer_control.o" for n, _ in m.named_parameters())
+
+
 # ------------------------------------------------------------------ extractive
 
 def test_fragment_stats_known_cases():

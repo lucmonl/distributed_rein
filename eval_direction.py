@@ -19,6 +19,11 @@ Results go to ``<run>/evals/eval_<snapshot>[_<split>][_remap][_<suffix>]__<stamp
 """
 
 import argparse
+import os
+import sys
+
+# import the fedsteer package that sits next to this script (job code snapshots)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import os
 from collections import defaultdict
@@ -27,13 +32,12 @@ import numpy as np
 import torch
 import yaml
 
-from fedsteer.calibrate import fit_remap
 from fedsteer.data import ChatFormatter, ClientQuantiles, alpha_reference_from_json, client_support, read_jsonl
 from fedsteer.fed import load_snapshot_into
 from fedsteer.lora import SteerLoraConfig
-from fedsteer.metrics import SCORERS, constant_output_pct_err, metrics_for_client, summarize
-from fedsteer.model import generate_at_alpha, load_model
-from fedsteer.monitor import mean_loss
+from fedsteer.evaluate import assemble, brief, evaluate_loaded_client
+from fedsteer.metrics import SCORERS
+from fedsteer.model import load_model
 from fedsteer.runinfo import make_stamp, provenance
 
 
@@ -42,57 +46,22 @@ def latest_snapshot(run: str) -> str:
     return os.path.join(d, sorted(os.listdir(d))[-1])
 
 
-def score_grid(model, fmt, recs, alphas, score, args):
-    prompts = [r["prompt"] for r in recs]
-    grid = np.zeros((len(prompts), len(alphas)))
-    first = []
-    for j, a in enumerate(alphas):
-        outs = generate_at_alpha(model, fmt, prompts, a, max_new_tokens=args.max_new_tokens,
-                                 batch_size=args.batch_size)
-        grid[:, j] = [score(o[0], rec) for o, rec in zip(outs, recs)]
-        first.append(outs[0][0])
-    return grid, first
-
-
 def evaluate_snapshot(model, fmt, snap_path, shared, by_client, clients, quantiles, alphas, score, args,
                       remap_by_client=None, supports=None):
     """``quantiles[c]``: the reference CDF that defines alpha for client c;
     ``supports[c]``: (lo, hi) part of the alpha axis covered by c's own data (global mode)."""
     snap = torch.load(snap_path, map_location="cpu", weights_only=False)
-    results, samples = {}, {}
+    results = {}
     for c in clients:
         load_snapshot_into(model, snap, c, shared=shared)
-        recs = by_client[c][: args.max_prompts]
-        gen_alphas, remap = alphas, None
-        if remap_by_client is not None:
-            # option F: which output percentile does each alpha achieve on the calibration split?
-            cal = remap_by_client[c][: args.remap_prompts]
-            cal_grid_alphas = np.linspace(0, 1, args.remap_grid).tolist()
-            cal_scores, _ = score_grid(model, fmt, cal, cal_grid_alphas, score, args)
-            achieved = np.vectorize(quantiles[c].cdf)(cal_scores).mean(axis=0)
-            remap = fit_remap(cal_grid_alphas, achieved, alphas)
-            gen_alphas = [remap["mapped_alpha"][str(a)] for a in alphas]
-        grid, first = score_grid(model, fmt, recs, gen_alphas, score, args)
-        samples[c] = [{"alpha": a, "generated_at": g, "output": o} for a, g, o in zip(alphas, gen_alphas, first)]
-        results[c] = metrics_for_client(grid, alphas, quantiles[c],   # scored against the *target* alphas
-                                        support=supports.get(c) if supports else None)
-        results[c]["grid"] = grid.round(4).tolist()
-        results[c]["gain"] = float(torch.exp(snap["clients"][c]["gain"]["steer_control.u"]).item())
-        if model.steer_control.warp.kind != "none":
-            results[c]["warp"] = model.steer_control.warp.describe()
-        if remap is not None:
-            results[c]["remap"] = remap
-        if args.dev_loss:
-            labeled = [dict(r, alpha=quantiles[c].cdf(r["score"])) for r in by_client[c]]
-            results[c]["loss"] = mean_loss(model, fmt, labeled, batch_size=args.batch_size)
-        print(c, json.dumps({k: v for k, v in results[c].items() if k != "grid"}), flush=True)
-    summary = summarize(results)
-    summary["constant_output_pct_err"] = constant_output_pct_err(alphas)
-    if args.dev_loss:
-        summary["loss"] = {"mean": float(np.mean([r["loss"] for r in results.values()])),
-                           "worst": float(max(r["loss"] for r in results.values()))}
-    return {"snapshot": snap_path, "round": snap["round"], "shared": args.shared, "split": args.split,
-            "alphas": alphas, "clients": results, "summary": summary, "samples": samples}
+        remap_recs = remap_by_client[c][: args.remap_prompts] if remap_by_client is not None else None
+        results[c] = evaluate_loaded_client(
+            model, fmt, by_client[c][: args.max_prompts], alphas, score, quantiles[c],
+            support=supports.get(c) if supports else None, max_new_tokens=args.max_new_tokens,
+            batch_size=args.batch_size, dev_loss=args.dev_loss, remap_recs=remap_recs,
+            remap_grid=getattr(args, "remap_grid", 11))
+        print(c, brief(results[c]), flush=True)
+    return assemble(results, alphas, args.split, snap_path, snap["round"], shared=args.shared)
 
 
 def main():
