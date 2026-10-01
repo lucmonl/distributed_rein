@@ -34,12 +34,17 @@ Since 2026-09-29 (entry 8), runs and evals never overwrite each other. Continue 
 | 11041282 | 09-30 | exp11 cap 4k, base | `runs/exp11_cap4k_base_20260930-114746_j11041282` | Done (6.2 h), selected round 100 |
 | 11041283 | 09-30 | exp11 cap 4k, regularized | `runs/exp11_cap4k_reg_20260930-180318_j11041283` | **Failed** at round 10 (ImportError, entry 14); resubmitted as 11060306 |
 | 11041284 | 09-30 | exp11 natural sizes (≤5k), regularized | `runs/exp11_natural_reg_20260930-180542_j11041284` | **Failed** at round 10 (ImportError, entry 14); resubmitted as 11060307 |
-| 11060306 | 09-30 | exp11 cap 4k, regularized (resubmit) | `runs/exp11_cap4k_reg_20260930-231707_j11060306` | Running (started 09-30 23:17) |
-| 11060307 | 09-30 | exp11 natural sizes, regularized (resubmit) | `runs/exp11_natural_reg_20260930-232106_j11060307` | Running (started 09-30 23:21) |
+| 11060306 | 09-30 | exp11 cap 4k, regularized (resubmit) | `runs/exp11_cap4k_reg_20260930-231707_j11060306` | **Cancelled by user** at round 14 (10-01 00:09) |
+| 11060307 | 09-30 | exp11 natural sizes, regularized (resubmit) | `runs/exp11_natural_reg_20260930-232106_j11060307` | **Cancelled by user** at round 13 (10-01 00:09) |
 | 11061046 | 09-30 | Local-only at 4k (entry 16), fair counterpart of 11041282 | `runs/exp16_local_cap4k_20260930-232203_j11061046` | Running (started 09-30 23:22); also the local arm of exp17-B |
-| 11063906 | 10-01 | exp17 B: federated, shared calibration, 4k (entry 17) | `runs/exp17_fed_calshared_cap4k_<stamp>_j11063906` | Queued |
-| 11063910 | 10-01 | exp17 B, no offset: federated, shared calibration, 4k | `runs/exp17_fed_calshared_nooff_cap4k_<stamp>_j11063910` | Queued |
+| 11063906 | 10-01 | exp17 B: federated, shared calibration, 4k (entry 17) | `runs/exp17_fed_calshared_cap4k_20261001-001022_j11063906` | Running (started 10-01 00:10) |
+| 11063910 | 10-01 | exp17 B, no offset: federated, shared calibration, 4k | `runs/exp17_fed_calshared_nooff_cap4k_20261001-001022_j11063910` | Running (started 10-01 00:10) |
 | 11063911 | 10-01 | exp17 local, no offset, 4k | `runs/exp17_local_nooff_cap4k_<stamp>_j11063911` | Queued |
+| 11065060 | 10-01 | exp19 baselines smoke test (entry 19) | (writes into the smoke run and local-2k run) | Queued |
+| 11065061 | 10-01 | exp19 B1 prompting (k=0, k=3, k=3 base) on fed 4k client models | `runs/exp11_cap4k_base_…j11041282/evals/*b1_prompt*` | Queued (after smoke) |
+| 11065062 | 10-01 | exp19 B4 federated CAA on fed 4k client models | `runs/exp11_cap4k_base_…j11041282/evals/*b4_caa*` | Queued (after smoke) |
+| 11065063 | 10-01 | exp19 B3 merged direction, local 2k (round 90) | `runs/nr_global_local_…j11011539/evals/*merged*b3*` | Queued (after smoke) |
+| 11065064 | 10-01 | exp19 B3 merged direction, local 4k (dev-selected) | `runs/exp16_local_cap4k_…j11061046/evals/*merged*b3*` | Queued (after smoke and 11061046) |
 
 ---
 
@@ -454,3 +459,33 @@ ImportError: cannot import name 'text_tie_metrics' from 'fedsteer.metrics'
 - Current metric suite and selection procedure.
 - A ✅/🔄/⏳ status on every claim, metric, baseline, figure and gate; next steps; a changelog pointing to this log.
 - The gap review behind the update: G1 (prompting, B1) is untested and the top priority; B3 isn't evaluated; E2, E3, B4, B5, A1–A3, seeds and the Qwen3-4B backbone are pending.
+
+## 19. Baselines B1 (prompting), B3 (one-shot merge), B4 (federated CAA) (2026-10-01)
+
+**Note on exp11:** the resubmitted cap4k_reg (11060306) and natural_reg (11060307) were **cancelled by the user** at 00:09 (rounds 13–14). The regularization bundle had already been shown to hurt (entry 11), and this freed GPUs for exp17. Not resubmitted.
+
+**Change:**
+- **`fedsteer/baselines.py` + `eval_baselines.py`:** B1 and B4 run on a client's model **with the learned direction removed** (B_d = 0). The client keeps its private adapter (house style) and calibration; only the control mechanism changes.
+  - **B1 prompting:** the target level is stated in the prompt ("Target extractiveness N on a 0–100 scale, 0 = rewrite everything in your own words, 100 = copy whole sentences"). Optionally k examples (150-word article excerpts + summaries) from the client's **own** training data, nearest to the target α. Variants: k=0 client model; k=3 client model; k=3 base model (no adapter).
+  - **B4 federated CAA:**
+    - each client computes the mean-difference activation vector (output of the middle decoder layer, teacher-forced, averaged over summary tokens) between its own top- and bottom-quartile summaries (200 each);
+    - the server averages the vectors uniformly;
+    - each client fits one scalar gain s from {0.05, 0.1, 0.2, 0.3, 0.5, 0.8} on 30 dev articles (lowest percentile error);
+    - steering adds s·(2α − 1)·(mean hidden norm)·v̂ to the residual stream at every position.
+  - The client data used = exactly the run's training subset (same cap and seed), so the baselines see no more data than the method.
+- **`scripts/merge_local_directions.py` (B3):** uniform average of a local-only run's per-client directions at one checkpoint; evaluated with `eval_direction.py --shared` (each client keeps its own adapter and calibration).
+- All write the standard eval format (metrics, near-ties, all texts); quality scoring runs after each.
+- **`sbatch/eval_baselines.sbatch`** (steps selectable; runs from a code snapshot).
+- **Cluster:** both job scripts now use `--account=lucmon-ic --partition=dali,IllinoisComputes-GPU --gres=gpu:1` (whichever frees first). The pending exp17 job 11063911 was moved to both partitions.
+
+**Tests:** 49/49.
+
+**Jobs** ([launch](launch/exp19_baselines.sh)): smoke 11065060 → (afterok) B1 11065061, B4 11065062, B3-2k 11065063; B3-4k 11065064 also waits for local 4k (11061046).
+- B1/B4 use exp11_cap4k_base's dev-selected round-100 client models.
+- B3 compares with the federated run of the same data size (2k: exp11_cap2k_base / entry 9; 4k: exp11_cap4k_base).
+
+**Fairness notes for the write-up:**
+- B1 uses at most k=3 labelled examples per prompt; B4 uses 400 training summaries plus 30 dev articles for its gain; the method uses all training labels.
+- B1's prompt template is not tuned (one template). The plan calls for tuning on validation, so a weak B1 result needs a second template before concluding gate G1.
+
+**Gates addressed:** G1 (B1), G3 (B3).

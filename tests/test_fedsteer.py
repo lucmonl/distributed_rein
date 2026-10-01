@@ -648,6 +648,59 @@ def test_no_offset_model_has_no_offset_parameter():
     assert not any(n == "steer_control.o" for n, _ in m.named_parameters())
 
 
+# ----------------------------------------------------------------------- baselines
+
+def test_b1_prompt_construction_and_shots():
+    from fedsteer.baselines import level_instruction, pick_shots, prompt_with_level
+    assert "Target extractiveness: 25 on a 0-100 scale" in level_instruction(0.25)
+    pool = [{"url": f"u{i}", "alpha": a, "article": f"art {i} " * 300, "target": f"sum {i}"}
+            for i, a in enumerate([0.1, 0.4, 0.42, 0.9])]
+    shots = pick_shots(pool, 0.41, 2, exclude_url="u2")
+    assert [s["url"] for s in shots] == ["u1", "u0"] or [s["url"] for s in shots] == ["u1", "u3"]
+    assert "u2" not in [s["url"] for s in shots]                    # never the article being summarized
+    p = prompt_with_level({"article": "THE ARTICLE"}, 0.41, shots)
+    assert p.startswith("Write a short summary") and p.rstrip().endswith("THE ARTICLE")
+    assert "Target extractiveness: 41" in p and p.count("Summary: sum") == 2
+    assert len(shots[0]["article"].split()) > 150 and "..." in p   # example articles are shortened
+    assert prompt_with_level({"article": "X"}, 0.0, []).count("Article:") == 1
+
+
+def test_b4_activation_hook_and_vector():
+    from fedsteer.baselines import add_to_residual, caa_vector
+    m = tiny_model()
+    randomize_lora(m)
+    ids = torch.randint(0, 1000, (1, 6))
+    base = logits(m, ids, 0.0)
+    v = torch.randn(m.config.hidden_size)
+    with add_to_residual(m, 0, v):
+        steered = logits(m, ids, 0.0)
+    assert not torch.allclose(base, steered)
+    assert torch.allclose(logits(m, ids, 0.0), base)                # hook removed afterwards
+    with add_to_residual(m, 0, torch.zeros_like(v)):
+        assert torch.allclose(logits(m, ids, 0.0), base, atol=1e-6)
+    fmt = ChatFormatter(tokenizer())
+    pool = [{"prompt": f"Say {i}.", "target": "word " * (i + 1), "alpha": i / 19} for i in range(20)]
+    vec, hnorm = caa_vector(m, fmt, pool, layer=0, n_per_side=4)
+    assert vec.shape == (m.config.hidden_size,) and torch.isfinite(vec).all() and hnorm > 0
+
+
+def test_b3_merge_equals_average_of_local_directions():
+    import subprocess
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("local", d, rounds=2)
+        tr.fit()
+        snap = os.path.join(d, "snapshots", "round_0002.pt")
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        out = subprocess.run([sys.executable, os.path.join(root, "scripts", "merge_local_directions.py"),
+                              "--snapshot", snap], capture_output=True, text=True)
+        assert out.returncode == 0, out.stderr
+        merged = torch.load(os.path.join(d, "merged_round_0002.pt"))
+        k = next(iter(merged))
+        s0, s1 = tr.clients["c0"]["shared_local"][k], tr.clients["c1"]["shared_local"][k]
+        assert torch.allclose(merged[k], (s0 + s1) / 2)
+        assert all(key.endswith("lora_B_d") for key in merged)
+
+
 # ------------------------------------------------------------------ extractive
 
 def test_fragment_stats_known_cases():
