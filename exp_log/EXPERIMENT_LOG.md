@@ -36,11 +36,12 @@ Since 2026-09-29 (entry 8), runs and evals never overwrite each other. Continue 
 | 11041284 | 09-30 | exp11 natural sizes (≤5k), regularized | `runs/exp11_natural_reg_20260930-180542_j11041284` | **Failed** at round 10 (ImportError, entry 14); resubmitted as 11060307 |
 | 11060306 | 09-30 | exp11 cap 4k, regularized (resubmit) | `runs/exp11_cap4k_reg_20260930-231707_j11060306` | **Cancelled by user** at round 14 (10-01 00:09) |
 | 11060307 | 09-30 | exp11 natural sizes, regularized (resubmit) | `runs/exp11_natural_reg_20260930-232106_j11060307` | **Cancelled by user** at round 13 (10-01 00:09) |
-| 11061046 | 09-30 | Local-only at 4k (entry 16), fair counterpart of 11041282 | `runs/exp16_local_cap4k_20260930-232203_j11061046` | Running (started 09-30 23:22); also the local arm of exp17-B |
-| 11063906 | 10-01 | exp17 B: federated, shared calibration, 4k (entry 17) | `runs/exp17_fed_calshared_cap4k_20261001-001022_j11063906` | Running (started 10-01 00:10) |
-| 11063910 | 10-01 | exp17 B, no offset: federated, shared calibration, 4k | `runs/exp17_fed_calshared_nooff_cap4k_20261001-001022_j11063910` | Running (started 10-01 00:10) |
-| 11063911 | 10-01 | exp17 local, no offset, 4k | `runs/exp17_local_nooff_cap4k_<stamp>_j11063911` | Queued |
-| 11065060 | 10-01 | exp19 baselines smoke test (entry 19) | (writes into the smoke run and local-2k run) | Queued |
+| 11061046 | 09-30 | Local-only at 4k (entry 16), fair counterpart of 11041282 | `runs/exp16_local_cap4k_20260930-232203_j11061046` | Done (10-01 06:28, 7.1 h); also the local arm of exp17-B |
+| 11063906 | 10-01 | exp17 B: federated, shared calibration, 4k (entry 17) | `runs/exp17_fed_calshared_cap4k_20261001-001022_j11063906` | Done (10-01 06:43, 6.5 h) |
+| 11063910 | 10-01 | exp17 B, no offset: federated, shared calibration, 4k | `runs/exp17_fed_calshared_nooff_cap4k_20261001-001022_j11063910` | Done (10-01 06:43, 6.5 h) |
+| 11063911 | 10-01 | exp17 local, no offset, 4k | `runs/exp17_local_nooff_cap4k_20261001-013643_j11063911` | Done (10-01 10:18, 8.7 h) |
+| 11065060 | 10-01 | exp19 baselines smoke test (entry 19) | — | Failed to start on ccc0387 (user env retrieval), held; released on dali 09:45, then **cancelled** (it was testing only B1, see 19a) |
+| 11077014 | 10-01 | exp19 baselines smoke test, resubmitted (all steps) | (writes into the smoke run and local-2k run) | Running on dali (started ~09:50) |
 | 11065061 | 10-01 | exp19 B1 prompting (k=0, k=3, k=3 base) on fed 4k client models | `runs/exp11_cap4k_base_…j11041282/evals/*b1_prompt*` | Queued (after smoke) |
 | 11065062 | 10-01 | exp19 B4 federated CAA on fed 4k client models | `runs/exp11_cap4k_base_…j11041282/evals/*b4_caa*` | Queued (after smoke) |
 | 11065063 | 10-01 | exp19 B3 merged direction, local 2k (round 90) | `runs/nr_global_local_…j11011539/evals/*merged*b3*` | Queued (after smoke) |
@@ -480,7 +481,7 @@ ImportError: cannot import name 'text_tie_metrics' from 'fedsteer.metrics'
 
 **Tests:** 49/49.
 
-**Jobs** ([launch](launch/exp19_baselines.sh)): smoke 11065060 → (afterok) B1 11065061, B4 11065062, B3-2k 11065063; B3-4k 11065064 also waits for local 4k (11061046).
+**Jobs** ([launch](launch/exp19_baselines.sh)): smoke 11065060 (replaced by 11077014, see 19a) → (afterok) B1 11065061, B4 11065062, B3-2k 11065063; B3-4k 11065064 also waits for local 4k (11061046).
 - B1/B4 use exp11_cap4k_base's dev-selected round-100 client models.
 - B3 compares with the federated run of the same data size (2k: exp11_cap2k_base / entry 9; 4k: exp11_cap4k_base).
 
@@ -489,3 +490,58 @@ ImportError: cannot import name 'text_tie_metrics' from 'fedsteer.metrics'
 - B1's prompt template is not tuned (one template). The plan calls for tuning on validation, so a weak B1 result needs a second template before concluding gate G1.
 
 **Gates addressed:** G1 (B1), G3 (B3).
+
+### 19a. Cluster incident (2026-10-01)
+
+- Smoke job 11065060 was dispatched to **ccc0387** (IllinoisComputes-GPU) at 02:17. SLURM failed to retrieve the user environment there; the job was requeued and **held** (`user env retrieval failed requeued held`). No script output, so it failed before our code ran. That blocked the dependent B1/B3/B4 jobs for about 7 h.
+- The same partition runs our job 11063911 fine on ccc0388, so this is a node-specific problem with ccc0387.
+- **Fix:** moved the smoke job to `dali` (idle), `scontrol release`d it (started 09:45 on ccc0284), and set `ExcNodeList=ccc0387` on the dependent jobs 11065061–11065064.
+- If the problem recurs on other nodes, add `#SBATCH --exclude=…` to the job scripts or ask the cluster admins about ccc0387.
+- **Second bug (mine):** the smoke job received `STEPS=b1` only. `sbatch --export` splits its argument on commas, so `STEPS=b1,b4,b3` lost b4 and b3, and the smoke test would have exercised B1 only. Fix: `sbatch/eval_baselines.sbatch` takes `+`-separated steps (`STEPS=b1+b4+b3`, converted internally); launch file corrected. Smoke 11065060 was cancelled and resubmitted as **11077014** on `dali` (confirmed `STEPS=b1,b4,b3`). Dependent jobs 11065061–11065064 now depend on `afterok:11077014` (and still exclude ccc0387). The real jobs were not affected: each passes a single step.
+
+## 20. Results: shared vs. private calibration, federated vs. local, all at 4k (2026-10-01)
+
+Five runs, 4k examples per client, no regularizers, 100 rounds; **every run selected round 100 on dev** (still improving). Test, 200 articles per client.
+
+Command: `python scripts/compare_runs.py --run F_priv=…j11041282 --run F_shared=…j11063906 --run F_shared_noO=…j11063910 --run L_priv=…j11061046 --run L_noO=…j11063911 --pair …` (new script). Full output is reproducible from the saved evals.
+
+| Run | Calibration | Offset | Pct error (worst) | In-support | Out-of-support (worst) | Reach | Spearman (worst) | Concordance excl. near-ties | Near-tie |
+|---|---|---|---|---|---|---|---|---|---|
+| F_priv (11041282) | private | yes | 0.155 (0.229) | **0.134** | 0.165 (0.253) | **0.397** | 0.926 (0.832) | 0.904 | 0.215 |
+| F_shared (11063906) | shared | yes | 0.158 (0.229) | 0.141 | 0.167 (0.204) | 0.377 | 0.920 (0.855) | 0.899 | 0.217 |
+| **F_shared_noO** (11063910) | **shared** | **no** | **0.151 (0.199)** | 0.135 | **0.161 (0.188)** | 0.387 | **0.933 (0.910)** | **0.907** | **0.204** |
+| L_priv (11061046) | per client (local) | yes | 0.161 (0.206) | 0.142 | 0.166 (0.228) | 0.353 | 0.905 (0.842) | 0.891 | 0.249 |
+| L_noO (11063911) | per client (local) | no | 0.165 (0.205) | 0.148 | 0.165 (0.249) | 0.363 | 0.906 (0.839) | 0.891 | 0.246 |
+
+**Per client** (paired bootstrap; significant = 95% CI excludes 0):
+- **F_shared_noO vs L_noO (corrected 10-01; the first version reported only the overall-error column):**
+
+  | Metric | Federated significantly better | Local significantly better |
+  |---|---|---|
+  | Overall error | 4 (theguardian −0.066, nypost −0.028, wsj, cbc) | 0 |
+  | In-support error | 6 | 1 (nypost +0.022) |
+  | **Out-of-support error** | 2 (theguardian −0.101, nypost −0.040) | **4** (forbes +0.029, wsj +0.025, aol +0.020, reuters +0.028) |
+  | Spearman | 3 (theguardian +0.104, nypost +0.071, aol +0.017) | 0 |
+
+  **Mixed per publication.** Federation helps a lot where a client's data has *large gaps* (theguardian, nypost: 3–4 of 5 test α outside support) and improves in-support calibration for most clients. It is slightly **worse at the extreme α (0, 1)** for clients whose data covers about [0.05, 0.95]. For those clients, "out-of-support" is only the 5% tails, where a local model fits its own extremes better. Proposed: report *gap* regions (essentially no client data) separately from *tail* regions.
+- F_priv vs L_priv: better on 3/8, **worse on 2/8** (reuters.com +0.027, nypost.com +0.022), as at 2k (entry 15).
+- F_shared vs F_priv: shared calibration **fixes nypost.com** (−0.042; out-of-support −0.053, the predicted extrapolation effect) but **costs** theguardian.com, people.com, wsj.com and reuters.com (+0.011 to +0.024).
+- F_shared_noO vs F_shared: dropping the offset helps people.com (−0.014), reuters.com (−0.030) and nypost.com (−0.010), and hurts nobody.
+- Out-of-support error for clients with near-full support (forbes.com [0.03, 0.99] etc.) is about the extreme α only; local is slightly better there (+0.016 to +0.029 for federated).
+
+**Quality, test** (gap = generated − real summaries at the same α):
+
+| Run | AlignScore in / out | Gap in / out | BERTScore in / out | Length gap in / out | Judge faithful in / out | Judge relevance gap in / out | Judge coherence in / out |
+|---|---|---|---|---|---|---|---|
+| F_priv | 0.780 / 0.734 | −0.024 / +0.051 | 0.900 / 0.891 | +2.5 / +4.0 | 0.82 / 0.78 | −0.01 / +0.02 | 4.17 / 4.18 |
+| F_shared | 0.776 / 0.735 | −0.029 / +0.052 | 0.900 / 0.890 | +2.9 / +2.2 | 0.83 / 0.80 | −0.01 / +0.00 | 4.21 / 4.19 |
+| F_shared_noO | 0.779 / 0.729 | −0.026 / +0.046 | 0.900 / 0.889 | +2.0 / +2.3 | 0.82 / 0.79 | +0.02 / +0.02 | 4.21 / 4.19 |
+| L_priv | 0.794 / 0.698 | −0.010 / +0.014 | 0.900 / 0.887 | +3.5 / +0.5 | 0.81 / 0.78 | −0.04 / **−0.12** | 4.17 / 4.11 |
+| L_noO | 0.790 / 0.694 | −0.015 / +0.011 | 0.902 / 0.887 | +2.7 / −0.5 | 0.84 / 0.79 | −0.02 / −0.05 | 4.19 / 4.14 |
+
+- Quality is on par everywhere. Faithfulness, BERTScore and coherence are about equal across runs.
+- Out-of-support, the federated runs are **more relevant** than local (judge relevance gap ≈ 0 vs −0.05 to −0.12) and more consistent relative to the same-α reference.
+- Federated runs are slightly longer out-of-support (+2 to +4 tokens), the density–length coupling as they reach higher α.
+- The judge uses 25 articles per client: no CIs, treat as indicative.
+
+**Takeaways:** shared calibration without offset is the best federated design on mean, worst client, out-of-support and ties. Against local it is a **coverage trade-off**: large gains for clients missing large parts of the scale, better in-support calibration for most, slightly worse at the extreme α for clients with near-full coverage. That fits the global-α design (only house style is private). Caveats: one seed; all runs chose their last checkpoint, so longer training could change the ranking; baselines B1/B3/B4 still pending.

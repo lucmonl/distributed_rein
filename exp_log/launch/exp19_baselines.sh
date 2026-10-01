@@ -11,7 +11,7 @@ L4=runs/exp16_local_cap4k_20260930-232203_j11061046
 SMOKE_RUN=runs/smoke_pipeline_20260930-111641_j11039406
 sub () { sbatch --parsable "$@" sbatch/eval_baselines.sbatch; }
 
-S=$(sub --job-name=exp19_smoke --time=01:30:00 --export=ALL,STEPS=b1,b4,b3,SMOKE=1,FED_RUN=$SMOKE_RUN,FED_SNAP=$SMOKE_RUN/snapshots/round_0002.pt,LOCAL_RUN=$L2,LOCAL_SNAP=$L2/snapshots/round_0090.pt)
+S=$(sub --job-name=exp19_smoke --time=01:30:00 --export=ALL,STEPS=b1+b4+b3,SMOKE=1,FED_RUN=$SMOKE_RUN,FED_SNAP=$SMOKE_RUN/snapshots/round_0002.pt,LOCAL_RUN=$L2,LOCAL_SNAP=$L2/snapshots/round_0090.pt)
 echo "smoke $S"
 B1=$(sub --job-name=exp19_b1_prompt --dependency=afterok:$S --export=ALL,STEPS=b1,FED_RUN=$FED,FED_SNAP=$FED/snapshots/round_0100.pt)
 B4=$(sub --job-name=exp19_b4_caa    --dependency=afterok:$S --export=ALL,STEPS=b4,FED_RUN=$FED,FED_SNAP=$FED/snapshots/round_0100.pt)
