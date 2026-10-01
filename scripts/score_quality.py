@@ -52,7 +52,7 @@ def main():
     ref_path = os.path.join(args.run, "alpha_reference.json")
     gref = alpha_reference_from_json(json.load(open(ref_path))) if os.path.exists(ref_path) else None
     records = read_jsonl(cfg["data_path"])
-    by_url = {r["url"]: r for r in records if r["client"] in cfg["clients"]}
+    by_url = {r["url"]: r for r in records}   # all clients: E2 evaluates held-out (non-participant) clients
 
     align = AlignScorer(device=args.device, batch_size=args.batch_size)
     bert = BERTScorer(device=args.device)

@@ -4,6 +4,8 @@ same-alpha reference) and LLM judge, plus per-client paired bootstrap for chosen
     python scripts/compare_runs.py \\
         --run F_priv=runs/exp11_cap4k_base_... --run L_priv=runs/exp16_local_cap4k_... \\
         --pair F_priv:L_priv
+    # a specific eval file of a run (e.g. a baseline stored in that run's evals/): name=run_dir::glob
+    --run B1=runs/exp11_cap4k_base_...::eval_round_0100_b1_prompt_k3_client__*.json
 
 Uses each run's test evaluation (the non-dev eval file; with several, the newest unless
 --eval_glob narrows it) and its quality_/judge_ files.  Paired bootstrap resamples the
@@ -75,7 +77,8 @@ def main():
     runs = {}
     for spec in args.run:
         name, path = spec.split("=", 1)
-        runs[name] = load_run(path, args.eval_glob)
+        path, _, pattern = path.partition("::")
+        runs[name] = load_run(path, pattern or args.eval_glob)
     rng = np.random.default_rng(args.seed)
     clients = list(next(iter(runs.values()))["eval"]["clients"])
 
@@ -85,14 +88,16 @@ def main():
           + f" {'concord_nt':>11s} {'nearTie':>8s} {'endNearTie':>10s}")
     for n, r in runs.items():
         s = r["eval"]["summary"]
-        ties = [text_tie_metrics(v["outputs"], v["grid"], r["eval"]["alphas"]) for v in r["eval"]["clients"].values()]
+        # older eval files have no saved outputs: text-based tie metrics are then n/a
+        ties = [text_tie_metrics(v["outputs"], v["grid"], r["eval"]["alphas"]) for v in r["eval"]["clients"].values()
+                if "outputs" in v]
+        tie = lambda k: f"{np.mean([t[k] for t in ties]):.3f}" if ties else "n/a"
         cells = []
         for c in cols:
             worst = f"({s[c]['worst']:.3f})" if c != "reach_rate" else ""
             cells.append(f"{s[c]['mean']:.3f}{worst:>8s}")
         print(f"{n:16s} {r['eval']['round']:5d} " + " ".join(f"{x:>16s}" for x in cells)
-              + f" {np.mean([t['concordance_nt'] for t in ties]):11.3f} {np.mean([t['near_tie_rate'] for t in ties]):8.3f}"
-              f" {np.mean([t['endpoint_near_tie_rate'] for t in ties]):10.3f}")
+              + f" {tie('concordance_nt'):>11s} {tie('near_tie_rate'):>8s} {tie('endpoint_near_tie_rate'):>10s}")
 
     print("\n== Quality (test; mean over clients). gap = generated - real summaries at the same alpha")
     qcols = ["align_in", "align_out", "gap_align_in", "gap_align_out", "bert_f1_in", "bert_f1_out",

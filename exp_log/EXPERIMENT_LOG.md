@@ -41,11 +41,20 @@ Since 2026-09-29 (entry 8), runs and evals never overwrite each other. Continue 
 | 11063910 | 10-01 | exp17 B, no offset: federated, shared calibration, 4k | `runs/exp17_fed_calshared_nooff_cap4k_20261001-001022_j11063910` | Done (10-01 06:43, 6.5 h) |
 | 11063911 | 10-01 | exp17 local, no offset, 4k | `runs/exp17_local_nooff_cap4k_20261001-013643_j11063911` | Done (10-01 10:18, 8.7 h) |
 | 11065060 | 10-01 | exp19 baselines smoke test (entry 19) | — | Failed to start on ccc0387 (user env retrieval), held; released on dali 09:45, then **cancelled** (it was testing only B1, see 19a) |
-| 11077014 | 10-01 | exp19 baselines smoke test, resubmitted (all steps) | (writes into the smoke run and local-2k run) | Running on dali (started ~09:50) |
-| 11065061 | 10-01 | exp19 B1 prompting (k=0, k=3, k=3 base) on fed 4k client models | `runs/exp11_cap4k_base_…j11041282/evals/*b1_prompt*` | Queued (after smoke) |
-| 11065062 | 10-01 | exp19 B4 federated CAA on fed 4k client models | `runs/exp11_cap4k_base_…j11041282/evals/*b4_caa*` | Queued (after smoke) |
-| 11065063 | 10-01 | exp19 B3 merged direction, local 2k (round 90) | `runs/nr_global_local_…j11011539/evals/*merged*b3*` | Queued (after smoke) |
-| 11065064 | 10-01 | exp19 B3 merged direction, local 4k (dev-selected) | `runs/exp16_local_cap4k_…j11061046/evals/*merged*b3*` | Queued (after smoke and 11061046) |
+| 11077014 | 10-01 | exp19 baselines smoke test, resubmitted (all steps) | (writes into the smoke run and local-2k run) | Done (results: entry 22) |
+| 11065061 | 10-01 | exp19 B1 prompting (k=0, k=3, k=3 base) on fed 4k client models | `runs/exp11_cap4k_base_…j11041282/evals/*b1_prompt*` | Done (results: entry 22) |
+| 11065062 | 10-01 | exp19 B4 federated CAA on fed 4k client models | `runs/exp11_cap4k_base_…j11041282/evals/*b4_caa*` | Done (results: entry 22) |
+| 11065063 | 10-01 | exp19 B3 merged direction, local 2k (round 90) | `runs/nr_global_local_…j11011539/evals/*merged*b3*` | Done (results: entry 22) |
+| 11065064 | 10-01 | exp19 B3 merged direction, local 4k (dev-selected) | `runs/exp16_local_cap4k_…j11061046/evals/*merged*b3*` | Done (results: entry 22) |
+| 11082124 | 10-01 | exp21 E2/E3 smoke test (entry 21) | writes into the smoke run | E2 + E3 passed; **failed in quality scoring** (fixed, see 21a) |
+| 11082125 | 10-01 | exp21 E2 on method run (fed, shared cal, no offset) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e2_*` | Cancelled (blocked by failed smoke); resubmitted, see 21a |
+| 11082128 | 10-01 | exp21 E3 on method run | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e3_*` | Cancelled (blocked by failed smoke); resubmitted, see 21a |
+| 11082129 | 10-01 | exp21 E3 on local counterpart (no offset) | `runs/exp17_local_nooff_cap4k_…j11063911/evals/*_e3_*` | Cancelled (blocked by failed smoke); resubmitted, see 21a |
+| 11082130 | 10-01 | exp21 E2 on private-calibration fed run | `runs/exp11_cap4k_base_…j11041282/evals/*_e2_*` | Cancelled (blocked by failed smoke); resubmitted, see 21a |
+| 11083572 | 10-01 | exp21 E2 on method run (resubmit) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e2_*` | Running (ccc0284) |
+| 11083573 | 10-01 | exp21 E3 on method run (resubmit) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e3_*` | Queued |
+| 11083574 | 10-01 | exp21 E3 on local counterpart (resubmit) | `runs/exp17_local_nooff_cap4k_…j11063911/evals/*_e3_*` | Queued |
+| 11083575 | 10-01 | exp21 E2 on private-calibration fed run (resubmit) | `runs/exp11_cap4k_base_…j11041282/evals/*_e2_*` | Queued (after 11083572) |
 
 ---
 
@@ -545,3 +554,82 @@ Command: `python scripts/compare_runs.py --run F_priv=…j11041282 --run F_share
 - The judge uses 25 articles per client: no CIs, treat as indicative.
 
 **Takeaways:** shared calibration without offset is the best federated design on mean, worst client, out-of-support and ties. Against local it is a **coverage trade-off**: large gains for clients missing large parts of the scale, better in-support calibration for most, slightly worse at the extreme α for clients with near-full coverage. That fits the global-α design (only house style is private). Caveats: one seed; all runs chose their last checkpoint, so longer training could change the ranking; baselines B1/B3/B4 still pending.
+
+## 21. Evaluation settings E2 (held-out clients) and E3 (drift) (2026-10-01)
+
+**Change:**
+- **`fedsteer/adapt.py`** — three single-component training routines (everything else frozen and restored):
+  - `train_adapter_sft`: plain, label-free SFT of the private adapter. The steering module is switched off during training via `direction_off`.
+  - `fit_calibration`: gain/offset/warp on k labelled examples.
+  - `train_local_direction`: a client's own direction from zero (+ calibration) on k examples, adapter frozen.
+- **`e2_heldout.py`** (claim C2): for each of the rotation's 4 held-out clients (telegraph.co.uk, bbc.com, mashable.com, latimes.com):
+  1. Train the adapter by plain SFT with steering off, at the participants' budget (rounds × local_steps). It is **cached** in `runs/_e2_adapters/`, since it doesn't depend on the federated run.
+  2. Attach the frozen federated direction and evaluate on test (200 articles), one standard eval file per setting:
+     - `frozen_k0`: the run's calibration as is (shared calibration, i.e. **zero-shot**); identity calibration for private-calibration runs;
+     - `frozen_cal_k16/k64`: calibration fitted on k labelled examples;
+     - baselines `localdir_k16/k64` (own direction from the same k) and `prompt_k16/k64` (3 shots from the same k).
+
+   α uses the run's global reference (participants' mixture).
+- **`e3_drift.py`** (claim C3): for each participant, starting from the checkpoint:
+  - stage 0, then 3 drift stages (200 later-year pairs each), each with 100 steps of plain SFT with steering off;
+  - after each stage: evaluate as is, and after a k=16 calibration refit (a branch; the drift chain continues un-refit);
+  - test articles: 100 per client.
+- **`sbatch/eval_settings.sbatch`:** steps e2/e3, code snapshot, quality scoring of all produced files.
+- All job scripts now exclude ccc0387.
+
+**Tests:** 52/52 (each helper changes only its own component; direction and requires_grad flags restored).
+
+**Jobs** ([launch](launch/exp21_e2_e3.sh)): smoke 11082124 → (afterok)
+- E2 on the method run: 11082125;
+- E3 on the method run: 11082128;
+- E3 on its local counterpart: 11082129;
+- E2 on the private-calibration federated run: 11082130 (after 11082125, reusing cached adapters).
+
+**Design choices to note in the write-up:**
+- Drift SFT runs with steering off: someone fine-tuning without knowing about the knob.
+- E2 adapters use the participants' training budget.
+- The E3 refit uses k=16 labelled pairs from the same drift stage.
+
+### 21a. Smoke result and fix (2026-10-01)
+
+- Smoke 11082124: **E2 (all settings) and E3 (stages 0–1, as is and refit) ran correctly.** It then failed in quality scoring with a `KeyError` on a telegraph.co.uk URL: `scripts/score_quality.py` looked up records of the run's participants only, but E2 evaluates **held-out** clients.
+- **Fix:** record lookup over all clients. The same-α reference baseline still uses participants' summaries only. Verified by scoring the smoke's E2 output on CPU.
+- The four dependent jobs (blocked by `DependencyNeverSatisfied`) were cancelled and resubmitted without the smoke dependency: E2 on the method run **11083572**, E3 on the method run **11083573**, E3 on the local counterpart **11083574**, E2 on the private-calibration run **11083575** (after 11083572).
+
+## 22. Results: baselines B1 (prompting), B3 (one-shot merge), B4 (federated CAA) (2026-10-01)
+
+All on test (200 articles per client, 4k data). B1/B4 use the client models of F_priv (exp11_cap4k_base, round 100) with the direction removed; B3 merges the local-4k run's (exp16) directions at round 100. "Method" = federated, shared calibration, no offset (exp17, 11063910). Produced with `scripts/compare_runs.py` (now accepts `name=run_dir::file_pattern`).
+
+| | Pct error (worst) | In-support | Out-of-support | Reach | Spearman | Near-tie | Endpoint near-tie | AlignScore in / out (gap) | Length gap out |
+|---|---|---|---|---|---|---|---|---|---|
+| **Method** | **0.151 (0.199)** | 0.135 | **0.161** | 0.39 | **0.933** | 0.204 | 0.002 | 0.779 / 0.729 (+0.05) | +2.3 |
+| F_priv (models for B1/B4) | 0.155 (0.229) | 0.134 | 0.165 | 0.40 | 0.926 | 0.215 | 0.009 | 0.780 / 0.734 (+0.05) | +4.0 |
+| L_priv (local 4k) | 0.161 (0.206) | 0.142 | 0.166 | 0.35 | 0.905 | 0.249 | 0.004 | 0.794 / 0.698 (+0.01) | +0.5 |
+| **B3 merge** (local 4k directions) | 0.184 (0.229) | 0.149 | 0.220 | 0.26 | 0.878 | 0.223 | 0.009 | 0.788 / 0.708 (+0.03) | −1.7 |
+| **B4 CAA** (layer 8) | 0.263 (0.317) | 0.212 | 0.312 | 0.22 | 0.752 | 0.048 | 0.000 | 0.594 / 0.476 (**−0.21**) | **+11.5** |
+| **B1 prompt k=0** | 0.378 (0.412) | 0.240 | 0.500 | 0.03 | **−0.002** | 0.738 | **0.704** | 0.648 / 0.650 | −6.9 |
+| **B1 prompt k=3** | 0.378 (0.401) | 0.247 | 0.495 | 0.05 | 0.040 | 0.196 | 0.182 | 0.608 / 0.605 | −7.2 |
+| **B1 prompt k=3, base model** | 0.341 (0.355) | 0.243 | 0.467 | 0.12 | 0.077 | 0.003 | 0.000 | 0.609 / 0.631 | **+72** (≈110 tokens) |
+
+**Per client (paired bootstrap):**
+- Method vs B1 (k=3): better on **8/8**.
+- Method vs B4: better on **7/8** (reuters.com a tie).
+- Method vs B3: better on **7/8**, worse on 1/8 (reuters.com +0.017).
+- B3 vs local 4k: B3 **worse on 6/8**, better on 0/8.
+- B4 vs B1: B4 better on 8/8.
+- At 2k, the ordering is the same (worst client in brackets):
+  - federated 2k: 0.162 (0.247), round 60;
+  - local 2k: 0.180 (0.235);
+  - B3 merge of the local 2k directions at round 90: 0.195 (0.236).
+  - Federated vs B3: better on 5/8, worse on 0/8.
+  - B3 vs local: better on 2/8 (theguardian, reuters), worse on 4/8.
+- **Pattern in both sizes:** merging helps only theguardian.com out-of-support (−0.07 at 4k, −0.11 at 2k vs local). It is the narrowest-support client (α 0.04–0.55), and it borrows the high-α behaviour other clients learned. The merge hurts the broad-support clients' extremes. Federated training gets the theguardian gain without that loss. This is the same coverage argument as entry 20.
+- `scripts/compare_runs.py` now reports the text-based tie columns as n/a for older eval files without saved outputs (the local 2k test eval); before, it crashed.
+
+**Readings:**
+- **B1 prompting does not steer** extractiveness with this 1B model. With k=0, α has no effect (Spearman ≈ 0; 70% of articles give near-identical text at α = 0 and 1: the fine-tuned adapter ignores the level instruction). Few-shot examples change the text but not in the right direction. The base model writes ~110-token summaries regardless.
+  - **Gate G1 passes, with caveats:** one untuned template; a 1B model may follow numeric style instructions poorly. Re-check on the final backbone (Qwen3-4B) with a second template. The stronger "conditioning through the input" baseline is **A3** (shared/private LoRA trained with the level as a text control token), still pending.
+- **B3 one-shot merging is worse than both** the method and local training (directions averaged once don't match each client's adapter and calibration). **Gate G3 passes:** iterative federated training is needed.
+  - Caveat: B3 keeps each client's local calibration, fitted to its own direction; a merged-direction variant with a refitted gain would be fairer.
+- **B4 activation steering** steers partially (Spearman 0.75) but much worse than the method, and **degrades quality**: AlignScore −0.21 against the same-α reference out-of-support, summaries +11 tokens. Clients' CAA vectors agree moderately with the average (cosine 0.64–0.84).
+  - **B4 is under-tuned:** 6 of 8 clients picked the largest gain in the grid (0.8), with dev error still falling. It needs a wider gain grid (and maybe a layer choice) before final numbers.

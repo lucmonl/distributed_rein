@@ -701,6 +701,58 @@ def test_b3_merge_equals_average_of_local_directions():
         assert all(key.endswith("lora_B_d") for key in merged)
 
 
+# ------------------------------------------------------------------ E2 / E3 helpers
+
+def _snap_params(m):
+    return {n: p.detach().clone() for n, p in m.named_parameters()}
+
+
+def _changed(before, m):
+    return {n for n, p in m.named_parameters() if not torch.equal(before[n], p.detach())}
+
+
+def test_adapter_sft_changes_only_private_adapter_and_restores_direction():
+    from fedsteer.adapt import train_adapter_sft
+    m = tiny_model(offset=True, warp="kumaraswamy_mix")
+    randomize_lora(m)
+    flags = {n: p.requires_grad for n, p in m.named_parameters()}
+    before = _snap_params(m)
+    ex, _ = build_clients(toy_records(), ["c0"])
+    losses = train_adapter_sft(m, ChatFormatter(tokenizer()), ex["c0"], steps=3, lr=5e-3, batch_size=2, bf16=False)
+    assert len(losses) == 3
+    ch = _changed(before, m)
+    assert ch and all(n.endswith(("lora_A_p", "lora_B_p")) for n in ch), ch
+    assert all(torch.equal(before[n], p) for n, p in m.named_parameters() if n.endswith("lora_B_d"))
+    assert {n: p.requires_grad for n, p in m.named_parameters()} == flags
+
+
+def test_fit_calibration_changes_only_control():
+    from fedsteer.adapt import fit_calibration
+    m = tiny_model(offset=True, warp="kumaraswamy_mix")
+    randomize_lora(m)
+    before = _snap_params(m)
+    ex, _ = build_clients(toy_records(), ["c0"])
+    fit_calibration(m, ChatFormatter(tokenizer()), ex["c0"][:6], steps=3, lr=0.05, batch_size=2, bf16=False)
+    ch = _changed(before, m)
+    assert ch and all(n.startswith("steer_control.") for n in ch), ch
+
+
+def test_local_direction_trains_from_zero_with_adapter_frozen():
+    from fedsteer.adapt import train_local_direction
+    m = tiny_model()
+    randomize_lora(m)
+    before = _snap_params(m)
+    ex, _ = build_clients(toy_records(), ["c0"])
+    train_local_direction(m, ChatFormatter(tokenizer()), ex["c0"][:6], steps=3, lr=5e-3, batch_size=2, bf16=False)
+    ch = _changed(before, m)
+    assert any(n.endswith("lora_B_d") for n in ch)
+    assert not any(n.endswith(("lora_A_p", "lora_B_p")) for n in ch)
+    # started from zero: after 3 small steps the direction is far smaller than the random one before
+    nb = sum(before[n].norm() for n in before if n.endswith("lora_B_d"))
+    na = sum(p.norm() for n, p in m.named_parameters() if n.endswith("lora_B_d"))
+    assert na < 0.5 * nb
+
+
 # ------------------------------------------------------------------ extractive
 
 def test_fragment_stats_known_cases():
