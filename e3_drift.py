@@ -73,7 +73,7 @@ def main():
     torch.manual_seed(args.seed)
     model, tok = load_model(cfg["model_name"], SteerLoraConfig(**cfg["lora"]), device=device,
                             grad_checkpointing=True, attn_implementation=cfg.get("attn_implementation", "sdpa"))
-    fmt = ChatFormatter(tok, system_prompt=cfg.get("system_prompt"),
+    fmt = ChatFormatter(tok, system_prompt=cfg.get("system_prompt"), template_kwargs=cfg.get("chat_template_kwargs"),
                         max_prompt_tokens=cfg.get("max_prompt_tokens", 1024),
                         max_target_tokens=cfg.get("max_target_tokens", 256))
     snap = torch.load(args.snapshot, map_location="cpu", weights_only=False)

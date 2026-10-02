@@ -19,6 +19,7 @@ tie_break: average
 #   local:  percentile under each client's own CDF (ablation)
 alpha_mode: global
 system_prompt: null
+chat_template_kwargs: {}      # extra chat-template args; Qwen3: chat_template_kwargs.enable_thinking=false
 max_prompt_tokens: 1024        # articles are truncated to 400 words at build time
 max_target_tokens: 128
 grad_checkpointing: true

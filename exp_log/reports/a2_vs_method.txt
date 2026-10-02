@@ -1,0 +1,52 @@
+== Steering (test; mean over clients; worst client in brackets)
+run              round    pct_calib_err   pct_err_in_sup   pct_err_out_su       reach_rate         spearman  concord_nt  nearTie endNearTie
+Method             100    0.151 (0.199)    0.135 (0.219)    0.161 (0.188)    0.387            0.933 (0.910)       0.907    0.204      0.002
+A2_shared           70    0.159 (0.176)    0.177 (0.214)    0.136 (0.168)    0.500            0.951 (0.914)       0.930    0.200      0.000
+L_noO              100    0.165 (0.205)    0.148 (0.227)    0.165 (0.249)    0.363            0.906 (0.839)       0.891    0.246      0.004
+
+== Quality (test; mean over clients). gap = generated - real summaries at the same alpha
+run                    align_in      align_out   gap_align_in  gap_align_out     bert_f1_in    bert_f1_out      length_in     length_out  gap_length_in gap_length_out
+Method                    0.779          0.729         -0.026          0.046          0.900          0.889         32.059         36.476          1.970          2.329
+A2_shared                 0.889          0.787          0.085          0.103          0.897          0.884         37.244         44.230          7.155         10.083
+L_noO                     0.790          0.694         -0.015          0.011          0.902          0.887         32.745         33.697          2.656         -0.450
+
+== LLM judge (subsample; mean over clients)
+run                    faithful_in      faithful_out   gap_faithful_in  gap_faithful_out      relevance_in     relevance_out  gap_relevance_in gap_relevance_out      coherence_in     coherence_out
+Method                       0.815             0.791            -0.091             0.019             3.654             3.656             0.021             0.019             4.213             4.194
+A2_shared                    0.889             0.859            -0.017             0.087             3.632             3.702            -0.002             0.065             4.254             4.192
+L_noO                        0.839             0.788            -0.068             0.017             3.610             3.584            -0.023            -0.053             4.186             4.141
+
+== Per-client percentile error (test)
+client                 support         Method      A2_shared          L_noO
+forbes.com        [0.03,0.99]          0.129          0.149          0.125
+theguardian.com   [0.04,0.55]          0.133          0.155          0.200
+people.com        [0.03,0.70]          0.152          0.156          0.160
+wsj.com           [0.04,0.89]          0.144          0.155          0.151
+aol.com           [0.06,0.82]          0.132          0.163          0.138
+cbc.ca            [0.11,0.95]          0.143          0.173          0.152
+reuters.com       [0.10,0.97]          0.199          0.176          0.192
+nypost.com        [0.51,0.95]          0.177          0.147          0.205
+
+== A2_shared - Method: per-client paired bootstrap (negative = A2_shared better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.021 [+0.013,+0.028]*    +0.010 [-0.000,+0.020] 
+theguardian.com      +0.022 [+0.012,+0.032]*    -0.011 [-0.022,+0.000] 
+people.com           +0.004 [-0.004,+0.012]     -0.020 [-0.031,-0.008]*
+wsj.com              +0.011 [+0.003,+0.019]*    -0.039 [-0.052,-0.027]*
+aol.com              +0.031 [+0.023,+0.039]*    -0.020 [-0.033,-0.008]*
+cbc.ca               +0.030 [+0.023,+0.038]*    -0.027 [-0.039,-0.016]*
+reuters.com          -0.023 [-0.033,-0.014]*    -0.050 [-0.066,-0.035]*
+nypost.com           -0.031 [-0.040,-0.022]*    -0.044 [-0.054,-0.033]*
+A2_shared significantly better on 2/8 clients, worse on 5/8
+
+== A2_shared - L_noO: per-client paired bootstrap (negative = A2_shared better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.024 [+0.016,+0.032]*    +0.039 [+0.029,+0.050]*
+theguardian.com      -0.044 [-0.056,-0.033]*    -0.112 [-0.127,-0.097]*
+people.com           -0.004 [-0.013,+0.005]     -0.024 [-0.037,-0.012]*
+wsj.com              +0.004 [-0.003,+0.012]     -0.015 [-0.027,-0.002]*
+aol.com              +0.025 [+0.017,+0.032]*    +0.000 [-0.013,+0.013] 
+cbc.ca               +0.021 [+0.013,+0.028]*    -0.019 [-0.031,-0.007]*
+reuters.com          -0.016 [-0.025,-0.008]*    -0.022 [-0.034,-0.010]*
+nypost.com           -0.059 [-0.070,-0.048]*    -0.084 [-0.097,-0.071]*
+A2_shared significantly better on 3/8 clients, worse on 3/8

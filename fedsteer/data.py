@@ -163,9 +163,13 @@ class ChatFormatter:
     to the assistant turn (target text plus the template's end-of-turn tokens)."""
 
     def __init__(self, tokenizer, system_prompt: Optional[str] = None,
-                 max_prompt_tokens: int = 1024, max_target_tokens: int = 256):
+                 max_prompt_tokens: int = 1024, max_target_tokens: int = 256,
+                 template_kwargs: Optional[dict] = None):
         self.tok = tokenizer
         self.system_prompt = system_prompt
+        # extra chat-template arguments, e.g. {"enable_thinking": false} for Qwen3 (config:
+        # chat_template_kwargs); templates ignore arguments they do not use
+        self.template_kwargs = dict(template_kwargs or {})
         self.max_prompt_tokens = max_prompt_tokens
         self.max_target_tokens = max_target_tokens
 
@@ -174,7 +178,8 @@ class ChatFormatter:
         return msgs + [{"role": "user", "content": prompt}]
 
     def prompt_text(self, prompt: str) -> str:
-        return self.tok.apply_chat_template(self._messages(prompt), tokenize=False, add_generation_prompt=True)
+        return self.tok.apply_chat_template(self._messages(prompt), tokenize=False, add_generation_prompt=True,
+                                            **self.template_kwargs)
 
     def prompt_ids(self, prompt: str) -> list[int]:
         ids = self.tok(self.prompt_text(prompt), add_special_tokens=False)["input_ids"]
@@ -182,9 +187,10 @@ class ChatFormatter:
 
     def encode(self, prompt: str, target: str) -> dict:
         msgs = self._messages(prompt)
-        p_text = self.tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+        p_text = self.tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
+                                              **self.template_kwargs)
         full = self.tok.apply_chat_template(msgs + [{"role": "assistant", "content": target}],
-                                            tokenize=False, add_generation_prompt=False)
+                                            tokenize=False, add_generation_prompt=False, **self.template_kwargs)
         if not full.startswith(p_text):
             raise ValueError("chat template renders the prompt differently with an assistant turn")
         p_ids = self.tok(p_text, add_special_tokens=False)["input_ids"][-self.max_prompt_tokens:]

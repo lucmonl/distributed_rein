@@ -56,12 +56,17 @@ Since 2026-09-29 (entry 8), runs and evals never overwrite each other. Continue 
 | 11083574 | 10-01 | exp21 E3 on local counterpart (resubmit) | `runs/exp17_local_nooff_cap4k_…j11063911/evals/*_e3_*` | Done (10-01 19:41; entry 26) |
 | 11083575 | 10-01 | exp21 E2 on private-calibration fed run (resubmit) | `runs/exp11_cap4k_base_…j11041282/evals/*_e2_*` | **Cancelled** before it started (old design, entry 23) |
 | 11087947 | 10-01 | exp23 E2 redesign smoke (α window 0–0.4, smoke run) | writes into the smoke run | **Passed** (all four settings, window filter, quality scoring) |
-| 11088050–53 | 10-01 | exp23 E2 on method run, n = 16 / 64 / 256 / 1024 (all four settings) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e2_*_n{n}__*` | n=16/64/256 done (entry 26); n=1024 running |
-| 11088054 | 10-01 | exp23 E2 on method run, n = all (frozen_D, local_D, plugin) | same, `*_nall__*` | Queued (after smoke) |
-| 11088055 | 10-01 | exp23 E2 on private-calibration run, all n (frozen_D, plugin) | `runs/exp11_cap4k_base_…j11041282/evals/*_e2_*` | Queued (after smoke) |
-| 11094904 | 10-01 | exp25 A2: shared adapter (non-personalized FedAvg), shared calibration, no offset, 4k | `runs/exp25_fed_adaptershared_calshared_nooff_cap4k_<stamp>_j11094904` | Running (started ~21:30) |
-| 11097085 | 10-01 | exp27 judge smoke (refactored `judge_quality.py` on the smoke run's held-out E2 files) | `runs/smoke_pipeline_…j11039406/evals/judge_*e2_*` | Queued |
-| 11097083 | 10-01 | exp27 LLM judge on E2 `frozen_D` / `local_D` (all n) of the method run | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/judge_*e2_*` | Queued (after E2 n=1024 / all: 11088053, 11088054) |
+| 11088050–53 | 10-01 | exp23 E2 on method run, n = 16 / 64 / 256 / 1024 (all four settings) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e2_*_n{n}__*` | Done (entries 26, 30) |
+| 11088054 | 10-01 | exp23 E2 on method run, n = all (frozen_D, local_D, plugin) | same, `*_nall__*` | Done (10-02 02:04; entry 30) |
+| 11088055 | 10-01 | exp23 E2 on private-calibration run, all n (frozen_D, plugin) | `runs/exp11_cap4k_base_…j11041282/evals/*_e2_*` | Done (10-02 04:02; entry 30) |
+| 11094904 | 10-01 | exp25 A2: shared adapter (non-personalized FedAvg), shared calibration, no offset, 4k | `runs/exp25_fed_adaptershared_calshared_nooff_cap4k_<stamp>_j11094904` | Done (10-02 04:14; selected round 70; entry 30) |
+| 11097085 | 10-01 | exp27 judge smoke (refactored `judge_quality.py` on the smoke run's held-out E2 files) | `runs/smoke_pipeline_…j11039406/evals/judge_*e2_*` | **Passed** (held-out lookup, two files with one model load, references judged once) |
+| 11097083 | 10-01 | exp27 LLM judge on E2 `frozen_D` / `local_D` (all n) of the method run | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/judge_*e2_*` | Done (10-02 02:51; entry 30) |
+| 11097847 | 10-01 | exp28 Qwen3-8B smoke (2 rounds × 10 steps, 8-article evals, GPU memory log) | `runs/smoke_qwen3_8b_20261001-232600_j11097847` | **Passed** (full pipeline incl. judge; 2.6 s/training step; peak 72 GB) |
+| 11097848 / 11097849 | 10-01 | exp28 Qwen3-8B fed / local (first submission) | — | **Cancelled** before starting (home quota; resubmitted to project space) |
+| 11097906 / 11097907 | 10-02 | exp28 Qwen3-8B fed / local (second submission) | — | **Cancelled** before starting (resubmitted with the expandable-segments allocator) |
+| 11098308 | 10-02 | exp28 **Qwen3-8B federated** (shared calibration, no offset), 4k, 100 rounds | `runs/exp28_fed_calshared_nooff_cap4k_qwen3_8b_<stamp>_j11098308` → `/u/lucmon/lucmon/rein_runs/` | Running (round 75 at 10-02 15:20; ≈ 6.5 min/round) |
+| 11098309 | 10-02 | exp28 **Qwen3-8B local** (no offset), 4k, 100 rounds | `runs/exp28_local_nooff_cap4k_qwen3_8b_<stamp>_j11098309` → `/u/lucmon/lucmon/rein_runs/` | Running (from 10-02 02:23; round 65 at 15:20) |
 
 ---
 
@@ -824,3 +829,147 @@ E2 quality, mean over held-out clients (in / out of support):
 - The "isn't this just PFL?" question is answered by A2 (non-personalized FedAvg) and the positioning.
 
 Plan updated: claims, E3, A3, figures, gates, next steps, claim sentence.
+
+## 28. C1 on a second model family at 8B: Qwen3-8B (2026-10-01/02)
+
+**Model choice:** Qwen/Qwen3-8B.
+- A different family from Llama-3.2-1B, and the plan's Qwen3 line.
+- A dense standard transformer (36 layers, hidden 4096) supported by the installed transformers 4.56.
+- Run with thinking off.
+
+Alternatives considered:
+- **Qwen3.5-9B** (cached): `qwen3_5` is not supported by transformers 4.56 (hybrid linear attention, a vision-language wrapper).
+- **Llama-3.1-8B:** same family as the 1B.
+- **Mistral-7B-Instruct-v0.3:** older; not fully cached.
+- **Qwen2.5-7B-Instruct:** it is the LLM judge.
+- **Judge note:** the judge (Qwen2.5-7B) and the backbone are both Qwen models. Within-backbone comparisons (federated vs. local) are unaffected; absolute judge scores across backbones should be read with care.
+
+**Hardware:** all GPUs on `dali` / `IllinoisComputes-GPU` are A100 **80 GB**.
+- Smoke: about 48 GB used during training (bf16 weights 16 GB, LoRA rank 16 on all projections, gradient checkpointing, batch 8).
+- Trainable parameters per client view: 66M.
+
+**Code:**
+- `ChatFormatter(template_kwargs=...)` passes extra chat-template arguments. Config `chat_template_kwargs: {}`; Qwen3 runs set `chat_template_kwargs.enable_thinking=false`. All entry points pass it.
+- Checked on real pairs: with thinking off, the prompt ends in the empty `<think>\n\n</think>\n\n` block and only the summary plus `<|im_end|>` is supervised. Without it, the empty think block would be part of the target.
+- `sbatch/train_eval.sbatch`:
+  - `GPU_LOG=1` records GPU memory every 30 s (`sbatch/logs/gpumem.o<job>`);
+  - a run directory outside `runs/` (`RUNS_ROOT`) is linked into `runs/`.
+
+**Disk:** `/u/lucmon` has a 100 GB quota (68 GB used; also 455k of 490k files). An 8B run should write about 25–30 GB of snapshots, so the 8B runs live in `/u/lucmon/lucmon/rein_runs/` (project space, 18 TB free) and are linked into `runs/`.
+
+**Jobs** ([launch](launch/exp28_qwen3_8b_c1.sh)): the same data and hyperparameters as the 1B pair exp17 (method 11063910 / local 11063911): 4k per client, 100 rounds × 20 steps, batch 8, rank 16, unchanged learning rates, standard pipeline (dev selection, test, quality, judge).
+- Smoke 11097847.
+- Federated 11098308 and local 11098309, `afterok` on the smoke, time limit 3 days.
+- 11097906/7 were resubmitted as 11098308/11098309 before starting: the smoke's training peaked at 72 of 80 GB, so `train_eval.sbatch` now sets `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (less fragmentation).
+- The first submissions 11097848/9 were cancelled before starting (quota).
+
+**Next:** once the federated run exists, consider B1 prompting on the 8B client models: it checks whether prompting fails only because the 1B model follows instructions poorly (gate G1 caveat).
+
+## 29. Dataset scouting for a second task beyond summarization (2026-10-01, night)
+
+No jobs. Research only; written up in `../dataset-candidates.md`.
+(Numbered 29 because entry 28 is reserved for the Qwen3-8B C1 runs launched at 23:29 from another session: jobs 11097847 smoke, 11097906 fed, 11097907 local; see `exp_log/launch/exp28_qwen3_8b_c1.sh`.)
+
+**New screening criterion from the user:** the attribute must **not** be reachable by prompting, because B1 is a baseline and gate G1 depends on it failing. Added to the existing criteria (continuous/fine-grained, cheap deterministic scorer, attribute-level client heterogeneity, not summarization). Implication: semantic attributes (sentiment, star rating, formality, technicality) are out, because instruction models hit them from words alone. Attributes that survive are **corpus statistics** the model cannot measure on its own output — the current flagship's fragment density, token/step counts, edit distance, RDKit descriptors.
+
+A sixth criterion emerged while screening: **the attribute must be free given the input.** This disqualifies code and SQL complexity, where the spec dictates the answer's complexity, so low α means wrong output.
+
+**This drops §3.2 of the plan (Amazon review rating):** star rating is easily prompted, so B1 would not fail on it.
+
+**Top candidates:**
+1. **Reasoning-trace length on math CoT** — `open-r1/OpenR1-Math-220k` (2–4 R1 traces per problem, so α varies *within* a problem; clients = NuminaMath 1.5 `source`). Prompt-level token budgets are documented to fail (L1/LCPO, Token-Budget-Aware Reasoning, BudgetThinker), utility = verifiable accuracy. Risk: eval compute (~18M generated tokens per full eval; needs vLLM and probably a 4B base).
+2. **Property-conditioned molecule generation** — ChEMBL/TDC, attribute = RDKit cLogP/TPSA/QED, clients = target family (kinase/GPCR/CNS property skews are mechanistic and documented), real federation precedent (MELLODDY). Cheapest eval of all (~40-token outputs). Risk: SMILES validity from a 1B base; fall back to SELFIES.
+3. **Paraphrase lexical divergence** (QCPG dimensions) — best "attribute is free given the input", cheap, but a dated framing.
+
+**Measured locally (no download):** `MegaScience` is already in the HF cache and reproduces the Newsroom disjoint-support structure on answer verbosity — `natural_reasoning` covers global length percentiles [0.43, 0.98], `textbook_reasoning/medicine` and `/biology` cover [0.02, 0.71]. 8 usable groups; the skew is provenance-level, and subjects *within* `textbook_reasoning` are nearly homogeneous (medians 0.18–0.32). Good as a fast transfer sanity run, not as a paper task.
+
+**Proposed next step (not started):** two one-day feasibility probes — per-source counts and within-problem length spread in OpenR1-Math-220k's 94k split; SMILES validity after a 5k-molecule, one-hour SFT of Llama-3.2-1B.
+
+## 30. Results: full E2 curve, E2 on the private-calibration run, A2 (shared adapter), 8B progress (2026-10-02)
+
+Numbered 30: entry 29 is the dataset scouting written by another session. Reports saved in `exp_log/reports/`.
+
+**Tools:**
+- New `scripts/e2_report.py` (E2 table, per-client errors, per-client paired bootstrap of frozen_D − local_D at each n, quality and judge columns).
+- **Fix in `scripts/compare_runs.py`:** the default file pattern matched E2/E3/baseline files too (the newest eval in a run directory is now often an E3 file). It now matches only plain test evals (`eval_round_XXXX__<stamp>.json`).
+- `compare_runs.py` also compares only clients present in every run.
+- Numbers in earlier entries were produced with explicit patterns and are unaffected.
+
+### E2, complete curve (method run 11063910; rotation 0; test, 200 articles per held-out client)
+
+| n | frozen_D error (in / out) | local_D error (in / out) | frozen_D better on | plugin | prompt |
+|---|---|---|---|---|---|
+| 16 | **0.179** (0.203 / 0.153) | 0.295 (0.289 / 0.299) | 4/4 | 0.369 | 0.411 |
+| 64 | **0.170** (0.182 / 0.152) | 0.260 (0.256 / 0.266) | 4/4 | 0.376 | 0.388 |
+| 256 | **0.146** (0.148 / 0.143) | 0.225 (0.233 / 0.213) | 4/4 | 0.374 | 0.411 |
+| 1024 | **0.139** (0.141 / 0.136) | 0.192 (0.209 / 0.165) | 4/4 (latimes.com worse out-of-support, +0.018) | 0.362 | 0.387 |
+| all (≈ 4–5k) | **0.135** (0.135 / 0.134) | 0.151 (0.159 / 0.138) | 2/4, others tie (telegraph.co.uk, latimes.com) | 0.343 | — |
+
+- **The data-efficiency curve is clean.** Frozen D with 16 pairs (0.179) beats local D with 1024 pairs (0.192). The gap shrinks with n and closes at full data.
+- At full data, frozen D (0.135) is *better* than the participants' own models (0.151, entry 20): the new client gets a direction trained on 8 clients plus an adapter trained against it.
+- **Quality is on par.** AlignScore gaps to the same-α reference: frozen_D +0.01 / +0.06–0.08, local_D +0.00–0.02 / +0.04–0.12; BERTScore equal.
+- **Judge** (25 articles per client, indicative):
+  - faithfulness in-support 0.75–0.83 (frozen) vs. 0.71–0.84 (local);
+  - out-of-support relevance gap −0.03 to +0.03 (frozen) vs. −0.04 to −0.15 (local);
+  - frozen_D is at least as good.
+- Small n has a length cost: frozen_D at n = 16 writes +14 tokens out-of-support (+2 to +7 from n = 256).
+
+### E2 on the private-calibration run (11041282; frozen_D trains private gain/offset/warp)
+
+| n | 16 | 64 | 256 | 1024 | all |
+|---|---|---|---|---|---|
+| frozen_D (private calibration trained) | 0.183 | 0.177 | 0.151 | 0.141 | 0.132 |
+| frozen_D (shared calibration frozen, above) | 0.179 | 0.170 | 0.146 | 0.139 | 0.135 |
+| plugin (calibration fitted on the n pairs, **with offset**) | 0.244 | 0.244 | 0.234 | 0.256 | 0.276 |
+
+- **Shared calibration costs nothing for new clients:** same curve, with zero calibration parameters to fit.
+- plugin is much better with a fitted offset (0.23–0.28) than with the frozen shared calibration (0.34–0.37). This fits the anchor-shift mechanism (entry 26): an offset can move the α = 0 point back. Still far behind frozen_D.
+
+### A2: shared adapter, i.e. non-personalized FedAvg (11094904, selected round 70)
+
+| Run | Pct error (worst) | In-support | Out-of-support (worst) | Reach | Spearman | AlignScore gap in / out | Length gap in / out | Judge faithful in / out |
+|---|---|---|---|---|---|---|---|---|
+| Method (private adapter) | **0.151** (0.199) | **0.135** | 0.161 (0.188) | 0.39 | 0.933 | −0.03 / +0.05 | +2.0 / +2.3 | 0.82 / 0.79 |
+| **A2 (shared adapter)** | 0.159 (**0.176**) | 0.177 | **0.136 (0.168)** | **0.50** | **0.951** | +0.09 / +0.10 | +7.2 / +10.1 | **0.89 / 0.86** |
+| Local, no offset | 0.165 (0.205) | 0.148 | 0.165 (0.249) | 0.36 | 0.906 | −0.02 / +0.01 | +2.7 / −0.5 | 0.84 / 0.79 |
+
+**Per client, A2 − method:**
+- overall worse on 5/8 (forbes.com, theguardian.com, wsj.com, aol.com, cbc.ca; +0.01 to +0.03);
+- better on the copy-heavy reuters.com (−0.023) and nypost.com (−0.031);
+- **out-of-support better on 6/8** (−0.02 to −0.05), worse on none.
+
+**Per-client dev NLL** (α-conditioned, on each client's own dev references; house-style fit):
+
+| Round | Method | A2 | Local |
+|---|---|---|---|
+| 10 | 1.090 | 1.176 | 1.082 |
+| 50 | **1.081** | 1.089 | 1.097 |
+| 70 | 1.229 | **1.078** | 1.306 |
+| 100 (method's selected) | 1.450 | 1.083 | 1.507 |
+
+- At the selected checkpoints A2 has lower NLL on **all 8** clients (1.08 vs. 1.45). The private adapters memorize after round ~50 while the shared one does not.
+- At each run's best round the NLL is **equal** (1.081 vs. 1.078). On Newsroom, private adapters buy **no** house-style fit.
+
+**Reading:**
+- The private adapter is a trade-off. It gives better in-support calibration (0.135 vs. 0.177).
+- But it gives worse extrapolation, because it absorbs part of each client's level (the identifiability problem). A shared adapter cannot, so the attribute must go through D: better reach, Spearman and worst client.
+- A2's summaries are longer and more extractive-looking (AlignScore +0.09, +7–10 tokens vs. the same-α reference). The judge rates them more faithful.
+- **Implication for the framing:** "private house style" is not supported as a *benefit* on this dataset. It is a design choice that trades in-support precision against coverage.
+- Options: (a) keep the private adapter and report A2 honestly as the trade-off; (b) a smaller or regularized private adapter (e.g. rank 4) as the middle ground; (c) make personalization optional in the method.
+- The core claims C1 (federated > local) and C2 (frozen D for new clients) do not depend on this choice. With a shared adapter a new client could even start from the global adapter (E2 variant, not run).
+- **Selection caveat:** the method is selected on steering error only, at round 100 where its dev NLL is worst. Quality-aware selection (plan §4) would pick earlier rounds.
+
+### Qwen3-8B (exp28), in progress
+
+Dev error, mean over clients (in-training full eval):
+
+| Round | 10 | 30 | 50 | 60 | 70 |
+|---|---|---|---|---|---|
+| fed 8B | 0.261 | 0.190 | 0.180 | 0.164 | 0.165 |
+| local 8B | 0.269 | 0.200 | 0.194 | 0.185 | — |
+| fed 1B | 0.233 | 0.192 | 0.175 | 0.160 | 0.164 |
+| local 1B | 0.238 | 0.190 | 0.180 | 0.170 | 0.166 |
+
+- The federated run is ahead of local at every checkpoint from round 30, the same pattern as 1B. The absolute error is not lower than 1B's so far.
+- About 6.5 min per round, peak 40 GB after the first rounds (72 GB only at the start), 16–19 GB of disk per run so far.
+- Expected to finish training about 10-02 19:00 (local) and 20:00 (federated), then test, quality and judge (~2 h).

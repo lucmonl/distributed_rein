@@ -1,0 +1,72 @@
+setting       n    pct     in    out  reach  spear  nearT  endNT | gapAlgIn gapAlgOut bertIn gapLenOut | faithIn faithOut gRelOut
+frozen_D     16  0.179  0.203  0.153  0.525  0.893  0.233  0.000 |   -0.017    +0.048  0.885     +13.8 |   0.754    0.706  -0.034
+frozen_D     64  0.170  0.182  0.152  0.333  0.922  0.273  0.000 |   +0.022    +0.083  0.893      +5.7 |   0.802    0.759  -0.033
+frozen_D    256  0.146  0.148  0.143  0.352  0.931  0.202  0.000 |   +0.007    +0.063  0.891      +2.4 |   0.824    0.741  -0.098
+frozen_D   1024  0.139  0.141  0.136  0.383  0.935  0.176  0.000 |   +0.008    +0.065  0.895      +4.4 |   0.826    0.771  +0.032
+frozen_D    all  0.135  0.135  0.134  0.378  0.932  0.138  0.000 |   +0.007    +0.067  0.900      +7.2 |   0.828    0.779  +0.032
+local_D      16  0.295  0.289  0.299  0.319  0.542  0.510  0.130 |   -0.015    +0.060  0.887      +5.8 |   0.713    0.741  -0.041
+local_D      64  0.260  0.256  0.266  0.206  0.735  0.477  0.026 |   +0.021    +0.119  0.894      +1.0 |   0.807    0.764  -0.148
+local_D     256  0.225  0.233  0.213  0.213  0.785  0.404  0.001 |   +0.005    +0.056  0.896      +0.1 |   0.798    0.780  -0.138
+local_D    1024  0.192  0.209  0.165  0.311  0.859  0.358  0.000 |   +0.019    +0.037  0.899      +1.1 |   0.795    0.778  -0.103
+local_D     all  0.151  0.159  0.138  0.378  0.925  0.212  0.000 |   +0.001    +0.036  0.901      +6.5 |   0.842    0.736  -0.058
+plugin       16  0.369  0.467  0.282  0.564  0.821  0.532  0.055 |   +0.155    +0.164  0.890     +36.7 |     nan      nan    +nan
+plugin       64  0.376  0.418  0.314  0.474  0.789  0.559  0.084 |   +0.129    +0.198  0.889     +34.6 |     nan      nan    +nan
+plugin      256  0.374  0.421  0.304  0.464  0.766  0.562  0.074 |   +0.127    +0.196  0.891     +33.4 |     nan      nan    +nan
+plugin     1024  0.362  0.398  0.307  0.443  0.746  0.538  0.124 |   +0.112    +0.189  0.894     +28.0 |     nan      nan    +nan
+plugin      all  0.343  0.368  0.306  0.414  0.738  0.522  0.119 |   +0.091    +0.185  0.898     +25.9 |     nan      nan    +nan
+prompt       16  0.411  0.350  0.452  0.360  0.065  0.277  0.156 |   -0.321    -0.204  0.862      +2.9 |     nan      nan    +nan
+prompt       64  0.388  0.334  0.469  0.196  0.142  0.252  0.251 |   -0.164    -0.005  0.879      +6.3 |     nan      nan    +nan
+prompt      256  0.411  0.369  0.473  0.205  0.041  0.248  0.277 |   -0.196    -0.053  0.880      +2.4 |     nan      nan    +nan
+prompt     1024  0.387  0.313  0.499  0.136  0.029  0.292  0.258 |   -0.125    -0.016  0.891      +5.4 |     nan      nan    +nan
+
+per-client percentile error
+setting       n telegraph.co      bbc.com mashable.com  latimes.com
+frozen_D     16        0.159        0.169        0.187        0.202
+frozen_D     64        0.154        0.153        0.173        0.201
+frozen_D    256        0.128        0.133        0.136        0.188
+frozen_D   1024        0.128        0.128        0.126        0.174
+frozen_D    all        0.120        0.134        0.117        0.169
+local_D      16        0.253        0.325        0.299        0.302
+local_D      64        0.237        0.241        0.275        0.287
+local_D     256        0.224        0.210        0.217        0.247
+local_D    1024        0.190        0.207        0.169        0.201
+local_D     all        0.127        0.165        0.134        0.176
+plugin       16        0.347        0.351        0.390        0.387
+plugin       64        0.366        0.353        0.373        0.413
+plugin      256        0.367        0.344        0.367        0.419
+plugin     1024        0.332        0.332        0.369        0.414
+plugin      all        0.294        0.287        0.372        0.419
+prompt       16        0.336        0.517        0.421        0.371
+prompt       64        0.401        0.358        0.366        0.426
+prompt      256        0.429        0.436        0.386        0.392
+prompt     1024        0.432        0.360        0.360        0.397
+
+frozen_D - local_D, n=16 (paired bootstrap over articles; * = 95% CI excludes 0)
+  telegraph.co.uk  support [0.02,0.80]  overall -0.094 [-0.108,-0.080]*  out-of-support -0.139 [-0.159,-0.119]*
+  bbc.com          support [0.10,0.63]  overall -0.156 [-0.169,-0.142]*  out-of-support -0.187 [-0.205,-0.167]*
+  mashable.com     support [0.10,0.70]  overall -0.113 [-0.125,-0.101]*  out-of-support -0.124 [-0.138,-0.110]*
+  latimes.com      support [0.16,0.98]  overall -0.100 [-0.112,-0.088]*  out-of-support -0.135 [-0.155,-0.115]*
+
+frozen_D - local_D, n=64 (paired bootstrap over articles; * = 95% CI excludes 0)
+  telegraph.co.uk  support [0.01,0.99]  overall -0.083 [-0.095,-0.071]*  out-of-support -0.121 [-0.141,-0.102]*
+  bbc.com          support [0.02,0.76]  overall -0.088 [-0.098,-0.078]*  out-of-support -0.091 [-0.110,-0.073]*
+  mashable.com     support [0.11,0.83]  overall -0.103 [-0.113,-0.093]*  out-of-support -0.128 [-0.144,-0.113]*
+  latimes.com      support [0.11,0.98]  overall -0.086 [-0.097,-0.075]*  out-of-support -0.112 [-0.130,-0.094]*
+
+frozen_D - local_D, n=256 (paired bootstrap over articles; * = 95% CI excludes 0)
+  telegraph.co.uk  support [0.02,0.99]  overall -0.097 [-0.108,-0.086]*  out-of-support -0.066 [-0.084,-0.049]*
+  bbc.com          support [0.02,0.77]  overall -0.077 [-0.088,-0.067]*  out-of-support -0.049 [-0.067,-0.032]*
+  mashable.com     support [0.08,0.82]  overall -0.081 [-0.090,-0.072]*  out-of-support -0.109 [-0.125,-0.094]*
+  latimes.com      support [0.11,0.98]  overall -0.059 [-0.068,-0.051]*  out-of-support -0.055 [-0.069,-0.041]*
+
+frozen_D - local_D, n=1024 (paired bootstrap over articles; * = 95% CI excludes 0)
+  telegraph.co.uk  support [0.02,0.99]  overall -0.061 [-0.073,-0.050]*  out-of-support -0.059 [-0.076,-0.041]*
+  bbc.com          support [0.03,0.79]  overall -0.079 [-0.088,-0.070]*  out-of-support -0.042 [-0.057,-0.027]*
+  mashable.com     support [0.07,0.80]  overall -0.043 [-0.050,-0.036]*  out-of-support -0.033 [-0.045,-0.021]*
+  latimes.com      support [0.12,0.98]  overall -0.027 [-0.034,-0.020]*  out-of-support +0.018 [+0.006,+0.029]*
+
+frozen_D - local_D, n=all (paired bootstrap over articles; * = 95% CI excludes 0)
+  telegraph.co.uk  support [0.02,0.99]  overall -0.007 [-0.015,+0.001]   out-of-support +0.005 [-0.007,+0.017] 
+  bbc.com          support [0.03,0.79]  overall -0.032 [-0.041,-0.023]*  out-of-support -0.037 [-0.051,-0.023]*
+  mashable.com     support [0.08,0.79]  overall -0.017 [-0.023,-0.011]*  out-of-support -0.000 [-0.012,+0.012] 
+  latimes.com      support [0.11,0.98]  overall -0.007 [-0.015,+0.001]   out-of-support +0.016 [+0.005,+0.028]*

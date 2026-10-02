@@ -71,7 +71,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", action="append", required=True, help="name=path")
     ap.add_argument("--pair", action="append", default=[], help="a:b  (per-client paired comparison a - b)")
-    ap.add_argument("--eval_glob", default="eval_round_*__*.json")
+    # plain test evals only (eval_round_XXXX__<stamp>.json); baseline / E2 / E3 files carry a tag
+    # after the round number and are selected explicitly with name=run::pattern
+    ap.add_argument("--eval_glob", default="eval_round_[0-9][0-9][0-9][0-9]__*.json")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     runs = {}
@@ -80,7 +82,8 @@ def main():
         path, _, pattern = path.partition("::")
         runs[name] = load_run(path, pattern or args.eval_glob)
     rng = np.random.default_rng(args.seed)
-    clients = list(next(iter(runs.values()))["eval"]["clients"])
+    clients = [c for c in next(iter(runs.values()))["eval"]["clients"]
+               if all(c in r["eval"]["clients"] for r in runs.values())]
 
     print("== Steering (test; mean over clients; worst client in brackets)")
     cols = ["pct_calib_err", "pct_err_in_support", "pct_err_out_support", "reach_rate", "spearman"]

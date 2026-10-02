@@ -124,7 +124,7 @@ def main():
     model, tok = load_model(cfg["model_name"], lora_cfg, device=device,
                             grad_checkpointing=cfg.get("grad_checkpointing", True),
                             attn_implementation=cfg.get("attn_implementation", "sdpa"))
-    fmt = ChatFormatter(tok, system_prompt=cfg.get("system_prompt"),
+    fmt = ChatFormatter(tok, system_prompt=cfg.get("system_prompt"), template_kwargs=cfg.get("chat_template_kwargs"),
                         max_prompt_tokens=cfg.get("max_prompt_tokens", 1024),
                         max_target_tokens=cfg.get("max_target_tokens", 256))
 
