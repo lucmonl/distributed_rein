@@ -1,0 +1,20 @@
+classifier: runs/_style/style_clf_58467d166c.pkl
+
+real test summaries (ceiling): attribution acc 0.587, P(own) 0.388  (chance 0.125)
+
+run            round attr acc  P(own) feat gap   (in-support alphas; mean over clients)
+Method            10    0.570   0.397    0.152
+Method            30    0.557   0.385    0.157
+Method            50    0.575   0.395    0.143
+Method            70    0.593   0.401    0.122
+Method           100    0.590   0.394    0.116
+A2_shared         10    0.402   0.281    0.204
+A2_shared         30    0.404   0.289    0.196
+A2_shared         50    0.409   0.295    0.199
+A2_shared         70    0.437   0.313    0.180
+A2_shared        100    0.453   0.322    0.174
+Local_noO         10    0.587   0.408    0.154
+Local_noO         30    0.565   0.391    0.133
+Local_noO         50    0.582   0.400    0.123
+Local_noO         70    0.600   0.399    0.125
+Local_noO        100    0.568   0.388    0.114

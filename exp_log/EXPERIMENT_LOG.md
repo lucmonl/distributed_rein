@@ -67,6 +67,7 @@ Since 2026-09-29 (entry 8), runs and evals never overwrite each other. Continue 
 | 11097906 / 11097907 | 10-02 | exp28 Qwen3-8B fed / local (second submission) | — | **Cancelled** before starting (resubmitted with the expandable-segments allocator) |
 | 11098308 | 10-02 | exp28 **Qwen3-8B federated** (shared calibration, no offset), 4k, 100 rounds | `runs/exp28_fed_calshared_nooff_cap4k_qwen3_8b_<stamp>_j11098308` → `/u/lucmon/lucmon/rein_runs/` | Running (round 75 at 10-02 15:20; ≈ 6.5 min/round) |
 | 11098309 | 10-02 | exp28 **Qwen3-8B local** (no offset), 4k, 100 rounds | `runs/exp28_local_nooff_cap4k_qwen3_8b_<stamp>_j11098309` → `/u/lucmon/lucmon/rein_runs/` | Running (from 10-02 02:23; round 65 at 15:20) |
+| 11116479 | 10-02 | exp31 cross-client NLL matrix (method / A2 / local, rounds 50–100) | `<run>/evals/nll_matrix_*` | **Cancelled** before starting (user: skip it) |
 
 ---
 
@@ -973,3 +974,107 @@ Dev error, mean over clients (in-training full eval):
 - The federated run is ahead of local at every checkpoint from round 30, the same pattern as 1B. The absolute error is not lower than 1B's so far.
 - About 6.5 min per round, peak 40 GB after the first rounds (72 GB only at the start), 16–19 GB of disk per run so far.
 - Expected to finish training about 10-02 19:00 (local) and 20:00 (federated), then test, quality and judge (~2 h).
+
+## 31. House style of the private adapter, controlled for extractiveness (2026-10-02)
+
+**Question (user):** does the private adapter carry the client's writing style, independent of extractiveness? Dev NLL alone cannot show it: equal at best rounds (entry 30), dominated by content tokens, and mixed with steering quality.
+
+**New `scripts/style_eval.py`** (CPU only, run on the login node; uses saved outputs, no generation):
+
+1. **Publication attribution.**
+   - A classifier (char 2–5 + word 1–2 tf-idf, logistic regression) is trained on *real* training summaries of the 8 participants, **density-matched**: within each of 5 global-α bins every publication present contributes the same number of summaries (≤ 400), so extractiveness cannot identify the publication. Cached in `runs/_style/`.
+   - Metric: share of a client's generated summaries (in-support α) attributed to its own publication, and the mean probability of its own publication.
+   - Topic comes from the article and is identical across models (same test articles), so differences between models are the style the model adds.
+   - **Probe:** on real summaries, density-matched accuracy is 0.41–0.63 per α bin vs. chance 0.13–0.20. There is plenty of style beyond extractiveness.
+2. **Style-feature gap.** 11 interpretable features (sentences, words per sentence, word length, quotes, ellipsis, parentheses, numerals, capitalized words, first/second person, ? and !). Score: |standardized mean difference| between the generated summaries and the client's real training summaries within ±0.125 α, averaged over features. Lower = closer to the house style.
+
+**Results, test** (selected checkpoints; in-support α; mean over 8 clients; chance 0.125):
+
+| Run | Attribution accuracy | P(own) | Feature gap |
+|---|---|---|---|
+| Real test summaries (ceiling) | 0.587 | 0.388 | — |
+| **Method** (federated, private adapter) | **0.552** | **0.378** | **0.108** |
+| Local, no offset | 0.553 | 0.375 | 0.104 |
+| F_priv (federated, private calibration) | 0.568 | 0.387 | 0.108 |
+| L_priv (local) | 0.568 | 0.380 | 0.105 |
+| **A2 (shared adapter)** | **0.409** | 0.295 | **0.190** |
+| B3 merged direction (local adapters) | 0.454 | 0.314 | 0.156 |
+| B4 CAA (client models, D removed) | 0.532 | 0.358 | 0.166 |
+| B1 prompting k=3 (client models, D removed) | 0.556 | 0.371 | 0.166 |
+
+- **Private adapters carry house style.**
+  - The method's outputs are attributed to their own publication 55% of the time (real summaries: 59%); A2's only 41%.
+  - The method's style-feature gap is 0.11 vs. A2's 0.19.
+  - **Per client**, A2 is lower for all 8; largest drops: nypost.com 0.67 → 0.25, theguardian.com 0.55 → 0.29, forbes.com 0.47 → 0.35.
+- **Federated training keeps the style.** Method ≈ local (0.552 vs. 0.553), so sharing D does not wash out the private style.
+- **The style is orthogonal to extractiveness.** Attribution by target α is flat: method 0.52–0.56 over α = 0 → 1, A2 0.36–0.42. Steering the attribute does not move the style.
+- B1/B4 keep the client adapter and keep most of the attribution (0.53–0.56). This confirms the style lives in the adapter. Their feature gap is larger (0.17), since prompts and activation additions change the surface form.
+- B3's merged direction lowers attribution (0.45 vs. 0.57 for the same local adapters with their own direction), so a mismatched direction disturbs the style too.
+- **Check that the style comes from the adapter, not from the control mechanism:**
+  - B1 and B4 run on the client models (base + private adapter, D removed), so their attribution is inherited from the adapter.
+  - B1 with the same prompts and the same 3 own-publication examples on the **base model** (no adapter): attribution **0.274** vs. 0.556 on the client model; feature gap 0.666 vs. 0.166 (the base model writes ~110-token summaries).
+  - The remaining 0.27 is mostly topic. It is high for cbc.ca (0.71) and wsj.com (0.56), near zero for nypost.com (0.02) and people.com (0.06).
+  - In-context examples do not transfer the house style; the adapter does.
+
+**Across training** (dev outputs, rounds 10 / 30 / 50 / 70 / 100):
+- method attribution 0.57 / 0.56 / 0.58 / 0.59 / 0.59;
+- A2 0.40 / 0.40 / 0.41 / 0.44 / 0.45;
+- local 0.59 / 0.57 / 0.58 / 0.60 / 0.57.
+
+The advantage is there from round 10, so it is **not** a product of the late-round memorization seen in dev NLL. The feature gap shrinks over training for all runs (method 0.15 → 0.12).
+
+**Conclusion for A2 / the framing:** the private adapter is justified as **house style**: it is orthogonal to the steered attribute, measured with an extractiveness-controlled attribution metric and interpretable features. The trade-off with A2 (better in-support calibration and style vs. A2's better extrapolation) can be reported as such.
+
+**Also added:** `scripts/nll_matrix.py` (cross-client NLL, specialization = others' NLL on a client's references − its own). Not run (job 11116479 cancelled at the user's request); kept for later.
+
+Reports: `exp_log/reports/style_test.txt`, `exp_log/reports/style_dev_rounds.txt`; per-file results in `<run>/evals/style_*.json`.
+
+## 30. ChEMBL molecule generation: data built, statistics measured (2026-10-02)
+
+No training jobs. Data preparation and analysis only. Plan: `../chembl-experiment-plan.md`.
+User picked the molecule candidate from entry 29 as the first task to try beyond summarization.
+
+**Data** (`data/chembl` -> `/projects/illinois/eng/cs/arindamb/lucmon/data/chembl`):
+- activities from `martinakaduc/ChEMBL_activities` (20.3M rows) filtered to assay_type=B, confidence>=8, relation "=", nM, type in {Ki,Kd,IC50,EC50} -> **1,337,996 activities over 5,995 targets**;
+- structures from ChEMBL 37 `chembl_37_chemreps.txt.gz` (EBI FTP), 99.8% of molecule IDs resolved;
+- target names/organism/protein class for the top 120 targets via the ChEMBL REST API;
+- `rdkit` and `selfies` installed into the `steer` env (rdkit 2026.03.6).
+- New scripts: `scripts/chembl_targets.py`, `chembl_target_meta.py`, `chembl_stats.py`, `chembl_report.py`, `chembl_select_clients.py`.
+- Target sizes: 17 targets with >=5k distinct molecules, 40 with >=4k, 116 with >=2k, 247 with >=1k.
+
+**Attribute choice — the decisive measurement.** For a scaffold-conditioned task (x = target + Murcko scaffold, y = molecule), every *raw* descriptor is largely determined by the input, because the scaffold is a subgraph of the molecule. Median within-scaffold p5–p95 spread on the global alpha scale (8,261 scaffolds with >=5 molecules), vs. spread of client medians:
+
+| attribute | free given x | client-median spread | corr(scaffold, molecule) |
+|---|---|---|---|
+| **clogp residual** | **0.31** | **0.81** | — |
+| mw residual | 0.30 | 0.51 | — |
+| rotb residual | 0.24 | 0.50 | — |
+| raw clogp | 0.18 | 0.73 | +0.76 |
+| raw mw | 0.18 | 0.79 | +0.88 |
+| raw tpsa | 0.15 | 0.79 | +0.85 |
+| raw arom_rings | — | 0.55 | **+1.00** (unusable) |
+| hbd residual | 0.07 | 0.41 | — |
+
+**Chosen: cLogP residual = cLogP(molecule) − cLogP(Murcko scaffold)** ("how lipophilic are the decorations"). Best on both axes at once. Raw descriptors leave only ~15–18% of the attribute free given the input, which would make D unidentifiable. TPSA is additionally discrete (mass at 9.2 / 18.5 / 26.0), which would wreck a percentile scale.
+
+**Clients** (`data/chembl/clients.json`): 12 targets, one per protein family, spread over the alpha scale, 8 participants + 4 held out (stratified, Newsroom-style). 64,943 rows, 63,581 distinct molecules — pairwise molecule overlap mean **0.005**, max 0.121. Medians span alpha 0.12 (carbonic anhydrase 2) to 0.68 (serotonin transporter); the skew is mechanistic (polar sulfonamides vs. lipophilic hERG/SERT binders), not incidental.
+
+⚠️ **Honest weakness: supports are broad.** Unlike Newsroom (nypost 0.51–0.95 vs. theguardian 0.04–0.55), every ChEMBL target spans most of the range: mean uncovered share of the scale per client **0.19**, and alpha 0.3–0.7 is covered by 100% of clients. A skew-maximizing selection (`--mode skewed`, `clients_skewed.json`) only reaches 0.23. **So C1 here has to rest on the controlled truncation experiment, not on natural skew.** The regime is "different centres, overlapping tails" rather than disjoint supports — a different and arguably more realistic heterogeneity, worth reporting as such.
+
+**Other measured facts:**
+- Constant-output percentile error (always emit the client median, 5-point grid): **0.33** (Newsroom: 0.30).
+- Generated molecules are a median of **36 Llama-3.2 tokens** (p95 67) — a full 12-client x 200-test x 5-alpha eval is ~480k tokens, so the 11-point grid, T=0.7 sampling and 3 seeds all become affordable here.
+- 25,126 distinct scaffolds; median 1 molecule per scaffold; 2,586 scaffolds have >=5 molecules, covering 52% of rows -> the test set should be drawn from those, so every test input has a same-alpha reference.
+- 3.7% of rows have residual exactly 0 (molecule == its scaffold); drop them.
+
+**Gates set before any long run:** G0 validity >=90% and scaffold retention >=80% after plain SFT (else SELFIES, then Qwen3-4B); G1 prompting error >=0.30; G2 method <0.25; G3 method beats local on a majority of clients.
+
+**Next (not started):** `scripts/build_chembl_fed.py` (scaffold-disjoint splits, alpha reference), a `fedsteer` data adapter + RDKit scorer, then E0/G0 and B1/G1 — together under half a day of GPU time.
+
+## 32. Baseline definition confirmed; learned activation steering proposed (2026-10-02)
+
+**Decision (user):** keep the existing baseline definition. B1 (prompting) and B4 (CAA) run on each client's model (frozen base + that client's private adapter, D removed), so only the control mechanism differs from the method. They do no training of their own: B1 only prompts; B4 uses mean-difference activations plus one scalar gain fitted on dev. B1 on the plain base model (`b1_prompt_k3_base`) is a reference row. No code or results changed; the plan states this definition explicitly.
+
+**Proposed, not started:** B4′, federated *learned* activation steering. The method with D replaced by learned activation vectors scaled by the shared g(α), trained with the same objective, data and FedAvg, private adapter kept. This is the equal-training test of weight vs. activation space; CAA stays as the training-free version. Variant without the private adapter if wanted.
+
+**Decision (user):** B4′ is not pursued; nothing changes. The existing B4 (CAA) remains the activation-steering baseline.

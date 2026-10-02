@@ -143,6 +143,7 @@ A direction has no standalone score: it's always evaluated as an intervention on
 | **Range** | Percentile range; IQR-normalized range | Output spread from α = 0 to α = 1 | ✅ |
 | **Quality / utility** | AlignScore, BERTScore F1, LLM-judge faithfulness / relevance / coherence; gaps to the same-α reference | Per α, in-/out-of-support | ✅ (valid-α-region summary ⏳) |
 | **Specificity** | Off-target ratio | Change in length and FKGL per unit on-target change | 🔄 (length only) |
+| **House style** (private adapter) | Extractiveness-controlled publication attribution; style-feature gap | Classifier trained on density-matched real summaries; share of outputs attributed to the own publication (in-support α). 11 interpretable features vs. the client's real summaries at the same α (`scripts/style_eval.py`) | ✅ |
 | **Agreement** (diagnostic) | Slope-sign agreement; slope dispersion; product cosine to local directions | Per-client slope of score on α; cos(B^D A^D, B_i^D A^D) | ⏳ |
 
 **Reporting:**
@@ -180,17 +181,23 @@ A direction has no standalone score: it's always evaluated as an intervention on
 
 All methods share the backbone, the client data, the α labels, the adapter placement and the total trainable rank per client.
 
+**Baseline definition (decided 10-02):** the control baselines replace **only the knob**.
+- B1 and B4 run on each client's own model (frozen base plus that client's private adapter from the federated run, B^D removed). Only the control mechanism differs from the method: prompt, or activation vector.
+- So they keep the client's task adaptation and house style.
+- B1 on the plain base model (`b1_prompt_k3_base`) is reported as a reference row, not as the baseline.
+
 | ID | Baseline | Claim it tests | Status |
 |---|---|---|---|
 | **B1** | **Prompting** on the client's fine-tuned model (direction removed): numeric-level instruction, k ∈ {0, 3} few-shot examples nearest to the target α; also k = 3 on the base model | Is a learned knob needed at all? (gate G1) | ✅ **Fails to steer** (entry 22): error 0.34–0.38, Spearman ≤ 0.08; with k = 0, 70% of articles give near-identical text at α = 0 and 1. Method better on 8/8. ⏳ second template and Qwen3-4B check |
 | **B2** | **Local-only**: same model and loss, each client trains its own D | C1, C2 | ✅ 2k, 4k, 4k without offset (entries 15, 20) |
 | **B3** | **One-shot merged direction**: uniform average of B2's local directions; each client keeps its own adapter and calibration | Is iterative federated training needed? (gate G3) | ✅ **Worse than both local and federated** (entry 22): 4k error 0.184 vs. local 0.161 and method 0.151; method better on 7/8 (2k: 5/8, worse on none). ⏳ variant with the calibration refit to the merged direction (fairer) |
-| **B4** | **Federated activation steering** (CAA [4]): per-client mean-difference vectors at the middle layer, averaged, with a per-client gain fitted on dev | Weight vs. activation space | 🔄 Steers partly (error 0.263, Spearman 0.75; method better on 7/8, reuters.com a tie) but **hurts quality**: out-of-support AlignScore 0.21 below the same-α reference, +11 tokens. **Under-tuned**: 6/8 clients chose the largest gain (0.8) with dev error still falling. ⏳ wider gain grid, layer choice |
+| **B4** | **Federated activation steering** (CAA [4]): per-client mean-difference vectors at the middle layer, averaged, with a per-client gain fitted on dev (training-free) | Weight vs. activation space | 🔄 Steers partly (error 0.263, Spearman 0.75; method better on 7/8, reuters.com a tie) but **hurts quality**: out-of-support AlignScore 0.21 below the same-α reference, +11 tokens. **Under-tuned**: 6/8 clients chose the largest gain (0.8) with dev error still falling. ⏳ wider gain grid, layer choice |
+| **B4′** *(proposed)* | **Federated *learned* activation steering:** the method with B^D replaced by learned activation vectors (one per layer, or a low-rank ReFT-style intervention) scaled by the shared g(α); same objective, data, FedAvg and private adapter | Weight vs. activation space at equal training (CAA is the training-free version) | Not planned (user, 10-02): the existing B4 (CAA) stays |
 | **B5** | **Pooled reference**: all clients' data centralized | Cost of decentralization | ⏳ |
 
 **Ablations:**
 - **A1:** gain fixed at 1 (`fed.fix_gain`) ⏳.
-- **A2:** shared adapter (`fed.adapter: shared`): one global FedAvg model, nothing personalized; the **non-personalized FL baseline**. ✅ (entry 30) **A trade-off, not a loss:** overall 0.159 vs. 0.151 (worse in-support, 0.177 vs. 0.135), but better out-of-support on 6/8 clients (0.136 vs. 0.161), reach 0.50 vs. 0.39, best worst client (0.176). Private adapters give **no** dev-NLL benefit at their best round (1.081 vs. 1.078) and memorize after round ~50. ⏳ Decide the framing (private adapter as a precision–coverage trade-off, a smaller private adapter, or personalization optional). No adapter (`none`) is not planned: it confounds capacity with personalization.
+- **A2:** shared adapter (`fed.adapter: shared`): one global FedAvg model, nothing personalized; the **non-personalized FL baseline**. ✅ (entry 30) **A trade-off, not a loss:** overall 0.159 vs. 0.151 (worse in-support, 0.177 vs. 0.135), but better out-of-support on 6/8 clients (0.136 vs. 0.161), reach 0.50 vs. 0.39, best worst client (0.176). Private adapters give **no** dev-NLL benefit at their best round (1.081 vs. 1.078) and memorize after round ~50. ✅ **The private adapter is kept: it carries house style** (entry 31). Extractiveness-controlled publication attribution is 0.55 for the method (real summaries 0.59, A2 0.41) and the style-feature gap is 0.11 (A2 0.19). Flat across α, so orthogonal to the steered attribute. Federated ≈ local, so sharing D keeps the style. No adapter (`none`) is not planned: it confounds capacity with personalization.
 - **A3 (optional):** PFL-structured conditional SFT: shared and private LoRA with α as a *text control token* (FedDPA / FedSA-LoRA structure [8, 9]). ⏳ It would strengthen the answer to "isn't this just PFL?", but A2 (non-personalized FedAvg) and the positioning argument carry that answer without it.
 - **Calibration:** private vs. shared vs. **shared without offset** ✅ (entry 20; shared without offset is best). `none` (g = α) is not planned for now.
 - **α protocol** (new): global (method) vs. local ✅ (entries 7–9).
@@ -292,6 +299,7 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 | 10-01 | E2 / E3 implemented; `compare_runs.py` (paired bootstrap) | entries 20–21 |
 | 10-01 | **Baseline results:** G1 passes provisionally (prompting fails to steer); G3 passes (merge worse than local and federated); B4 steers partly with a quality cost and needs tuning | entry 22 |
 | 10-01 | A2 (shared adapter, non-personalized baseline) submitted | entry 25 |
+| 10-02 | **House-style metric:** private adapters carry publication style orthogonal to extractiveness; A2 loses it; private adapter kept | entry 31 |
 | 10-02 | **E2 curve complete** (frozen D with 16 pairs beats local D with 1024); **A2: precision–coverage trade-off**, private adapters bring no NLL benefit; Qwen3-8B runs follow the 1B pattern so far | entry 30 |
 | 10-01 | **E3 (C3) and A3 made optional**; LLM judge added to E2 | entry 27 |
 | 10-01 | **E2 results:** frozen D gives large data-efficiency gains (G4 passed). **E3 results:** steering-off drift breaks the knob for both runs (anchor shift); E3 to be rerun with steering-on drift | entry 26 |
