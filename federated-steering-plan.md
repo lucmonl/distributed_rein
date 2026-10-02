@@ -1,27 +1,27 @@
 # Federated Learning of Steering Directions
 
-Research plan · created 29 September 2026 · **updated 1 October 2026** (see the changelog at the end and `exp_log/EXPERIMENT_LOG.md` for evidence). Supersedes the task and baseline sections of `shared-steering-research-plan.md`.
+Research plan · created 29 September 2026 · **updated 1 October 2026, evening** (after exp-log entries 19–23; see the changelog at the end and `exp_log/EXPERIMENT_LOG.md` for evidence). Supersedes the task and baseline sections of `shared-steering-research-plan.md`.
 
-Status markers: ✅ done · 🔄 running / partial · ⏳ planned, not started.
+Status markers: ✅ done · 🔄 running / partial · ⏳ planned, not started · ⚠️ result currently against the claim.
 Sizes, thresholds and schedules are working settings, not results.
 
 ---
 
 ## 1. Thesis and scope
 
-**Question.** Can clients that each fine-tune their own copy of a model *jointly learn one steering direction* by federated training, when **each client's data is skewed toward a different part of the attribute's range**? Can a client then produce attribute levels its own data barely contains? Does the direction stay usable on clients that never took part in training, and after further private fine-tuning?
+**Question.** Can clients that each fine-tune their own copy of a model *jointly learn one steering direction* by federated training, when **each client's data is skewed toward a different part of the attribute's range**? Can a client then produce attribute levels its own data barely contains? Does the direction stay usable on clients that never took part in training? (Optional: and after further private fine-tuning?)
 
 **What is new.** The object learned federatedly is a *control direction*, and the paper's main contribution is a protocol for judging the *quality of that direction*. Personalized federated learning (PFL) shares weights to improve per-client task accuracy at a fixed operating point. Here the shared weights exist to provide a continuous knob, and success is measured with control and quality metrics.
 
-**Why federate at all** (vs. each client fine-tuning locally): the motivation is **coverage, not data volume**. A client can have thousands of examples and still almost none at the attribute levels it wants (e.g. a publication whose summaries are 87% copied leads has few rewritten ones). Other clients have plenty there. A shared α scale plus a shared direction lets that knowledge transfer. Data scarcity is a secondary story (data-budget curve).
+**Why federate at all** (vs. each client fine-tuning locally): the motivation is **coverage, not data volume**. A client can have thousands of examples and still almost none at the attribute levels it wants (e.g. a publication whose summaries are 87% copied leads has few rewritten ones). Other clients have plenty there. A shared α scale plus a shared direction lets that knowledge transfer. Data scarcity is the second story: a client that **joins** with the frozen direction needs far less data than one that learns its own (claim C2, measured as a curve over n).
 
-**The three claims the paper makes (and nothing else):**
+**The claims the paper makes (and nothing else): C1 and C2 are the core; C3 is optional** (decided 10-01: the paper does not depend on it; run only if time allows, otherwise discuss as a limitation):
 
 | # | Claim | Decisive comparison | Status |
 |---|---|---|---|
-| C1 | **Collaboration.** A federated direction steers better than one each client learns alone, above all in the parts of the α scale a client's own data does not cover. | Federated vs. local-only, per client, in-support vs. out-of-support α, at equal data | 🔄 2k: federated better on 6/8 clients, worse on the 2 most copy-heavy (exp-log entry 15). 4k local arm running |
-| C2 | **Portability.** The direction (and, with shared calibration, the α→coefficient mapping) works on a *new* client's independently fine-tuned model with zero or a few labelled examples. | Frozen federated D (+ shared calibration) vs. a local direction trained on the same k examples | ⏳ |
-| C3 | **Stability.** The direction keeps working while clients continue private fine-tuning. | Control metrics before and after drift | ⏳ |
+| C1 | **Collaboration.** A federated direction steers better than one each client learns alone, above all in the parts of the α scale a client's own data does not cover. | Federated vs. local-only, per client, in-support vs. out-of-support α, at equal data | 🔄 **Supported as a coverage trade-off** (4k, entry 20). Federated (shared calibration, no offset) vs. local: overall better on 4/8, worse on 0/8; in-support better on 6/8. Out-of-support: much better for the clients with large gaps (theguardian −0.10, nypost −0.04), slightly worse at the extreme α for clients that already cover ≈ [0.05, 0.95] (4/8, +0.02–0.03). Beats one-shot merging (B3) on 7/8 |
+| C2 | **Portability.** A *new* client that joins with the frozen direction (and, with shared calibration, the frozen α→coefficient mapping), training only its private adapter, steers better from little data than if it had to learn its own direction. | `frozen_D` vs. `local_D` on held-out clients, same n pairs and steps, n ∈ {16, 64, 256, 1024, all} | 🔄 **Strongly supported on rotation 0** (entry 26): `frozen_D` beats `local_D` on all 4 held-out clients at n = 16, 64, 256 (0.179 / 0.170 / 0.146 vs. 0.295 / 0.260 / 0.225); 16 pairs with frozen D beat 256 pairs without it. The gap closes at full data. Coverage on new clients is still untested (broad held-out supports) |
+| C3 *(optional)* | **Stability.** The direction keeps working while clients continue private fine-tuning. | Control metrics before and after drift; federated vs. local | ⚠️ **Fails under steering-off drift** for both federated and local (error 0.15 → 0.31 after one stage; entry 26): retraining the adapter without α moves the α = 0 anchor to the client's mean. Federated keeps more of the ordering (Spearman 0.70 vs. 0.47). ⏳ The realistic protocol (drift with steering on, α per pair) is untested |
 
 **Explicitly out of scope.** Multi-attribute composition, formal privacy/DP, heterogeneous architectures, hypernetworks/routers, theory beyond the identifiability remarks, and safety/sycophancy/creativity tasks.
 
@@ -40,7 +40,11 @@ h \mapsto W_0h + B_i^{P}A_i^{P}h + g(\alpha)\,B^{D}A^{D}h,\qquad g(\alpha)=o+s\,
   - gain s;
   - optional offset o (`lora.offset`);
   - warp h: an increasing map with h(0) = 0, h(1) = 1, starting as the identity. Options (`lora.warp`): `none` | `kumaraswamy` | **`kumaraswamy_mix`** (h = (1−w)α + w[1 − (1 − α^p)^q]) | `step`.
-- **Calibration mode** (`fed.calibration`): `private` (one g per client, fitted on its own data) or **`shared`** (one g for all clients, averaged by the server every round like D). Under the global α scale (below) there is no principled reason for per-client mappings, and the offset's original job (starting a client partway along D) is done by the scale itself. Shared calibration also lets a new client steer with **zero** labelled examples. 🔄 Shared calibration, with and without the offset, is being tested against private calibration (exp-log entry 17).
+- **Calibration mode** (`fed.calibration`): `private` (one g per client, fitted on its own data) or **`shared`** (one g for all clients, averaged by the server every round like D). Under the global α scale (below) there is no principled reason for per-client mappings, and the offset's original job (starting a client partway along D) is done by the scale itself. Shared calibration also lets a new client steer without fitting anything but its adapter.
+  - ✅ **Result (exp17, entry 20): shared calibration without offset is the best federated design.** It is best on mean error (0.151 vs. 0.155 private), worst client (0.199 vs. 0.229), out-of-support error, Spearman and near-ties.
+    - Shared calibration fixes nypost.com (−0.042).
+    - Dropping the offset helps people.com, reuters.com and nypost.com and hurts nobody.
+  - **Proposed default for the method: `calibration: shared`, `offset: false`** (the config default is still private + offset so that earlier runs stay reproducible; to switch once confirmed).
 - **Adapter mode** (`fed.adapter`): `private` (default) | `shared` | `none`.
 - Warm-up: the gain and offset train from round 2, the warp from round 5 (with a penalty toward the identity).
 - **Per-component regularizers** (`reg:` section, all off by default): private-adapter weight decay (low-rank penalty), LoRA dropout, decorrelation of Pᵢ from D, FedProx on D, weight decay on D, priors on the gain and offset.
@@ -68,7 +72,7 @@ h \mapsto W_0h + B_i^{P}A_i^{P}h + g(\alpha)\,B^{D}A^{D}h,\qquad g(\alpha)=o+s\,
 **Identifiability, revised.**
 - α varies within each client, so Pᵢ cannot absorb *all* of the attribute signal.
 - But Pᵢ **can** absorb a client's typical level or format. Example: nypost.com's adapter learns its fixed 200-character truncated lead (entry 12). Its α = 0 then requires a coefficient (−0.58) no other client trains, and extrapolation fails (see the discussion around entry 16).
-- Countermeasures under test: shared calibration (exp17); then shared/no adapter. A support-aware calibration prior is the fallback.
+- Countermeasures: shared calibration ✅ (fixes nypost.com, entry 20); shared/no adapter (A2) ⏳. A support-aware calibration prior is the fallback.
 
 **Federated protocol (FedAvg).**
 1. The server broadcasts B^D (and the calibration, if shared).
@@ -88,12 +92,13 @@ Defaults: E = 20 steps × batch 8, 8 clients per round (full participation), ran
 
 - **Attribute:** Grusky et al.'s fragment density, reimplemented (regex tokenizer; Spearman 0.99 with the dataset's own values) and computed on the truncated article. It is used for both the training labels and evaluation.
 - **Clients:** 12 publications with ≥ 5k usable pairs, evenly spaced by median density (telegraph.co.uk 1.3 → nypost.com 32): 8 participants, 4 held out, 3 stratified rotations (`data/newsroom_fed/clients.json`). All runs so far use rotation 0.
+  - **Caveat for E2:** rotation 0's held-out clients cover most of the global α scale (support: telegraph.co.uk 0.02–0.99, latimes.com 0.11–0.98, bbc.com 0.03–0.79, mashable.com 0.08–0.79). The narrow, skewed clients (theguardian.com 0.04–0.55, nypost.com 0.51–0.95) are participants; they are held out only in **rotation 2**. Rotation-0 E2 therefore tests data efficiency, but hardly coverage (see §4, E2).
 - **Splits per client:**
   - train pool up to 5k pairs (reuters.com 4,023, bbc.com 4,228, theguardian.com 4,705, others 5,000);
   - dev 100; test 200 (official test split);
   - **drift 600** (3 stages of 200) from the latest year(s), with train/dev/test strictly earlier. That holds for 11/12 clients; aol.com falls back to a same-year split.
 - **Articles** are truncated to 400 words, and pairs whose summary depends on the removed part are dropped.
-- **Data budgets used:** 2k, **4k (current best)**, natural (all of the pool). The planned 64 / 256 / 2k curve is ⏳.
+- **Data budgets used:** 2k, **4k (current; all of entries 16–23)**. The natural-size run was only tried with the regularizer bundle and was cancelled (entry 19). The low-budget curve for *participants* (64 / 256) is ⏳; for *new clients* it is part of E2 (n = 16 … all).
 - **Raw-data facts to report:**
   - nypost.com's summaries are machine-truncated article leads (≈ 200 characters + "…"; 92% in the raw data). They are **kept**, since that's the dataset, and treated as an extreme *format convention*.
   - Smaller shares of article-prefix summaries elsewhere (latimes.com 16%, reuters.com 14%, cbc.ca 13%).
@@ -142,7 +147,8 @@ A direction has no standalone score: it's always evaluated as an intervention on
 
 **Reporting:**
 - mean and **worst client** ✅; median ⏳;
-- **per-client paired bootstrap over articles** for method comparisons (same test articles, same α scale) 🔄, done ad hoc so far and to be moved into a script;
+- **per-client paired bootstrap over articles** for method comparisons (same test articles, same α scale) ✅ `scripts/compare_runs.py` (steering, ties, quality, judge, paired CIs; `name=run::file_pattern` selects baseline and setting files);
+- ⏳ split out-of-support into **gap** regions (the client has essentially no data there) and **tail** regions (the 5% tails of a near-full support). The coverage claim is about gaps (entry 20);
 - **3 training seeds** for the main table ⏳ (single seed so far, so intervals cover article sampling only).
 - Show steering and quality at the same α; never pair the best α of one metric with the best α of another.
 
@@ -150,12 +156,23 @@ A direction has no standalone score: it's always evaluated as an intervention on
 
 - **E1: Participants (C1).** 🔄 Each client's co-trained model. Compare federated vs. local per client, in-support and out-of-support, at data budgets 2k / 4k / natural ✅/🔄 and later the low-budget curve 64 / 256 ⏳.
   - **Controlled coverage experiment ⏳:** remove the top or bottom 40% of α from balanced clients (forbes.com, wsj.com, aol.com), retrain, and test at the removed α against their real held-out summaries. This measures extrapolation directly instead of relying on nypost.com alone.
-- **E2: Held-out clients (C2).** ⏳ The new client fine-tunes Pⱼ by plain SFT with no D and no α. Then attach the frozen D:
-  - **shared calibration:** k = 0, use the shared g as is;
-  - **private calibration:** fit the gain/offset/warp on k ∈ {16, 64} labelled examples.
-
-  Compare with a local direction and with few-shot prompting at the same k on the same Pⱼ; 3 rotations.
-- **E3: Drift (C3).** ⏳ After federation, each participant keeps fine-tuning Pᵢ on its later-year drift stream with plain, label-free SFT and D frozen. Evaluate after 1, 2 and 3 drift stages: as is, and (private calibration only) after refitting on k = 16 examples.
+- **E2: Held-out clients (C2).** 🔄 Redesigned 10-01 (entry 23; `e2_heldout.py`).
+  - **Setup:** a new client joins with its first n training pairs (nested subsets; n ∈ {16, 64, 256, 1024, all}). α comes from the run's global reference, which is free to compute, so the scarce resource is **data, not labels**.
+  - **Settings:**
+    - **`frozen_D` (main):** the participants' objective (α per pair, steering on) with D frozen. Trains Pⱼ from scratch, plus the calibration only if the run's calibration is private.
+    - **`local_D` (baseline, no federation):** the same objective and steps, but the client trains its own D from zero.
+    - **`plugin` (ablation):** Pⱼ by plain SFT with steering off, then D attached. This was the first design, and it gave error 0.31–0.34 at full data. Participants' adapters co-adapt with D; an adapter that never saw D does not.
+    - **`prompt` (baseline):** level in the prompt plus 3 shots from the n pairs.
+  - **Steps:** 4 epochs (the participants' budget), clipped to [200, 2000].
+  - Run on the method run (all settings) and on the private-calibration run (`frozen_D`, `plugin`).
+  - ⏳ **Coverage version:** rotation 0's held-out clients are broad (§3.1). Two options:
+    - `--alpha_window LO HI` restricts a held-out client's pairs to part of the scale (e.g. α ≤ 0.4 or ≥ 0.6) and tests outside it. This is cheap and needs no new training.
+    - A **rotation-2** federated run holds out theguardian.com, wsj.com, cbc.ca and nypost.com (natural skew; about 6.5 h of training).
+- **E3: Drift (C3), optional** (not on the critical path; entry 26 already shows the failure mode, which the paper can report as a limitation). After federation, each participant keeps fine-tuning Pᵢ on its later-year drift stream (3 stages × 200 pairs, 100 steps each) with plain, label-free SFT and **steering off**. This is deliberate: the client fine-tunes without knowing about the knob.
+  - Evaluate after each stage (100 test articles): as is, and after a k = 16 calibration refit (a branch; the drift chain continues un-refit).
+  - Run on the method run (done) and its local counterpart (running). The comparison is federated vs. local retention.
+  - Result ⚠️ (entry 26): steering-off drift breaks the knob for both runs (anchor shift).
+  - If time allows ⏳: drift fine-tuning with D attached and α on (a client that keeps training under the joining protocol).
 
 ---
 
@@ -165,22 +182,22 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 
 | ID | Baseline | Claim it tests | Status |
 |---|---|---|---|
-| **B1** | **Prompting** on the client's fine-tuned model: numeric-level instruction plus k few-shot examples at target percentiles | Is a learned knob needed at all? (gate G1) | ⏳ **next; premise of the paper** |
-| **B2** | **Local-only**: same model and loss, each client trains its own D | C1, C2 | ✅ 2k; 🔄 4k (exp16); 🔄 4k without offset (exp17) |
-| **B3** | **One-shot merged direction**: average of B2's local directions | Is iterative federated training needed? (gate G3) | 🔄 Saved by every local run; not yet evaluated on Newsroom |
-| **B4** | **Federated activation steering** (CAA [4]): per-client mean-difference vectors, averaged, with a fitted gain | Weight vs. activation space | ⏳ |
+| **B1** | **Prompting** on the client's fine-tuned model (direction removed): numeric-level instruction, k ∈ {0, 3} few-shot examples nearest to the target α; also k = 3 on the base model | Is a learned knob needed at all? (gate G1) | ✅ **Fails to steer** (entry 22): error 0.34–0.38, Spearman ≤ 0.08; with k = 0, 70% of articles give near-identical text at α = 0 and 1. Method better on 8/8. ⏳ second template and Qwen3-4B check |
+| **B2** | **Local-only**: same model and loss, each client trains its own D | C1, C2 | ✅ 2k, 4k, 4k without offset (entries 15, 20) |
+| **B3** | **One-shot merged direction**: uniform average of B2's local directions; each client keeps its own adapter and calibration | Is iterative federated training needed? (gate G3) | ✅ **Worse than both local and federated** (entry 22): 4k error 0.184 vs. local 0.161 and method 0.151; method better on 7/8 (2k: 5/8, worse on none). ⏳ variant with the calibration refit to the merged direction (fairer) |
+| **B4** | **Federated activation steering** (CAA [4]): per-client mean-difference vectors at the middle layer, averaged, with a per-client gain fitted on dev | Weight vs. activation space | 🔄 Steers partly (error 0.263, Spearman 0.75; method better on 7/8, reuters.com a tie) but **hurts quality**: out-of-support AlignScore 0.21 below the same-α reference, +11 tokens. **Under-tuned**: 6/8 clients chose the largest gain (0.8) with dev error still falling. ⏳ wider gain grid, layer choice |
 | **B5** | **Pooled reference**: all clients' data centralized | Cost of decentralization | ⏳ |
 
 **Ablations:**
 - **A1:** gain fixed at 1 (`fed.fix_gain`) ⏳.
-- **A2:** shared adapter (`fed.adapter: shared`) or no adapter (`none`). ⏳ Now also a test of whether the private adapter blocks extrapolation for copy-heavy clients.
-- **A3:** PFL-structured conditional SFT: shared and private LoRA with α as a *text control token* (FedDPA / FedSA-LoRA structure [8, 9]). ⏳ This answers "isn't this just PFL?".
-- **Calibration** (new): private vs. **shared** vs. shared without offset 🔄 (exp17). `none` (g = α) is not planned for now.
+- **A2:** shared adapter (`fed.adapter: shared`): one global FedAvg model, nothing personalized. It is the **non-personalized FL baseline** and tests whether the private adapter blocks extrapolation for copy-heavy clients. Compare steering, plus per-client NLL and BERTScore on the client's own references (house style). 🔄 Running (exp25, 11094904). No adapter (`none`) is not planned: it confounds capacity with personalization.
+- **A3 (optional):** PFL-structured conditional SFT: shared and private LoRA with α as a *text control token* (FedDPA / FedSA-LoRA structure [8, 9]). ⏳ It would strengthen the answer to "isn't this just PFL?", but A2 (non-personalized FedAvg) and the positioning argument carry that answer without it.
+- **Calibration:** private vs. shared vs. **shared without offset** ✅ (entry 20; shared without offset is best). `none` (g = α) is not planned for now.
 - **α protocol** (new): global (method) vs. local ✅ (entries 7–9).
 - **Regularizers** (new): bundle tested ✅ (it hurt); a proper ablation is ⏳: no gain/offset priors, no cosine decay, stronger weight decay and dropout.
 - **Endpoint-only** (optional): train on each client's bottom and top quartiles, test intermediate α. This links to the original REIN claim.
 
-**Not included, with the reason (for the rebuttal):** full PFL algorithms (no control coordinate; structure covered by A3); CWS [3] and task arithmetic (post-hoc extraction is covered by B3 and B4); hypernetwork or contextual steering (a different claim).
+**Not included, with the reason (for the rebuttal):** full PFL algorithms (no control coordinate; the personalization question is covered by A2, optionally A3); CWS [3] and task arithmetic (post-hoc extraction is covered by B3 and B4); hypernetwork or contextual steering (a different claim).
 
 ---
 
@@ -188,13 +205,13 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 
 | Table/Figure | Content | Status |
 |---|---|---|
-| **Table 1 (main)** | E1: federated vs. B1–B5, steering and quality, mean / worst client; key Amazon rows | 🔄 (B2 only so far) |
+| **Table 1 (main)** | E1: federated vs. B1–B5, steering and quality, mean / worst client; key Amazon rows | 🔄 B1, B2, B3, B4 done at 4k (entry 22); B5 and a tuned B4 ⏳ |
 | **Fig. 1** | Control curves: output percentile vs. α for clients with different supports, the support band shaded | 🔄 (data exists) |
 | **Fig. 2 (C1, coverage)** | Per client: federated − local difference with paired CIs, in- vs. out-of-support; plus the controlled coverage experiment | 🔄 / ⏳ |
 | **Fig. 3 (C1, data)** | Steering vs. data budget, federated vs. local | 🔄 (2k, 4k) |
-| **Fig. 4 (C2)** | Held-out clients: metrics vs. k (0 with shared calibration) for frozen D, local direction, prompting | ⏳ |
-| **Fig. 5 (C3)** | Retention across drift stages | ⏳ |
-| **Table 2** | Ablations: calibration, adapter, α protocol, A1, A3, regularization | 🔄 |
+| **Fig. 4 (C2)** | Held-out clients: error (in-/out-of-support) and quality vs. n for frozen_D, local_D, prompt, plugin; plus the coverage version | 🔄 jobs running |
+| *Fig. 5 (C3, optional; appendix)* | Retention across drift stages, federated vs. local | ⚠️ / optional |
+| **Table 2** | Ablations: calibration ✅, α protocol ✅, adapter (A2) 🔄, A1 ⏳, A3 (optional) ⏳, regularization (bundle only) | 🔄 |
 | **Fig. 6** | Quality vs. α for generated vs. real summaries (AlignScore, judge); length off-target | ✅ (data exists) |
 | **Fig. 7 (diagnostic)** | Learned calibration curves g(α) per client; coefficient ranges used by each client; agreement diagnostics | 🔄 |
 
@@ -214,10 +231,10 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 | Gate | Criterion | Status |
 |---|---|---|
 | **G0** | Publications differ materially in density range | ✅ Passed (median density 1.1 → 22.6) |
-| **G1** | The method beats prompting (B1) on calibration at matched quality | ⏳ **Untested; highest priority.** If prompting is as good, the premise fails |
-| **G2** | The method beats local-only (B2) | 🔄 2k: better on 6/8 clients, worse on cbc.ca and nypost.com (copy-heavy). 4k comparison running |
-| **G3** | One-shot merging (B3) does not already match the method | ⏳ (evaluation only; files exist) |
-| **G4** | Frozen D (+ calibration) beats a local direction at k ≤ 64 on held-out clients | ⏳ |
+| **G1** | The method beats prompting (B1) on calibration at matched quality | ✅ **Passed, provisionally**: prompting barely moves the output (Spearman ≤ 0.08). To confirm with a second template and on Qwen3-4B; the stronger input-side baseline A3 (level as a control token in training) is optional |
+| **G2** | The method beats local-only (B2) | 🔄 **Partly**: at 4k, better on 4/8 overall and worse on none; a coverage trade-off out-of-support (entry 20). Report it per client with the gap/tail split |
+| **G3** | One-shot merging (B3) does not already match the method | ✅ **Passed**: B3 is worse than local on 6/8 and than the method on 7/8 (entry 22) |
+| **G4** | On held-out clients, `frozen_D` beats `local_D` at small n (≤ 256 pairs) | ✅ **Passed** on rotation 0, all 4 clients, every n (entry 26). ⏳ coverage version, step-sweep fairness check |
 
 **If a gate fails:**
 - G1 fails: the paper's premise fails; stop.
@@ -225,27 +242,29 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 - G3 fails: simplify to one-shot merging; make the paper about the evaluation protocol and portability.
 - G2 holds only for some clients: report it as a coverage result (federation helps where a client's support is missing), and use the calibration/adapter ablations to explain the exceptions.
 
-**Next steps, in order:**
-1. B1 prompting and B3 merged: evaluation only, can run while training jobs queue.
-2. Analyse exp16/exp17 (local 4k; shared calibration ± offset) and pick the calibration design.
-3. E2 held-out clients (zero-shot with shared calibration).
-4. Controlled coverage experiment and adapter ablation (A2).
-5. E3 drift.
-6. FKGL / specificity and agreement diagnostics; the bootstrap script; quality-aware selection.
+**Next steps, in order (core):**
+1. **Finish E2:** results at n = 1024 and all, the private-calibration run, and the LLM judge on `frozen_D` / `local_D` (entry 27).
+2. **E2 coverage and fairness:** α-window runs on held-out clients (`frozen_D` vs. `local_D`); a step sweep for both at n = 64 / 256.
+3. **A2 (shared adapter)** analysis; confirm the method design (shared calibration, no offset) and switch the config default.
+4. **Rotation 2** federated run, then E1 per-client comparison and E2 on it (natural skew; second rotation).
+5. **Baseline fairness:** B4 wider gain grid (and layer); B3 with a refit calibration; a second B1 template.
+6. Longer training (150–200 rounds); the gap/tail split of out-of-support error; FKGL / specificity; B5 pooled.
 7. Seeds (3) and the Qwen3-4B backbone for the final tables; Amazon key rows; human audit.
+
+**Optional (only if time allows):** E3 with steering-on drift (C3); A3 (PFL-structured conditional SFT).
 
 ---
 
 ## 8. Positioning
 
-- **vs. PFL** (FedRep [11], FedDPA [8], FedSA-LoRA [9]): same shared/private split, but a different shared object (a control direction, not task features) and a different success criterion (control and quality metrics, not per-client accuracy). The structural overlap is tested directly by A3.
-- **vs. weight/activation steering** (CWS [3], CAA [4]): those learn a direction on one model. We learn it across many privately fine-tuned models with skewed data and test whether it transfers. Directions transferred between models [12] and steering undone by fine-tuning [13] are the closest findings to C2 and C3.
+- **vs. PFL** (FedRep [11], FedDPA [8], FedSA-LoRA [9]): same shared/private split, but a different shared object (a control direction, not task features) and a different success criterion (control and quality metrics, not per-client accuracy). The structural overlap is tested by A2 (one non-personalized FedAvg model) and, optionally, A3.
+- **vs. weight/activation steering** (CWS [3], CAA [4]): those learn a direction on one model. We learn it across many privately fine-tuned models with skewed data and test whether it transfers. Directions transferred between models [12] and steering undone by fine-tuning [13] are the closest findings to C2 and (optional) C3.
 - **vs. personalized steering** (BiPO [14], SteerX [15]): those personalize the vector per user. We share the direction and, with shared calibration, the α scale; only house style (the adapter) is private.
 - **Prior federated steering:** a published patent application covers aggregating activation steering vectors [16]. Do not claim to be the first federated steering method. Claim the evaluation protocol and the three findings.
 
 **Working title:** *Learning Steering Directions Across Clients: Federated Training and a Protocol for Direction Quality*
 
-**Claim sentence (only if the results support it):** "Clients whose data covers different parts of an attribute's range can learn a single steering direction by federated training. It lets each client reach attribute levels its own data barely contains, with summary quality on par with real examples at those levels; it transfers to new clients without labelled examples; and it survives continued private fine-tuning."
+**Claim sentence (only if the results support it):** "Clients whose data covers different parts of an attribute's range can learn a single steering direction by federated training. It lets each client reach attribute levels its own data barely contains, with summary quality on par with real examples at those levels; a new client that joins with the frozen direction steers well from far less data than it would need to learn its own." (Add "and it survives continued private fine-tuning" only if the optional E3 supports it.)
 
 ---
 
@@ -267,7 +286,15 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 | 09-30 | Jobs run from code snapshots | entry 14 |
 | 09-30 | Per-client paired comparisons; 4k effect; local-4k baseline queued | entries 15–16 |
 | 10-01 | **Calibration shared vs. private**; offset optional (exp17 running) | entry 17 |
-| 10-01 | Plan updated to the above | — |
+| 10-01 | Plan updated to the above | entry 18 |
+| 10-01 | Baselines implemented: B1 prompting, B3 one-shot merge, B4 federated CAA | entry 19 |
+| 10-01 | **exp17 results:** shared calibration without offset is the best federated design; vs. local a coverage trade-off (C1 per client) | entry 20 |
+| 10-01 | E2 / E3 implemented; `compare_runs.py` (paired bootstrap) | entries 20–21 |
+| 10-01 | **Baseline results:** G1 passes provisionally (prompting fails to steer); G3 passes (merge worse than local and federated); B4 steers partly with a quality cost and needs tuning | entry 22 |
+| 10-01 | A2 (shared adapter, non-personalized baseline) submitted | entry 25 |
+| 10-01 | **E3 (C3) and A3 made optional**; LLM judge added to E2 | entry 27 |
+| 10-01 | **E2 results:** frozen D gives large data-efficiency gains (G4 passed). **E3 results:** steering-off drift breaks the knob for both runs (anchor shift); E3 to be rerun with steering-on drift | entry 26 |
+| 10-01 | **E2 redesigned:** the new client trains its adapter with D frozen and α on; data size n replaces "k labelled examples"; plugin and prompt kept as ablation and baseline; the held-out clients of rotation 0 are broad, so coverage needs α windows or rotation 2 | entry 23 |
 
 ---
 

@@ -89,7 +89,7 @@ def agg(rows):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
-    ap.add_argument("--eval", required=True)
+    ap.add_argument("--eval", nargs="+", required=True, help="one or more eval files of the run")
     ap.add_argument("--judge", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--per_client", type=int, default=25, help="articles per client (all alphas each)")
     ap.add_argument("--refs_per_bin", type=int, default=30, help="reference summaries per alpha bin")
@@ -102,13 +102,18 @@ def main():
     ref_path = os.path.join(args.run, "alpha_reference.json")
     gref = alpha_reference_from_json(json.load(open(ref_path))) if os.path.exists(ref_path) else None
     records = read_jsonl(cfg["data_path"])
-    by_url = {r["url"]: r for r in records if r["client"] in cfg["clients"]}
-    ev = json.load(open(args.eval))
-    alphas, split = ev["alphas"], ev["split"]
+    by_url = {r["url"]: r for r in records}   # all clients: E2 evaluates held-out (non-participant) clients
 
     tok = AutoTokenizer.from_pretrained(args.judge)
     model = AutoModelForCausalLM.from_pretrained(args.judge, torch_dtype=torch.bfloat16, device_map="cuda").eval()
+    ref_cache = {}                            # (split, alphas) -> reference scores by alpha bin
+    for eval_path in args.eval:
+        judge_file(eval_path, args, cfg, local_q, gref, records, by_url, tok, model, ref_cache)
 
+
+def judge_file(eval_path, args, cfg, local_q, gref, records, by_url, tok, model, ref_cache):
+    ev = json.load(open(eval_path))
+    alphas, split = ev["alphas"], ev["split"]
     items, keys = [], []
     for c, res in ev["clients"].items():
         for i in range(min(args.per_client, len(res["outputs"]))):
@@ -116,23 +121,30 @@ def main():
             for j in range(len(alphas)):
                 items.append((art, res["outputs"][i][j]))
                 keys.append(("gen", c, j))
-    rng = random.Random(args.seed)
-    bins = defaultdict(list)
-    for r in records:
-        if r.get("split") == split and r["client"] in cfg["clients"]:
-            q = gref if gref is not None else local_q[r["client"]]
-            bins[int(np.argmin([abs(q.cdf(r["score"]) - a) for a in alphas]))].append(r)
-    for j, rs in bins.items():
-        for r in rng.sample(rs, min(args.refs_per_bin, len(rs))):
-            items.append((r["article"], r["target"]))
-            keys.append(("ref", None, j))
+    # reference baseline: participants' real summaries of the split, by alpha bin (scored once per split)
+    ck = (split, tuple(alphas))
+    if ck not in ref_cache:
+        rng = random.Random(args.seed)
+        bins = defaultdict(list)
+        for r in records:
+            if r.get("split") == split and r["client"] in cfg["clients"]:
+                q = gref if gref is not None else local_q[r["client"]]
+                bins[int(np.argmin([abs(q.cdf(r["score"]) - a) for a in alphas]))].append(r)
+        for j, rs in bins.items():
+            for r in rng.sample(rs, min(args.refs_per_bin, len(rs))):
+                items.append((r["article"], r["target"]))
+                keys.append(("ref", None, j))
 
     scores = judge(model, tok, items, args.batch_size)
     gen = defaultdict(lambda: defaultdict(list))
     ref = defaultdict(list)
     for (kind, c, j), s in zip(keys, scores):
         (gen[c][j] if kind == "gen" else ref[j]).append(s)
-    out = {"eval": args.eval, "judge": args.judge, "alphas": alphas,
+    if ck in ref_cache:
+        ref = ref_cache[ck]
+    else:
+        ref_cache[ck] = ref
+    out = {"eval": eval_path, "judge": args.judge, "alphas": alphas,
            "reference_by_alpha": {j: agg(ref[j]) for j in sorted(ref)}, "clients": {}}
     for c, res in ev["clients"].items():
         lo, hi = res.get("support", [0.0, 1.0])
@@ -149,7 +161,7 @@ def main():
                 summ[f"gap_{k}_{tag}"] = float(np.mean(gaps)) if gaps else None
         out["clients"][c] = {"support": [lo, hi], "per_alpha": per_alpha, "summary": summ}
         print(c, json.dumps(summ), flush=True)
-    path = os.path.join(os.path.dirname(args.eval), "judge_" + os.path.basename(args.eval))
+    path = os.path.join(os.path.dirname(eval_path), "judge_" + os.path.basename(eval_path))
     json.dump(out, open(path, "w"), indent=1)
     print(f"wrote {path}", flush=True)
 

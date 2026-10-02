@@ -8,8 +8,11 @@
 * ``fit_calibration``       the calibration g(alpha) = o + s h(alpha) (gain u, offset o,
                             warp) on k labelled examples, with P and D frozen.
 * ``train_local_direction`` a client's own direction B_d (+ calibration) from zero on k
-                            labelled examples, with P frozen (E2 baseline: "a local
-                            direction trained on the same k examples").
+                            labelled examples, with P frozen.
+* ``train_steered``         alpha-conditioned training (the participants' objective) of a
+                            chosen set of components with everything else frozen: E2's
+                            new client joining with the frozen direction (P [+ private
+                            calibration]) or training its own (P + D + calibration).
 """
 
 from __future__ import annotations
@@ -57,10 +60,10 @@ def only_trainable(model, params):
 
 def _train(model, fmt: ChatFormatter, examples: list[dict], params, steps: int, lr: float,
            batch_size: int = 8, fixed_alpha: Optional[float] = None, seed: int = 0, bf16: bool = True,
-           max_grad_norm: float = 1.0) -> list[float]:
+           max_grad_norm: float = 1.0, warmup_steps: int = 0) -> list[float]:
     """Generic loop: AdamW on ``params`` only (a list of tensors, or a list of param-group
     dicts with their own "lr"); alpha per example from ``example['alpha']`` unless
-    ``fixed_alpha`` is given (label-free training)."""
+    ``fixed_alpha`` is given (label-free training).  Linear warmup over ``warmup_steps``."""
     if not examples or steps <= 0:
         return []
     device = next(model.parameters()).device
@@ -69,6 +72,7 @@ def _train(model, fmt: ChatFormatter, examples: list[dict], params, steps: int, 
     groups = params if params and isinstance(params[0], dict) else [{"params": list(params)}]
     params = [p for g in groups for p in g["params"]]
     opt = torch.optim.AdamW(groups, lr=lr, weight_decay=0.0)
+    sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda t: min(1.0, (t + 1) / warmup_steps) if warmup_steps else 1.0)
     losses = []
     model.train()
     with only_trainable(model, params):
@@ -80,6 +84,7 @@ def _train(model, fmt: ChatFormatter, examples: list[dict], params, steps: int, 
                 loss.backward()
             torch.nn.utils.clip_grad_norm_(params, max_grad_norm)
             opt.step()
+            sched.step()
             opt.zero_grad(set_to_none=True)
             losses.append(loss.item())
     model.eval()
@@ -113,6 +118,16 @@ def train_local_direction(model, fmt, labelled, steps=100, lr=2e-4, lr_calibrati
             p.zero_()
     groups = [{"params": g["shared"], "lr": lr}, {"params": g["gain"] + g["warp"], "lr": lr_calibration}]
     return _train(model, fmt, labelled, groups, steps, lr, batch_size, None, seed, bf16)
+
+
+def train_steered(model, fmt, examples, steps, components=("private",), lrs=None, batch_size=8,
+                  warmup_steps: int = 0, seed: int = 0, bf16: bool = True) -> list[float]:
+    """Alpha-conditioned training (alpha per example, steering on) of ``components`` (keys of
+    trainable_parameter_groups: private / shared / gain / warp), each at ``lrs[component]``."""
+    g = trainable_parameter_groups(model)
+    groups = [{"params": g[c], "lr": lrs[c]} for c in components if g[c]]
+    return _train(model, fmt, examples, groups, steps, groups[0]["lr"], batch_size, None, seed, bf16,
+                  warmup_steps=warmup_steps)
 
 
 def sample_k(examples: list[dict], k: int, seed: int = 0) -> list[dict]:

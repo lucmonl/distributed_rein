@@ -51,10 +51,17 @@ Since 2026-09-29 (entry 8), runs and evals never overwrite each other. Continue 
 | 11082128 | 10-01 | exp21 E3 on method run | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e3_*` | Cancelled (blocked by failed smoke); resubmitted, see 21a |
 | 11082129 | 10-01 | exp21 E3 on local counterpart (no offset) | `runs/exp17_local_nooff_cap4k_…j11063911/evals/*_e3_*` | Cancelled (blocked by failed smoke); resubmitted, see 21a |
 | 11082130 | 10-01 | exp21 E2 on private-calibration fed run | `runs/exp11_cap4k_base_…j11041282/evals/*_e2_*` | Cancelled (blocked by failed smoke); resubmitted, see 21a |
-| 11083572 | 10-01 | exp21 E2 on method run (resubmit) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e2_*` | Running (ccc0284) |
-| 11083573 | 10-01 | exp21 E3 on method run (resubmit) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e3_*` | Queued |
-| 11083574 | 10-01 | exp21 E3 on local counterpart (resubmit) | `runs/exp17_local_nooff_cap4k_…j11063911/evals/*_e3_*` | Queued |
-| 11083575 | 10-01 | exp21 E2 on private-calibration fed run (resubmit) | `runs/exp11_cap4k_base_…j11041282/evals/*_e2_*` | Queued (after 11083572) |
+| 11083572 | 10-01 | exp21 E2 on method run (resubmit), **old design** (superseded by entry 23) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e2_*` | Done (superseded design; numbers in entry 26) |
+| 11083573 | 10-01 | exp21 E3 on method run (resubmit) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e3_*` | Done (10-01 18:21, 4 h) |
+| 11083574 | 10-01 | exp21 E3 on local counterpart (resubmit) | `runs/exp17_local_nooff_cap4k_…j11063911/evals/*_e3_*` | Done (10-01 19:41; entry 26) |
+| 11083575 | 10-01 | exp21 E2 on private-calibration fed run (resubmit) | `runs/exp11_cap4k_base_…j11041282/evals/*_e2_*` | **Cancelled** before it started (old design, entry 23) |
+| 11087947 | 10-01 | exp23 E2 redesign smoke (α window 0–0.4, smoke run) | writes into the smoke run | **Passed** (all four settings, window filter, quality scoring) |
+| 11088050–53 | 10-01 | exp23 E2 on method run, n = 16 / 64 / 256 / 1024 (all four settings) | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/*_e2_*_n{n}__*` | n=16/64/256 done (entry 26); n=1024 running |
+| 11088054 | 10-01 | exp23 E2 on method run, n = all (frozen_D, local_D, plugin) | same, `*_nall__*` | Queued (after smoke) |
+| 11088055 | 10-01 | exp23 E2 on private-calibration run, all n (frozen_D, plugin) | `runs/exp11_cap4k_base_…j11041282/evals/*_e2_*` | Queued (after smoke) |
+| 11094904 | 10-01 | exp25 A2: shared adapter (non-personalized FedAvg), shared calibration, no offset, 4k | `runs/exp25_fed_adaptershared_calshared_nooff_cap4k_<stamp>_j11094904` | Running (started ~21:30) |
+| 11097085 | 10-01 | exp27 judge smoke (refactored `judge_quality.py` on the smoke run's held-out E2 files) | `runs/smoke_pipeline_…j11039406/evals/judge_*e2_*` | Queued |
+| 11097083 | 10-01 | exp27 LLM judge on E2 `frozen_D` / `local_D` (all n) of the method run | `runs/exp17_fed_calshared_nooff_cap4k_…j11063910/evals/judge_*e2_*` | Queued (after E2 n=1024 / all: 11088053, 11088054) |
 
 ---
 
@@ -633,3 +640,187 @@ All on test (200 articles per client, 4k data). B1/B4 use the client models of F
   - Caveat: B3 keeps each client's local calibration, fitted to its own direction; a merged-direction variant with a refitted gain would be fairer.
 - **B4 activation steering** steers partially (Spearman 0.75) but much worse than the method, and **degrades quality**: AlignScore −0.21 against the same-α reference out-of-support, summaries +11 tokens. Clients' CAA vectors agree moderately with the average (cosine 0.64–0.84).
   - **B4 is under-tuned:** 6 of 8 clients picked the largest gain in the grid (0.8), with dev error still falling. It needs a wider gain grid (and maybe a layer choice) before final numbers.
+
+## 23. E2 redesigned: the new client trains with D in the loop (2026-10-01)
+
+**Problem with entry 21's E2 (pointed out by the user):** the held-out client's adapter was trained by plain SFT with the direction **off**, and D was attached only at evaluation. Participants' adapters were trained together with D (α per pair), so this handicaps the frozen direction. It shows in 11083572's first results:
+- frozen D with the run's shared calibration: percentile error 0.335; 0.310 after a k = 16 calibration refit;
+- outputs at α = 0 already sit at percentile 0.4–0.78 (overshoot).
+
+Also, α for a new client is free to compute: it is the global CDF of the pair's density. So "k labelled examples" was the wrong axis. The scarce resource is the client's **data**, n pairs.
+
+**New E2** (`e2_heldout.py`, rewritten). For each held-out client and n ∈ {16, 64, 256, 1024, all}:
+- **Subsets:** the client's first n training pairs under a fixed shuffle, so the subsets are nested.
+- **Settings:**
+  - `frozen_D` (main): the participants' objective (α per pair, steering on) with D frozen. Trains P from scratch, plus the calibration if the run's calibration is private; shared calibration stays at the run's value.
+  - `local_D` (baseline, no federation): same objective and step budget; the client trains its own D from zero (P + D + calibration).
+  - `plugin` (ablation = the old design): P by SFT with steering off, then D attached. Calibration as the run has it: shared → frozen; private → fitted on the same n pairs.
+  - `prompt` (baseline): the plugin adapter without D; level stated in the prompt; 3 shots from the n pairs.
+- **Steps:** clip(⌈4 · n / batch⌉, 200, 2000), the same for every setting. 4 epochs = the participants' budget: 2000 steps × 8 / 4000 pairs.
+  - n = 16, 64, 256 → 200 steps; n = 1024 → 512; n = all → 2000.
+  - Warmup 20 steps (as in training).
+- `local_D` and `prompt` depend only on the rotation and the α reference, so they run only with the method run.
+- **New option** `--alpha_window LO HI` keeps only the client's pairs with α in the window, to simulate a skewed client; its support comes from those pairs.
+- **Outputs:** `eval_round_0100_e2_{setting}_n{n}[_wLO-HI]__<stamp>.json`.
+
+**Code:**
+- `fedsteer/adapt.py`: `_train` gets a linear warmup; new `train_steered(components=...)` (α-conditioned training of chosen parameter groups).
+- `sbatch/eval_settings.sbatch`: smoke arguments updated; lists use "+".
+
+**Concern: held-out clients in rotation 0 are broad.** Their data range on the run's α scale:
+- telegraph.co.uk 0.02–0.99, latimes.com 0.11–0.98, bbc.com 0.03–0.79, mashable.com 0.08–0.79.
+- The narrow, skewed clients (theguardian 0.04–0.55, nypost 0.51–0.95) are participants. They are held out only in rotation 2.
+- So rotation-0 E2 tests **data efficiency**, but hardly **coverage** (few out-of-support α; telegraph has almost none).
+- Options:
+  - (a) `--alpha_window` on rotation-0 held-out clients: controlled skew, no new training;
+  - (b) a rotation-2 federated run: natural skew, about 6.5 h of training, then E2.
+
+**Jobs** ([launch](launch/exp23_e2_redesign.sh)):
+- smoke 11087947;
+- method run n = 16 / 64 / 256 / 1024: 11088050–53;
+- method run n = all: 11088054;
+- private-calibration run: 11088055;
+- 11083575 (old design) cancelled; 11083572 (old design) left running.
+
+## 24. Plan updated (2026-10-01, evening)
+
+`federated-steering-plan.md` brought up to date with entries 19–23 (no code or jobs changed; previous version kept outside the repo):
+- **Claims:** C1 reported as a coverage trade-off (4k); C2 reworded as "a joining client needs less data with the frozen direction" (the redesigned E2); C3 in progress.
+- **Method:** shared calibration without offset recorded as the proposed default (best in exp17); the config default is still private + offset.
+- **Data:** caveat that rotation 0's held-out clients are broad; skewed clients are held out only in rotation 2.
+- **Evaluation:** E2 redesign; E3 details; `compare_runs.py`; proposed gap/tail split of out-of-support error.
+- **Baselines:** B1, B3, B4 results; fairness follow-ups (B4 gain grid, B3 with refit calibration, second B1 template, A3).
+- **Gates:** G1 passed provisionally, G3 passed, G2 partly (coverage trade-off), G4 running.
+- New next steps and changelog rows.
+
+## 25. A2: shared adapter, a non-personalized baseline (2026-10-01)
+
+**Why:** with `fed.adapter=shared` the "private" adapter is averaged by the server every round, like D. With shared calibration, nothing stays on the client: one global α-conditioned model trained by plain FedAvg. This is both
+- **the non-personalized FL baseline**, and
+- **the ablation of the private adapter.**
+
+**Expectations:**
+- Steering may improve: no client-specific adapter can absorb a client's skew (nypost.com's truncated leads, §2 of the plan).
+- House style should suffer.
+
+**What to compare** (vs. the method, 11063910):
+- steering in- and out-of-support, per client;
+- **per-client NLL on the client's own reference summaries** (dev loss is logged by the monitor; test NLL via `eval_direction.py --dev_loss` or an addition to `compare_runs.py`);
+- BERTScore vs. the reference; quality and judge as usual.
+
+A publication classifier on the outputs (style fidelity) is optional.
+
+**E2 note:** with a shared adapter a new client can use the global model as is (no training), an extra point for the held-out curve.
+
+**Code:** none (mode implemented and unit-tested since entry 7, never run).
+
+**Job** ([launch](launch/exp25_a2_shared_adapter.sh)): 11094904. Overrides of exp17 F_shared_noO + `fed.adapter=shared`; standard pipeline (dev selection → test → quality → judge).
+
+## 26. Results: E2 (redesigned, n = 16 / 64 / 256) and E3 (drift) (2026-10-01, night)
+
+### E2: held-out clients join with the frozen direction (method run 11063910; rotation 0)
+
+Test, 200 articles per held-out client, mean over the 4 clients. Quality = AlignScore; gap = generated − real summaries at the same α.
+
+| Setting | n | Pct error | In | Out | Spearman | Near-tie | Endpoint near-tie | AlignScore gap in / out | Length gap out |
+|---|---|---|---|---|---|---|---|---|---|
+| **frozen_D** | 16 | **0.179** | 0.203 | 0.153 | 0.893 | 0.23 | 0.000 | −0.02 / +0.05 | +13.8 |
+| **frozen_D** | 64 | **0.170** | 0.182 | 0.152 | 0.922 | 0.27 | 0.000 | +0.02 / +0.08 | +5.7 |
+| **frozen_D** | 256 | **0.146** | 0.148 | 0.143 | 0.931 | 0.20 | 0.000 | +0.01 / +0.06 | +2.4 |
+| local_D | 16 | 0.295 | 0.289 | 0.299 | 0.542 | 0.51 | 0.130 | −0.02 / +0.06 | +5.8 |
+| local_D | 64 | 0.260 | 0.256 | 0.266 | 0.735 | 0.48 | 0.026 | +0.02 / +0.12 | +1.0 |
+| local_D | 256 | 0.225 | 0.233 | 0.213 | 0.785 | 0.40 | 0.001 | +0.01 / +0.06 | +0.1 |
+| plugin | 16 / 64 / 256 | 0.369 / 0.376 / 0.374 | 0.42–0.47 | 0.28–0.31 | 0.77–0.82 | 0.53–0.56 | 0.06–0.08 | +0.13–0.16 / +0.16–0.20 | +33 to +37 |
+| prompt | 16 / 64 / 256 | 0.411 / 0.388 / 0.411 | 0.33–0.37 | 0.45–0.47 | 0.04–0.14 | 0.25–0.28 | 0.16–0.28 | −0.32 to −0.16 / −0.20 to −0.01 | +2 to +6 |
+
+**Per client:** `frozen_D` vs `local_D` (paired bootstrap):
+- frozen_D is **significantly better for all 4 clients at every n**, overall and out-of-support. Overall differences: −0.08 to −0.16 at n = 16; −0.06 to −0.10 at n = 256.
+- frozen_D with 16 pairs (0.179) already beats local_D with 256 pairs (0.225).
+- frozen_D with 256 pairs (0.146) is as good as the participants themselves (0.151 in entry 20).
+- **Partial n = 1024 / all** (jobs still running, telegraph.co.uk first):
+  - n = 1024: frozen 0.157 vs. local 0.221 in-support;
+  - n = all: frozen 0.143 vs. local 0.158 in-support, and about equal out-of-support (0.085 / 0.080).
+  - So the gap closes once the client has its full data, as expected.
+
+**Training:** both settings get 200 steps at n ≤ 256 and reach training loss ≈ 0 (memorized), so `local_D`'s deficit is **sample efficiency, not under-training**. A reviewer may still ask for a tuned step count for `local_D` at small n.
+
+**Other observations:**
+- **`plugin` fails** (0.37): an adapter trained without D does not work with D. Outputs at α = 0 are already far up the scale; the summaries are much longer and more extractive (higher AlignScore, +35 tokens).
+- **`prompt` is worse than a constant output** (0.30).
+- Old-design numbers (entry 21; 11083572), for the record: frozen_k0 0.335, frozen_cal_k16/64 0.310, localdir_k16/64 0.367, prompt_k16/64 0.40.
+
+**Caveat (entry 23):** rotation 0's held-out clients have broad support, so out-of-support here means mostly the extremes. **Coverage is not yet tested on new clients.**
+
+### E3: drift (method run vs. its local counterpart 11063911)
+
+Each stage = 100 steps of plain SFT of the adapter with **steering off** on 200 later-year pairs. Evaluated on 100 test articles per client.
+
+| Stage | Fed pct error | Fed Spearman | Local pct error | Local Spearman | Fed / local near-tie | Fed length in |
+|---|---|---|---|---|---|---|
+| 0 | 0.154 | 0.933 | 0.169 | 0.900 | 0.22 / 0.25 | 33.0 |
+| 1 as is / refit | 0.307 / 0.298 | 0.752 / 0.672 | 0.320 / 0.286 | 0.597 / 0.610 | 0.51 / 0.53 | 41.4 |
+| 2 as is / refit | 0.338 / 0.322 | 0.695 / 0.586 | 0.354 / 0.318 | 0.481 / 0.521 | 0.56 / 0.60 | 44.9 |
+| 3 as is / refit | 0.349 / 0.334 | 0.695 / 0.622 | 0.359 / 0.331 | 0.474 / 0.499 | 0.57 / 0.60 | 44.1 |
+
+- **Steering collapses after one drift stage for both runs:** percentile error doubles to about the constant-output level. A 16-pair calibration refit recovers little.
+- The federated direction keeps more of the ordering. Stage-3 Spearman is 0.70 vs. 0.47, and higher for 6/8 clients. But calibration is gone in both.
+- **Mechanism:**
+  - With shared calibration and no offset, g(0) = 0. So the private adapter *alone* is the α = 0 anchor; during co-training it learns the low end of the scale.
+  - SFT with D off retrains the adapter to produce the client's *average* summaries. The anchor moves to the client's mean level, and D then pushes further up.
+  - Hence outputs pile up at the copy end: forbes.com's α = 0 output goes from percentile 0.17 to 0.52; nypost.com's is ≈ 0.9 at every α. Summaries get longer (+11 tokens) and more extractive (AlignScore up).
+  - It is **not** caused by the drift data: drift-period α is similar to or lower than training α (forbes.com mean 0.40 → 0.25).
+  - A refit of gain and warp cannot move the anchor, since there is no offset.
+- **The dose is also extreme:** 100 steps × 8 = 4 epochs over 200 pairs, drift loss 2.2 → 0.03 (memorized).
+- **Same root cause as E2's `plugin`.** Training the adapter without α conditioning breaks the knob. Since α is free to compute for every pair, the realistic continuation is to keep training *with* steering on (α per pair, D frozen), as in E2's `frozen_D`. The steering-off drift is a stress test and a limitation to report.
+
+### What to run next (proposed, not submitted)
+
+1. **E3 with steering-on drift** (D and calibration frozen, α per pair, adapter trains): the realistic protocol. Keep the current steering-off run as the stress test, and add a gentler dose (1 epoch per stage) to get a dose-response curve. Needs a `--drift_mode steer|off` flag in `e3_drift.py`. Run on both the federated and the local run.
+2. **E2 coverage:** `--alpha_window` (0–0.4 and 0.6–1) on the held-out clients, `frozen_D` and `local_D` only, n = 64 and 256.
+3. **E2 fairness:** a step sweep (e.g. 50 / 100 / 400) for `local_D` (and `frozen_D`) at n = 64 / 256.
+4. **Rotation 2 federated run** (method config) and E2 on it: natural skew, plus a second rotation for E1.
+5. Baseline fairness: B4 wider gain grid; B3 with refit calibration; second B1 template.
+6. Longer training (150–200 rounds) for the method and local.
+
+Still running: E2 n = 1024 / all (method run), E2 on the private-calibration run, A2 (shared adapter).
+
+## 27. LLM judge for E2; E3 and A3 made optional (2026-10-01, night)
+
+**Did E2 get semantic evaluation?**
+- **Automatic metrics: yes.** All 19 E2 eval files have `quality_` files: AlignScore, BERTScore, length, repetition, and gaps to the same-α reference.
+- **LLM judge: no.** `sbatch/eval_settings.sbatch` never called it.
+
+E2 quality, mean over held-out clients (in / out of support):
+
+| Setting | n | AlignScore | Gap to same-α reference | BERTScore | Length gap |
+|---|---|---|---|---|---|
+| frozen_D | 16 | 0.770 / 0.742 | −0.017 / +0.048 | 0.885 / 0.882 | +11.3 / +13.8 |
+| frozen_D | 64 | 0.827 / 0.741 | +0.022 / +0.083 | 0.893 / 0.886 | +6.7 / +5.7 |
+| frozen_D | 256 | 0.812 / 0.722 | +0.007 / +0.063 | 0.891 / 0.884 | +2.9 / +2.4 |
+| local_D | 16 | 0.772 / 0.754 | −0.015 / +0.060 | 0.887 / 0.886 | +13.0 / +5.8 |
+| local_D | 64 | 0.825 / 0.777 | +0.021 / +0.119 | 0.894 / 0.889 | +7.0 / +1.0 |
+| local_D | 256 | 0.809 / 0.714 | +0.005 / +0.056 | 0.896 / 0.887 | +5.6 / +0.1 |
+| plugin | 16–256 | 0.93–0.94 / 0.86 | +0.13–0.16 / +0.16–0.20 | 0.889–0.891 / 0.883–0.889 | +34 to +40 / +33 to +37 |
+| prompt | 16–256 | 0.47–0.64 / 0.49–0.65 | −0.32 to −0.16 / −0.20 to −0.01 | 0.862–0.880 / 0.858–0.880 | +8 to +9 / +2 to +6 |
+
+- frozen_D and local_D have **equal quality**; the steering difference (entry 26) comes at no quality cost.
+- Short-data frozen_D (n = 16) writes longer summaries (+11–14 tokens).
+- plugin's high AlignScore comes from long, copied summaries. Prompting is the least faithful.
+
+**Changes:**
+- **`scripts/judge_quality.py`:**
+  - looks up records of all clients (the same bug `score_quality.py` had in entry 21a: held-out articles raised a KeyError);
+  - `--eval` takes several files, and the judge model is loaded once;
+  - reference summaries are judged once per split.
+- **`sbatch/eval_settings.sbatch`:** an LLM-judge step after quality scoring (`JUDGE=1` by default). `JUDGE_MATCH` sets which files are judged, by default E2 `frozen_D` / `local_D`.
+- **New `sbatch/judge_evals.sbatch`:** judges existing eval files of one run (`RUN`, `MATCH` regex) that have no `judge_` file yet.
+
+**Jobs:**
+- **11097085** (smoke): the refactored judge on the smoke run's two held-out E2 files, 2 articles per client.
+- **11097083**: the judge on E2 `frozen_D` / `local_D` for all n of the method run. It runs after the n = 1024 / all jobs finish (`afterany`).
+
+**Scope decision (user, 10-01):** E3 (claim C3, drift) and A3 (PFL-structured conditional SFT) are **optional**. The paper's core is C1 and C2.
+- E3's current result (entry 26) is reported as a limitation unless the optional steering-on drift run is done.
+- The "isn't this just PFL?" question is answered by A2 (non-personalized FedAvg) and the positioning.
+
+Plan updated: claims, E3, A3, figures, gates, next steps, claim sentence.
