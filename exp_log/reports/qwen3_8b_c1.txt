@@ -1,0 +1,54 @@
+== Steering (test; mean over clients; worst client in brackets)
+run              round    pct_calib_err   pct_err_in_sup   pct_err_out_su       reach_rate         spearman  concord_nt  nearTie endNearTie
+Fed8B              100    0.156 (0.236)    0.130 (0.229)    0.171 (0.261)    0.364            0.917 (0.838)       0.902    0.201      0.008
+Local8B            100    0.177 (0.231)    0.153 (0.218)    0.183 (0.281)    0.323            0.880 (0.759)       0.867    0.320      0.006
+Fed1B              100    0.151 (0.199)    0.135 (0.219)    0.161 (0.188)    0.387            0.933 (0.910)       0.907    0.204      0.002
+Local1B            100    0.165 (0.205)    0.148 (0.227)    0.165 (0.249)    0.363            0.906 (0.839)       0.891    0.246      0.004
+
+== Quality (test; mean over clients). gap = generated - real summaries at the same alpha
+run                    align_in      align_out   gap_align_in  gap_align_out     bert_f1_in    bert_f1_out      length_in     length_out  gap_length_in gap_length_out
+Fed8B                     0.797          0.763         -0.007          0.080          0.903          0.893         31.709         36.418          1.619          2.271
+Local8B                   0.826          0.725          0.022          0.042          0.904          0.891         34.579         33.925          4.489         -0.222
+Fed1B                     0.779          0.729         -0.026          0.046          0.900          0.889         32.059         36.476          1.970          2.329
+Local1B                   0.790          0.694         -0.015          0.011          0.902          0.887         32.745         33.697          2.656         -0.450
+
+== LLM judge (subsample; mean over clients)
+run                    faithful_in      faithful_out   gap_faithful_in  gap_faithful_out      relevance_in     relevance_out  gap_relevance_in gap_relevance_out      coherence_in     coherence_out
+Fed8B                        0.860             0.842            -0.046             0.070             3.723             3.722             0.089             0.086             4.244             4.230
+Fed1B                        0.815             0.791            -0.091             0.019             3.654             3.656             0.021             0.019             4.213             4.194
+Local1B                      0.839             0.788            -0.068             0.017             3.610             3.584            -0.023            -0.053             4.186             4.141
+
+== Per-client percentile error (test)
+client                 support          Fed8B        Local8B          Fed1B        Local1B
+forbes.com        [0.03,0.99]          0.133          0.157          0.129          0.125
+theguardian.com   [0.04,0.55]          0.127          0.227          0.133          0.200
+people.com        [0.03,0.70]          0.146          0.169          0.152          0.160
+wsj.com           [0.04,0.89]          0.124          0.145          0.144          0.151
+aol.com           [0.06,0.82]          0.129          0.136          0.132          0.138
+cbc.ca            [0.11,0.95]          0.129          0.151          0.143          0.152
+reuters.com       [0.10,0.97]          0.221          0.202          0.199          0.192
+nypost.com        [0.51,0.95]          0.236          0.231          0.177          0.205
+
+== Fed8B - Local8B: per-client paired bootstrap (negative = Fed8B better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.024 [-0.033,-0.014]*    +0.051 [+0.039,+0.063]*
+theguardian.com      -0.100 [-0.110,-0.091]*    -0.137 [-0.153,-0.121]*
+people.com           -0.023 [-0.031,-0.015]*    -0.022 [-0.034,-0.010]*
+wsj.com              -0.020 [-0.028,-0.013]*    -0.005 [-0.019,+0.008] 
+aol.com              -0.008 [-0.015,-0.000]*    -0.026 [-0.040,-0.013]*
+cbc.ca               -0.022 [-0.029,-0.015]*    +0.015 [+0.004,+0.026]*
+reuters.com          +0.019 [+0.009,+0.029]*    +0.031 [+0.012,+0.050]*
+nypost.com           +0.005 [-0.007,+0.016]     +0.002 [-0.012,+0.016] 
+Fed8B significantly better on 6/8 clients, worse on 1/8
+
+== Fed1B - Local1B: per-client paired bootstrap (negative = Fed1B better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.003 [-0.005,+0.011]     +0.029 [+0.019,+0.040]*
+theguardian.com      -0.066 [-0.077,-0.055]*    -0.101 [-0.118,-0.084]*
+people.com           -0.008 [-0.016,+0.000]     -0.005 [-0.017,+0.007] 
+wsj.com              -0.007 [-0.014,-0.000]*    +0.025 [+0.012,+0.037]*
+aol.com              -0.006 [-0.013,+0.001]     +0.020 [+0.008,+0.032]*
+cbc.ca               -0.009 [-0.016,-0.003]*    +0.008 [-0.002,+0.018] 
+reuters.com          +0.007 [-0.002,+0.016]     +0.028 [+0.013,+0.043]*
+nypost.com           -0.028 [-0.037,-0.019]*    -0.040 [-0.051,-0.030]*
+Fed1B significantly better on 4/8 clients, worse on 0/8

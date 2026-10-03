@@ -63,7 +63,52 @@ def pick_shots(pool: list[dict], alpha: float, k: int, exclude_url: Optional[str
     return sorted(cands, key=lambda r: (abs(r["alpha"] - alpha), r.get("url", "")))[:k]
 
 
-def prompt_with_level(rec: dict, alpha: float, shots: Sequence[dict], shot_words: int = 150) -> str:
+def molecule_level_instruction(alpha: float) -> str:
+    level = int(round(100 * alpha))
+    return (f"Target decoration lipophilicity: {level} on a 0-100 scale, where 0 means the groups you add to "
+            f"the core are as polar as possible (they lower the molecule's logP relative to the core) and 100 "
+            f"means they are as lipophilic as possible (they raise it as much as possible).")
+
+
+def prompt_with_level_molecule(rec: dict, alpha: float, shots: Sequence[dict]) -> str:
+    parts = [f"Design a ligand for {rec['target_name']}.",
+             f"Decorate this core scaffold: {rec['scaffold']}",
+             molecule_level_instruction(alpha)]
+    if shots:
+        parts.append("Here are example ligands for this target at about this level:")
+        for s in shots:
+            parts.append(f"Core: {s['scaffold']}\nLigand: {s['target']}")
+        parts.append("Now decorate the requested core at the target lipophilicity.")
+    parts.append("Answer with one SMILES string.")
+    return "\n\n".join(parts)
+
+
+def math_level_instruction(alpha: float) -> str:
+    level = int(round(100 * alpha))
+    return (f"Target solution length: {level} on a 0-100 scale, where 0 means the shortest possible "
+            f"solution (only the essential steps, as few words as possible) and 100 means the longest, "
+            f"most detailed step-by-step solution (every step written out and explained).")
+
+
+def prompt_with_level_math(rec: dict, alpha: float, shots: Sequence[dict]) -> str:
+    parts = [rec["problem"], math_level_instruction(alpha)]
+    if shots:
+        parts.append("Here are example solutions at about this length:")
+        for s in shots:
+            parts.append(f"Problem: {s['problem']}\nSolution: {s['target']}")
+        parts.append("Now solve the problem above at the target length.")
+    parts.append("Please reason step by step, and put your final answer within \\boxed{}.")
+    return "\n\n".join(parts)
+
+
+def prompt_with_level(rec: dict, alpha: float, shots: Sequence[dict], shot_words: int = 150,
+                      task: str = "auto") -> str:
+    """B1's prompt. ``task`` selects the template; ``auto`` picks the molecule template
+    for records that carry a scaffold and the math template for records with a problem."""
+    if task == "molecule" or (task == "auto" and "scaffold" in rec):
+        return prompt_with_level_molecule(rec, alpha, shots)
+    if task == "math" or (task == "auto" and "problem" in rec):
+        return prompt_with_level_math(rec, alpha, shots)
     parts = ["Write a short summary of the following news article.", level_instruction(alpha)]
     if shots:
         parts.append("Here are example summaries from this outlet at about this level:")

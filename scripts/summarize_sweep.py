@@ -54,7 +54,10 @@ def main():
         rows.append({"round": rnd, "snapshot": snap,
                      **{k: s[k]["mean"] for k in ("loss", "spearman", "concordance", "endpoint_increase_rate",
                                                   "adjacent_tie_rate", "pct_calib_err", "pct_range") if k in s},
-                     "spearman_worst": s["spearman"]["worst"], "pct_err_worst": s["pct_calib_err"]["worst"],
+                     # absent when no client could be scored at all (e.g. every generated
+                     # molecule was unparseable) -- keep the row so the failure is visible
+                     "spearman_worst": s.get("spearman", {}).get("worst"),
+                     "pct_err_worst": s.get("pct_calib_err", {}).get("worst"),
                      "const_pct_err": s.get("constant_output_pct_err")})
 
     train_loss = {}

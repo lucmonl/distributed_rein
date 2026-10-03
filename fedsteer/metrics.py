@@ -12,22 +12,42 @@ from scipy.stats import spearmanr
 
 from .data import ClientQuantiles
 from .extractive import fragment_stats, tokenize
+from .mathcot import cot_tokens
+from .molecules import (clogp_residual, clogp_residual_deco, clogp_residual_self,
+                        clogp_residual_strict)
 
 # scorer(generated_text, source_record) -> attribute value on the same scale as the
 # training ``score`` field
 SCORERS = {
     "words": lambda text, rec: float(len(text.split())),
     "density": lambda text, rec: fragment_stats(text, rec["article"])["density"],
+    # ChEMBL: decoration lipophilicity against the core given in the prompt (nan if the
+    # generated molecule does not parse).  The baseline must be the *requested* core:
+    # with the generation's own scaffold as baseline, a model that swapped the core
+    # would move the quantity being subtracted.  `_strict` additionally requires the
+    # core to survive (robustness check); `_self` is a drift diagnostic only.
+    "clogp_residual": clogp_residual,
+    "clogp_residual_strict": clogp_residual_strict,
+    "clogp_residual_self": clogp_residual_self,
+    # decoration format: the model emits only the decorations and they are zipped onto
+    # the core from the prompt, so the core cannot be rewritten (entry 34)
+    "clogp_residual_deco": clogp_residual_deco,
+    # math CoT: solution length in tokens of a fixed ruler tokenizer (fedsteer/mathcot.py)
+    "cot_tokens": cot_tokens,
 }
 
 LOWER_IS_BETTER = {"calib_mae_iqr", "pct_calib_err", "pct_err_in_support", "pct_err_out_support",
+                   "unscorable_row_rate",
                    "no_effect_rate", "adjacent_tie_rate", "adjacent_decrease_rate",
                    "text_tie_rate", "near_tie_rate", "near_no_effect_rate", "endpoint_near_tie_rate"}
 SUMMARY_KEYS = ["pct_err_in_support", "pct_err_out_support", "reach_rate", "concordance", "spearman",
                 "endpoint_increase_rate", "adjacent_increase_rate", "adjacent_tie_rate", "adjacent_decrease_rate",
                 "no_effect_rate", "pct_calib_err", "pct_range", "order_rate", "norm_range", "calib_mae_iqr",
                 "text_tie_rate", "near_tie_rate", "near_no_effect_rate", "endpoint_near_tie_rate",
-                "adjacent_increase_rate_nt", "concordance_nt"]
+                "adjacent_increase_rate_nt", "concordance_nt",
+                # share of prompts the scorer could not score at every alpha (ChEMBL:
+                # unparseable output, or a lost core under the strict scorer)
+                "unscorable_row_rate"]
 
 
 def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantiles,
@@ -42,6 +62,18 @@ def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantil
     reach through the shared direction.
     """
     scores = np.asarray(scores, dtype=float)
+    # A scorer returns nan when it cannot score the output at all (an unparseable
+    # molecule, say).  Row-wise metrics -- ordering, concordance, Spearman, range --
+    # need a complete alpha sweep, so drop prompts with any unscorable output and
+    # report how many were dropped; validity itself is reported by the task's own
+    # quality script.  Attributes that are always scorable (density) are unaffected.
+    n_all = len(scores)
+    keep = np.all(np.isfinite(scores), axis=1)
+    if not keep.all():
+        scores = scores[keep]
+    unscorable = {"n_prompts": int(n_all), "unscorable_row_rate": float(1.0 - keep.mean())}
+    if len(scores) == 0:
+        return {**unscorable, "concordance": None, "pct_calib_err": None, "spearman": None}
     order = np.all(np.diff(scores, axis=1) > 0, axis=1).mean()
     # pairwise concordance: fraction of (alpha_i < alpha_j) pairs with score_i < score_j (ties = 1/2)
     i, j = np.triu_indices(len(alphas), 1)
@@ -73,6 +105,7 @@ def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantil
         hits += [pct[:, above] > hi] if above.any() else []
         out["reach_rate"] = float(np.concatenate([h.ravel() for h in hits]).mean()) if hits else None
     return {
+        **unscorable,
         **out,
         "concordance": float(concord),
         "pct_calib_err": float(pct_err.mean()),

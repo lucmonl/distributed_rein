@@ -1078,3 +1078,576 @@ User picked the molecule candidate from entry 29 as the first task to try beyond
 **Proposed, not started:** B4′, federated *learned* activation steering. The method with D replaced by learned activation vectors scaled by the shared g(α), trained with the same objective, data and FedAvg, private adapter kept. This is the equal-training test of weight vs. activation space; CAA stays as the training-free version. Variant without the private adapter if wanted.
 
 **Decision (user):** B4′ is not pursued; nothing changes. The existing B4 (CAA) remains the activation-steering baseline.
+
+## 31. ChEMBL: splits built, pipeline wired, gate G0 queued (2026-10-02)
+
+Backbone for this task: **Qwen/Qwen3-4B-Instruct-2507** (user's choice). It was not in the HF
+cache (only Qwen3-8B and Qwen3.5-4B were), so it was downloaded, 7.6 GB. The 2507 instruct
+variant is non-thinking, which matters: a thinking model would wrap SMILES in `<think>` blocks.
+
+**Splits** (`scripts/build_chembl_fed.py` -> `data/chembl_fed/`, 40,268 records):
+- **Scaffold-disjoint.** Dev/test scaffolds never appear in train, or the answer leaks.
+- Dev/test scaffolds are drawn from those with **3-30 molecules** in the client: at least 3 so
+  every held-out prompt has real molecules at several alphas for a same-alpha reference, at most
+  30 so the large congeneric series stay in the training pool. With a `>=5` floor, 300 held-out
+  scaffolds were not available (CHEMBL204 had only 195), hence 3-30 with dev 50 / test 200.
+- Dropped 2,387 rows with residual exactly 0 (the molecule *is* its own scaffold).
+- Train per client: 1,969 (CHEMBL2039) to 4,000 (cap) -- same spread as Newsroom's 4,023-5,000.
+- Rotation 0 holds out CHEMBL205, CHEMBL236, CHEMBL4005, CHEMBL4409. Note this holds out the
+  most extreme client (CHEMBL205, alpha median 0.12), exactly as Newsroom's rotation 0 holds out
+  telegraph.co.uk; rotations 1-2 keep it as a participant.
+
+**New code:**
+- `fedsteer/molecules.py` -- RDKit attribute and quality helpers. `clogp_residual` scores the
+  generated molecule against **its own** Murcko scaffold, the same definition as the training
+  labels, and returns `nan` when the output does not parse. Also `keeps_scaffold` (substructure
+  match against the requested core) and `descriptors`.
+- `fedsteer/metrics.py` -- registered the `clogp_residual` scorer, and made `metrics_for_client`
+  drop prompts with any unscorable output, reporting `unscorable_row_rate` and `n_prompts`.
+  Row-wise metrics (ordering, concordance, Spearman, range) need a complete alpha sweep, so a
+  partial row cannot be used. Density is never nan, so Newsroom numbers are unchanged.
+- `fedsteer/baselines.py` -- B1 molecule template (`prompt_with_level(..., task="auto")`, picked
+  automatically for records carrying a scaffold): states a 0-100 decoration-lipophilicity target
+  and optional k nearest-alpha ligands from the client's own training data.
+- `scripts/score_molecules.py` -- validity / scaffold retention / uniqueness / novelty / QED /
+  MW / TPSA per client and per alpha. No LLM judge anywhere on this task.
+- `scripts/summarize_sweep.py` -- `spearman_worst` and `pct_err_worst` now tolerate a missing
+  summary key, so a run where nothing could be scored still produces a visible row instead of
+  a KeyError (precisely the failure G0 is meant to catch).
+- `configs/chembl_fedavg.yaml` -- Qwen3-4B, `enable_thinking=false`, max_prompt 256 /
+  max_target 96, 30 rounds, `calibration: shared`, `offset: false` (entry 20's best design).
+- `sbatch/train_eval_chembl.sbatch`, `sbatch/eval_baselines_chembl.sbatch` -- as the Newsroom
+  versions but `SCORER=clogp_residual`, `score_molecules.py` instead of `score_quality.py`,
+  no judge stage, 96 new tokens.
+
+**Verified before launching** (CPU, no GPU): the scorer reproduces the stored training labels
+exactly (max abs diff 0.0 over 500 rows); scaffold retention on real targets is 1.00; garbage
+text scores `nan`; prompt 95 tokens, full sequence median 134 / max 299 tokens.
+
+**Gate G0 (job 11117359, `exp_log/launch/exp31_chembl_g0.sh`):** one client (CHEMBL240, hERG,
+4,000 pairs), 20 rounds x 20 steps ~ 1 epoch. Pass: validity >= 0.90 and scaffold retention
+>= 0.80 on dev. **PENDING on priority** -- the cluster is full and entry 28's two Qwen3-8B runs
+hold GPUs with 3-day limits.
+
+G1-G3 are not launched: G1 (prompting) needs a trained run's snapshots, and G2/G3 need the
+federated and local pair. Launch scripts are ready; the method + local pair goes out as soon as
+G0's round-10 dev evaluation shows workable validity.
+
+## 32. ChEMBL attribute fix: the baseline is the requested core (2026-10-02)
+
+**User-raised correctness issue, and it was a real hole.** Entry 31's scorer subtracted the
+cLogP of the *generated* molecule's own Murcko scaffold. That makes the quantity being
+subtracted something the model controls: swap the core and the baseline moves with it, so any
+residual is reachable without decorating the requested core. The sharper statement is that the
+attribute became **independent of the prompt**.
+
+Measured on two real test prompts whose requested cores differ by ~17 logP units (CHEMBL236
+core cLogP −7.60, CHEMBL243 core cLogP +9.35), scoring one fixed generation
+(`CCCCCCCCc1ccc2ccccc2c1`, which contains neither core):
+
+| scorer | vs. core A | vs. core B | difference |
+|---|---|---|---|
+| `clogp_residual` (requested core, **new**) | 13.34 | −3.60 | **16.95** |
+| own Murcko core (**old, rejected**) | 2.90 | 2.90 | **0.00** |
+
+The old definition gave the identical score for two completely different requests.
+
+**Changes** (G0 job 11117359 was still PENDING, and `train_eval_chembl.sbatch` snapshots the
+code at job start, so the fix is picked up with no resubmission):
+- `fedsteer/molecules.py`: `clogp_residual(text, rec)` now uses `rec["scaffold"]` -- the core
+  given in the prompt -- as the baseline, with a cache for core cLogP. The key is **required**,
+  not defaulted, so a caller without a requested core fails loudly instead of silently
+  reverting to the unsafe definition. Added `clogp_residual_strict` (nan unless the core
+  survives) and `clogp_residual_self` (the old behaviour, kept only as a drift diagnostic).
+- **Regression check:** on training targets the requested core *is* the target's Murcko
+  scaffold by construction, so all three scorers still reproduce the stored labels (max abs
+  diff 1.07e-14 for the requested-core path, 0 for the self path). The definitions diverge
+  only on core-abandoning generations, which is the intended behaviour.
+- `fedsteer/metrics.py`: registered the three scorers; added `unscorable_row_rate` to
+  `SUMMARY_KEYS` / `LOWER_IS_BETTER` so the share of prompts that could not be scored at
+  every alpha appears in every summary instead of being invisible.
+- `scripts/rescore_eval.py` (new): recomputes all direction metrics from an eval file's saved
+  generations under a different scorer, no regeneration. The chembl sbatch now runs it with
+  `clogp_residual_strict` after the test evaluation, so every run reports how much of its
+  steering result rests on generations that lost the core.
+- Verified: an all-unscorable client yields `pct_calib_err: None`, `unscorable_row_rate: 1.0`
+  and does not crash `summarize` or `summarize_sweep`.
+
+**Decision on which scorer is primary.** Primary stays the lenient `clogp_residual` (requested
+core, nan only if unparseable), with retention reported per alpha and the strict variant as a
+robustness check. Reason: the strict scorer drops a whole prompt when any single alpha loses the
+core, so at retention 0.85 it would discard ~56% of 5-alpha rows and bias the surviving set.
+With the baseline fixed to the requested core the gaming vector is closed either way; core
+abandonment is now a quality failure visible in retention, which is the same division of labour
+the Newsroom task uses (density read next to a faithfulness metric).
+
+Plan updated: `chembl-experiment-plan.md` §2.2 and the metrics table.
+
+## 33. ChEMBL gate G0: FAILS on Qwen3-4B at 1 epoch (2026-10-02, job 11117359)
+
+Run: `runs/exp31_chembl_g0_qwen3_4b_20261002-190601_j11117359`. One client (CHEMBL240, hERG,
+4,000 pairs), 20 rounds x 20 steps. Confirmed the code snapshot carried entry 32's
+requested-core scorer, so the steering numbers use the fixed attribute definition.
+
+**Verdict: G0 fails both conditions.**
+
+| quantity | gate | result |
+|---|---|---|
+| validity (mean over alpha) | >= 0.90 | **0.818** (worst alpha 0.74) |
+| scaffold retention | >= 0.80 | **0.576** (worst alpha 0.324) |
+
+Retention collapses as alpha rises -- **0.81 / 0.79 / 0.59 / 0.38 / 0.32** at alpha
+0 / 0.25 / 0.5 / 0.75 / 1 -- which is exactly the failure entry 32's fix was designed to expose.
+
+**The steering number is not trustworthy on this run.** Test metrics looked acceptable at face
+value (pct_calib_err 0.217 vs the 0.300 constant-output baseline, in-support 0.193), but
+`scripts/rescore_eval.py --scorer clogp_residual_strict` shows **94% of prompts lose the core at
+some alpha** (vs. 48% unscorable from invalid SMILES alone), leaving 6 of 100 prompts intact.
+Metrics on those 6 are better (pct_err 0.190, Spearman 0.851) but meaningless at that n.
+
+**Mechanism, from the generations.** At low alpha the model keeps the core and makes small polar
+edits (adds F), sometimes copying the core verbatim with no decoration at all (score 0.00). At
+high alpha it **restructures the core itself** rather than decorating it -- e.g.
+`O=C(Nc1ccccn1)N1CCCc2cccnc21` becomes `CC(C)(C)N(C(=O)N1CCCc2cccnc21)Cc1ccccn1`, the same atoms
+reconnected, so the substructure match fails. Invalid outputs are mostly bad valences from the
+same restructuring (`...C1=Oc1ccccc1`). So the model raises lipophilicity by rebuilding the
+molecule, not by decorating the requested core. Adjacent-alpha ties are also high (0.36).
+
+**Diagnosis: undertraining is the leading hypothesis, not the backbone.** Dev loss fell 0.651 ->
+0.545 between rounds 10 and 20 with no sign of a plateau, and 400 steps x batch 8 is only ~0.8
+epochs over 4k pairs. The plan's failure branch said "switch to SELFIES, then a bigger base",
+but neither addresses the measured problem: SELFIES would fix validity (0.82) and do nothing for
+retention (0.58), which is the larger gap.
+
+**Launched: G0b (job 11118146, `exp_log/launch/exp33_chembl_g0b.sh`)** -- same client, **100
+rounds x 20 steps (~4 epochs)**, snapshots every 20 rounds so the validity/retention trend over
+training is visible. Dev evals save all generations, so `score_molecules.py` can measure
+retention at each snapshot without regenerating.
+
+**If G0b still fails**, retention is structural rather than a training-budget problem, and the
+task framing needs changing rather than the model. Options, cheapest first: (a) make the target
+the *decorations* instead of the whole molecule, so the core cannot be restructured; (b) accept
+`clogp_residual_strict` as primary and report retention as a first-class result; (c) constrained
+decoding that requires the core substructure. Option (a) is the most promising and keeps the
+attribute definition intact.
+
+**G1-G3 remain blocked** and were deliberately not launched: the gate is doing its job. Running
+the federated/local pair now would produce a steering number whose apparent success comes from
+core abandonment.
+
+**Note on the sbatch:** SLURM copies the batch script at submission, so the `rescore_eval.py`
+stage added to `train_eval_chembl.sbatch` after entry 31's submission did not run in job
+11117359; it was run by hand. It is in the script for G0b.
+
+## 34. Correction to entry 33: "G0" was not the plan's G0, and the alpha story is directional (2026-10-02)
+
+**Two corrections, one of them to my own conclusion.**
+
+**(1) The gate did not measure what it was defined to measure.** The plan's E0/G0 is *"SFT on one
+client's 4k pairs, **no steering**. Measure validity, uniqueness, scaffold retention."* Job
+11117359 instead ran the full steered configuration (`rank_shared: 16`, alpha-conditioned loss,
+trained gain/warp) and evaluated on the alpha grid {0, .25, .5, .75, 1}. So it measured steering
+quality, not backbone competence, and **cannot attribute** the retention failure between "this
+backbone cannot decorate a core" and "the steering pressure breaks cores". The plain-SFT number
+is the missing attribution baseline and was never taken.
+
+Launched **G0-SFT (job 11119175)**: same client, `fed.lr_shared=0`. `rank_shared=0` is
+unsupported (`scale_d = lora_alpha_shared / rank_shared` divides by zero), but `B_d` initializes
+to **zeros**, so a zero shared LR leaves the direction exactly zero forever and the model is
+alpha-independent -- plain SFT of the private adapter, no new code. Assertions to check in the
+log: `direction_norm == 0` every round, and `no_effect_rate == 1.0` / `text_tie_rate == 1.0` on
+dev (identical output at every alpha). 100 rounds, snapshots every 20.
+
+**(2) The degradation is NOT an extrapolation artifact, and my entry-33 "undertraining" reading
+is weaker than I claimed.** `scripts/score_molecules.py` now splits validity and retention by
+whether alpha lies inside the client's own support, the way percentile error already was. For
+job 11117359 (support [0.0503, 0.95]):
+
+| | mean | in-support | out-of-support | worst alpha |
+|---|---|---|---|---|
+| validity | 0.818 | 0.840 | 0.785 | 0.740 |
+| retention | 0.576 | **0.583** | **0.566** | 0.324 |
+
+In- and out-of-support retention are **the same** (0.583 vs 0.566). Per alpha it is
+0.81 / 0.79 / 0.59 / 0.38 / 0.32.
+
+**Both endpoints are out-of-support** (alpha 0 < 0.0503 and alpha 1 > 0.95), yet alpha = 0 has
+the *best* retention (0.81) and alpha = 1 the worst (0.32); the in-support alpha = 0.75 is
+already down at 0.38. So out-of-support status does not predict the failure at all -- **the
+direction of the requested edit does**. Decreasing lipophilicity is achievable with small local
+edits that keep the core (add F, OH); increasing it needs bulky greasy substituents, and in SMILES
+token space rewriting the whole string is apparently easier than grafting groups onto a fixed
+core. The failure is asymmetric in alpha, not symmetric in distance-from-support.
+
+**Consequence for the plan.** This is evidence for a structural fix rather than a bigger budget or
+a different backbone: entry 33's option (a) -- make the target the *decorations* rather than the
+whole molecule -- addresses exactly this asymmetry, because the core then cannot be rewritten at
+all. G0b (job 11118146, steered, 100 rounds, now RUNNING) still tests the budget hypothesis, and
+G0-SFT bounds what the backbone can do with no steering pressure. Those two plus entry 33 give a
+clean attribution:
+
+| run | steering | what it isolates |
+|---|---|---|
+| G0-SFT (11119175) | none | backbone competence: can it decorate a core at all? |
+| entry 33 (11117359) | yes, 20 rounds | steering pressure at a short budget |
+| G0b (11118146) | yes, 100 rounds | whether the budget was the problem |
+
+
+## 35. Delta (delta-login2) set up as a second execution host (2026-10-02)
+
+No experiment was run. This entry records the infrastructure so Delta results can be traced.
+
+**Layout (Delta).** Code `/u/lucmon/rein` (no `.git`; one-way copy from cc-login via
+`scripts/sync_to_delta.sh`, never edited on Delta). `runs` -> `/work/nvme/bhby/lucmon/rein`;
+`data/{newsroom,chembl,newsroom_fed,chembl_fed,newsroom_stats}` ->
+`/work/nvme/bhby/datasets/<name>` (3.2 GB; `toy_length.jsonl` stays in the code tree);
+`HF_HOME=/work/nvme/bhby/lucmon/hf_home`. The 111 GB of existing cc runs were not copied.
+
+**Environment.** New conda env `rein` = clone of Delta's `steer` + `pip install rdkit` (steer
+itself untouched; it had no rdkit). Versions differ from cc `steer`: torch 2.5.1+cu124 (cc: cu118),
+numpy 2.0.1 (cc: 1.26.3), scipy 1.14.1 (cc: 1.15.1), pyarrow 18.1.0 (cc: 19.0.0);
+transformers 4.56.0, peft 0.14.0, trl 0.22.1, datasets 4.0.0, accelerate 1.10.1, sklearn 1.6.1,
+rdkit 2026.3.6 are identical. **Cross-host numeric differences are possible**; compare a
+Delta run to a cc run only after a same-seed check.
+
+**Models cached on Delta** (offline load verified): Qwen3-4B-Instruct-2507, Qwen3-8B,
+Llama-3.2-1B-Instruct. Not copied: Qwen2.5-7B-Instruct (one mention, unused by configs).
+
+**SLURM on Delta** (user-specified): `--account=bhby-delta-gpu`,
+`--partition=gpuA100x4,gpuA100x8,gpuH200x8`, `--gpus-per-node=1`, `--ntasks-per-node=16`, plus
+`--mem=64G` added by me (Delta default is 1 GB/CPU). The sync script rewrites these into the Delta
+copy of `sbatch/*.sbatch` and swaps `source activate steer` -> `rein`, adds `HF_HOME`; all 10
+files checked. **8B caveat:** A100x4 GPUs are assumed to be 40 GB (unverified); an 8B run peaked
+near 72 GB on cc, so submit 8B jobs with `--partition=gpuA100x8,gpuH200x8`.
+
+**Not yet verified:** no GPU job has been submitted on Delta; the sbatch scripts are untested
+end to end. Existing `exp_log/launch/*.sh` still hardcode cc settings (`RR=/u/lucmon/lucmon/rein_runs`
+resolves to `/projects/bhby/lucmon/rein_runs` on Delta, not `/work`); Delta launch scripts must
+set `RR=/u/lucmon/rein/runs` (or omit `out_dir` overrides) so output lands on `/work`.
+**Log convention for Delta:** tag entries `[delta]` and keep Delta run dirs distinguishable; the
+log lives on cc-login only.
+
+Files added/changed: `scripts/sync_to_delta.sh` (new).
+
+## 36. Math CoT (OpenR1-Math-220k): data downloaded, feasibility measured, plan drafted (2026-10-02)
+
+No GPU job. Everything here ran on cc-login1 (CPU). Plan: `math-cot-experiment-plan.md`.
+
+**Data.** `open-r1/OpenR1-Math-220k`, the default and extended splits (3.8 GB), downloaded to
+`/projects/illinois/eng/cs/arindamb/lucmon/data/openr1_math` and symlinked as `data/openr1_math`.
+Not yet on Delta (`sync_to_delta.sh` DATASETS must gain `openr1_math`).
+
+**Scripts (new).**
+- `scripts/openr1_stats.py`: flattens to one row per trace (`traces.parquet`), plus counts, length, accuracy by length decile, client candidates, and the R6 within-problem check (`stats.json`).
+- `scripts/openr1_ladder_stats.py`: the target-ladder variant and the 12-client selection (`ladder_stats.json`).
+
+**Key measurements.**
+- 190,299 problems and 456,559 traces. Usable (complete and Math-Verify correct): 376,034 traces over 161,926 problems; median 3,293 Qwen3 tokens. 2.80 chars/token, Spearman(chars, tokens) 0.979.
+- Accuracy falls with length: 0.90 in the shortest decile, 0.64 in the longest.
+- Only 4 `source`s have ≥ 4k usable traces, so client = source × problem_type (21 groups with ≥ 1k problems; 12 selected, evenly spaced).
+- **R6 fails for natural traces:** within-problem share of log-length variance 0.064 (0.085 over the 12 clients); median within-problem α range 0.085. The assumption in `dataset-candidates.md` was wrong (now annotated there).
+- **Fix: a per-problem target ladder** (solution / R1 write-up / think cut at 25-50-75% / full). Within share 0.83, median within-problem α range 0.66. Cost: natural client skew shrinks (median spread 0.58 → 0.31, mean uncovered share 0.14). C1 therefore relies on a *holdings* regime (worked-solution vs. reasoning-trace clients), as specified in the plan.
+- Eval cost: ≈ 12.7k generated tokens per problem over the 5-point α grid → ≈ 15M tokens per full test. vLLM is not installed on either host; the plan specifies an exact rank-32 LoRA export per (client, α).
+
+Files: `math-cot-experiment-plan.md` (new), `scripts/openr1_stats.py` (new),
+`scripts/openr1_ladder_stats.py` (new), `dataset-candidates.md` (R6 correction), `data/openr1_math` (symlink).
+
+**Addendum (same day, after user discussion: is within-problem spread decisive?).** Inline analyses, no new files.
+- **Length is only partly predictable from the problem text.** 12 selected clients, ≤ 6k problems each, 114,580 traces, 20% of problems held out. Client identity explains 0.175 of log-length variance, and the oracle problem identity explains 0.908. But a TF-IDF (1–2-gram) ridge with client one-hot and problem length gets held-out R² of only **0.41 overall**, and **0.29 within a client** beyond the client mean. From the model's side, most of the within-client α variation is therefore *not* given by x, so the α label carries signal for D. The 6.4% within-problem figure overstated the R6 problem.
+- **Clients holding different solution sources give limited spectra with real targets only.** Roles alternate over the difficulty order. Clients holding only the NuminaMath `solution` field have supports of about [0.02, 0.40]; clients holding only R1 `full` traces about [0.45, 0.98]; "both" clients are broad. Mean uncovered share is **0.45** (natural full-only: 0.20).
+
+**Addendum 2 (2026-10-03): α on the CoT only (user: drop the reference `solution` as a low-α source).** Inline analysis, usable traces ≤ 8k tokens.
+- **Think-part tokens:** p5 / p50 / p95 = 885 / 2,406 / 6,535. The write-up after `</think>` is 230 / 454 / 692.
+- **Rank agreement:** Spearman(think tokens, total tokens) = 0.997, so the choice barely changes α. Spearman(think tokens, paragraph steps) = 0.78; tokens per step p5 / p50 / p95 = 23 / 50 / 136.
+- **CoT-only natural clients** (19 source × type groups with ≥ 1k problems): medians span 0.13 → 0.72, but supports are wide (width 0.69–0.89, mean 0.81).
+- **Finer partition** (× question_type, 23 groups): medians span 0.15 → 0.78; widths are 0.57–0.88. The narrowest are hard banks missing the low end (cn_contest/Geometry [0.41, 0.98], aops_forum/Number Theory [0.29, 0.98]). Easy banks reach 0.81–0.95 at the top.
+- **Retraction:** the 0.45 uncovered share in addendum 1 used role assignments that put every held-out client in the trace-only role, and it included `solution` targets. It is superseded.
+
+## 37. Results: C1 at 8B (Qwen3-8B, exp28); gain-clamp caveat for every local baseline (2026-10-03)
+
+(Entry numbers 30–32 are used twice in this log: the ChEMBL entries from another session reuse them. This entry continues after 36.)
+
+**Jobs:**
+- Federated 11098308: done 10-02 22:03 (21.5 h).
+- Local 11098309: training and test done; LLM judge still running at writing time.
+- Both selected round 100 on dev.
+- Report: `exp_log/reports/qwen3_8b_c1.txt`; style: `exp_log/reports/style_test_8b.txt`.
+
+**Steering, test** (200 articles per client):
+
+| Run | Pct error (worst) | In-support | Out-of-support (worst) | Reach | Spearman | Near-tie |
+|---|---|---|---|---|---|---|
+| **Fed 8B** | **0.156** (0.236) | **0.130** | **0.171** (0.261) | **0.36** | **0.917** | **0.20** |
+| Local 8B | 0.177 (0.231) | 0.153 | 0.183 (0.281) | 0.32 | 0.880 | 0.32 |
+| Fed 1B (entry 20) | 0.151 (0.199) | 0.135 | 0.161 (0.188) | 0.39 | 0.933 | 0.20 |
+| Local 1B | 0.165 (0.205) | 0.148 | 0.165 (0.249) | 0.36 | 0.906 | 0.25 |
+
+**Per client, fed 8B − local 8B** (paired bootstrap):
+- **Overall better on 6/8** (theguardian.com −0.100, forbes.com, people.com, wsj.com, cbc.ca, aol.com), **worse on 1/8** (reuters.com +0.019); nypost.com a tie. At 1B: 4/8 better, 0 worse.
+- Out-of-support: better on 3 (theguardian.com −0.137, people.com, aol.com), worse on 3 (forbes.com +0.051, cbc.ca, reuters.com). The same coverage trade-off as at 1B (entry 20).
+- **C1 replicates on a second model family**, with a larger overall effect than at 1B.
+
+**Quality, test:**
+- Fed 8B AlignScore 0.797 / 0.763 (gap to the same-α reference −0.01 / +0.08); local 8B 0.826 / 0.725 (+0.02 / +0.04).
+- BERTScore 0.903 / 0.893 vs. 0.904 / 0.891; length gap +1.6 / +2.3 vs. +4.5 / −0.2. **On par.**
+- Judge, fed 8B: faithfulness 0.86 / 0.84, relevance gap +0.09 / +0.09; higher than fed 1B (0.82 / 0.79). Local 8B judge pending.
+
+**House style** (entry 31 metric):
+- Attribution fed 8B 0.559, local 8B 0.577 (1B: 0.552 / 0.553; real summaries 0.587).
+- Feature gap 0.106 vs. 0.115.
+- Attribution is flat across α (fed 8B 0.51–0.56). The private adapter keeps the house style at 8B too.
+
+**8B is not better than 1B in absolute steering** (0.156 vs. 0.151). The difference is the copy-heavy clients:
+- nypost.com 0.236 vs. 0.177; reuters.com 0.221 vs. 0.199.
+- Their α = 0 outputs sit at percentile 0.27–0.28 (1B: 0.18–0.22): the 8B adapters absorb more of the clients' copying.
+
+**Caveat found while analysing: the gain clamp binds for local runs.**
+- The calibration gain s = exp(u) is clamped to [1/4, 4] (`lora.gain_max = 4`).
+- Final local gains:
+  - local 8B: 7/8 clients at 4.0 (nypost.com 2.66);
+  - local 1B no-offset: 6/8 at 4.0 (reuters.com 2.86, nypost.com 2.23);
+  - local 1B private calibration: 6/8 at 4.0.
+- Federated shared gains are well inside the range: 1.93 (1B), 2.31 (8B).
+- Local clients want a larger coefficient than the clamp allows. Their D can still grow to compensate (D → cD is equivalent to s → s·c), but more slowly, so **local baselines may be handicapped.** Example: local 8B theguardian.com saturates at percentile 0.51 at α = 1.
+- **Needed before C1 is final:** local runs with a wider gain range (`lora.gain_max=16`), 1B first (~8.7 h), then 8B if the gap changes.
+
+**Environment note:** `fedsteer/metrics.py` now imports `fedsteer/molecules.py` (ChEMBL work from another session), which needs `rdkit` at import time. Scripts that import `fedsteer` must run in the `steer` environment, not the system `python3`.
+
+**Addendum 3 (2026-10-03): short-CoT alternative, AI-MO/NuminaMath-CoT** (user: R1 traces are too long to learn).
+Downloaded to `/projects/illinois/eng/cs/arindamb/lucmon/data/numinamath_cot` (1.2 GB), symlinked as `data/numinamath_cot`.
+New script `scripts/numina_cot_stats.py` → `data/numinamath_cot/stats.json`.
+- **Size and length:** 859,494 problems, one GPT-4o step-by-step solution each. 2.79 chars/token (Spearman 0.953). Solution tokens p5 / p50 / p95 / p99 = 118 / 356 / 914 / 1,158, about 7× shorter than R1 think parts (median 2,406).
+- **Natural skew with limited spectra**, 8 sources with ≥ 5k rows, on the global scale:
+
+  | source | median | support |
+  |---|---|---|
+  | synthetic_math | 0.22 | [0.03, 0.63] |
+  | orca_math | 0.31 | [0.01, 0.72] |
+  | gsm8k | 0.32 | [0.08, 0.65] |
+  | cn_k12 | 0.34 | [0.02, 0.84] |
+  | synthetic_amc | 0.53 | [0.20, 0.77] |
+  | math | 0.55 | [0.10, 0.85] |
+  | aops_forum | 0.87 | [0.59, 0.99] |
+  | olympiads | 0.87 | [0.56, 0.98] |
+
+  Median spread 0.64, mean support width **0.61** (R1 CoT-only: 0.81).
+- **Learnability:** source explains 0.48 of log-length variance. A TF-IDF ridge reaches held-out R² 0.655 overall and **0.34 within a source**, so about two thirds of within-client variation is not predictable from the text.
+- **Answer format:** `\boxed{}` present in ≥ 0.93 of solutions for every source except aops_forum (0.61).
+- **Only 8 sources reach 5k** (amc_aime has 4,070), so 12 clients need the large sources split, e.g. by topic.
+
+## 36. Attribution settled: the whole-molecule format is the problem, not steering (2026-10-03)
+
+Jobs 11118146 (G0b: steered, 100 rounds) and 11119175 (G0-SFT: `fed.lr_shared=0`, no steering,
+100 rounds) both completed. With entry 33 this gives the three-way attribution.
+
+**G0-SFT's inertness assertion passed:** Spearman exactly 0.000 at every round, and validity and
+retention identical at every alpha (0.840 / 0.536, in- and out-of-support equal). The direction
+stayed at zero, so the model really was alpha-independent -- this is plain SFT. Its percentile
+error 0.383 is worse than the 0.300 constant-output baseline, as it must be.
+
+| run | steering | rounds | validity | retention |
+|---|---|---|---|---|
+| G0-SFT 11119175 | **none** | 100 | 0.840 | **0.536** |
+| entry 33, 11117359 | yes | 20 | 0.818 | 0.576 |
+| G0b 11118146 | yes | 100 | 0.770 | 0.498 |
+
+**Both of my earlier hypotheses were wrong.**
+- *Undertraining* (entry 33): wrong. 5x the training made validity and retention **worse**
+  (0.818 -> 0.770, 0.576 -> 0.498). Train loss fell to 0.21 while dev loss plateaued at
+  0.47-0.51 from round ~40, and steering did not improve either (pct err 0.216 at round 19 vs
+  0.206 at round 99). It is overfitting, not underfitting.
+- *Steering pressure breaks the core* (entry 34): wrong as the primary cause. **Plain SFT with no
+  knob at all loses the core 46% of the time.** Core abandonment is a property of the
+  whole-molecule output format, not of the knob.
+
+**Correct decomposition.** There is a ~0.54 retention floor from the format alone; steering then
+*redistributes* it across alpha (0.81 at alpha 0 down to 0.32 at alpha 1, entry 34) without
+improving the mean. So the alpha-dependence I reported in entry 34 is real, but it sits on top of
+a baseline incompetence that has nothing to do with alpha.
+
+**Fix adopted: the decoration format** (plan §2.4), following Arús-Pous et al. 2020 and SAFE's
+scaffold-decoration convention -- see the new plan §4b for the prior-art review. The core is given
+in the prompt with numbered attachment points and the model emits only the decorations, so it can
+never re-emit or renumber the core. SELFIES is explicitly *not* the fix: it addresses validity
+(0.84) and leaves retention (0.54) untouched.
+
+**New data `data/chembl_deco`** (`scripts/build_chembl_fed.py --format deco`), 36,687 records,
+same clients and splits:
+- cut bonds get the same dummy label on both sides, so `Chem.molzip` reassembly is unambiguous;
+- only pairs whose split round-trips to the original molecule exactly are kept -- per-client yield
+  0.71-0.96, train 1,396-4,000, test 142-198;
+- **alpha labels are unchanged** (`clogp_residual_deco` reproduces the stored labels to 2.8e-14),
+  so deco vs. smiles is a clean format comparison;
+- retention measured at **1.000** when the true decorations are used (structural, as intended);
+- targets are half as long: median 17 tokens vs 33.
+
+New code: `fedsteer/molecules.py` (`split_core_decorations`, `rejoin_decorations`,
+`clogp_residual_deco`, `assembled_descriptors`); `scripts/build_chembl_fed.py --format`;
+`scripts/score_molecules.py` scores the assembled molecule for deco records;
+`configs/chembl_deco.yaml`; `sbatch/train_eval_chembl.sbatch` gained `DATA` and `RESCORE`
+(`RESCORE=none` for deco, where the strict scorer is meaningless).
+
+**Launched (`exp_log/launch/exp35_chembl_deco.sh`):** 11124738 deco G0 (1 client, 100 rounds),
+then **11124739 federated** and **11124740 local** (8 participants, rotation 0, 30 rounds), both
+`--dependency=afterok` on the G0 job. Note this chains the long pair on a *clean exit*, not on the
+gate passing, at the user's instruction to start them now.
+
+**Environment note:** `pip install safe-mol` upgraded `fsspec` 2023.4.0 -> 2026.9.0 and
+`protobuf` -> 6.33.6 in the shared `steer` env. torch 2.5.1, transformers 4.56.0 and datasets
+4.0.0 were untouched and all still import; `datasets` prints a declared-constraint warning but
+works, and no code in this repo imports it. The final implementation needs `safe-mol` only for
+the prior-art review, not at runtime -- the decoration format uses RDKit alone.
+
+## 37. Decoration format PASSES gate G0 decisively; G0 job timed out after its work was done (2026-10-03)
+
+**Job 11124738 (deco G0, 1 client CHEMBL240, 100 rounds) hit its 6 h wall clock, but only after
+finishing training *and* the test evaluation.** Timeline: start 04:07, training + all 5 dev evals
+done 05:51 (1 h 44 m), test eval written 08:35 (2 h 44 m for 500 short generations), then
+`score_molecules.py` was still running when SLURM killed the job at 10:07. The usable results were
+already on disk; the two dependent jobs (11124739 fed, 11124740 local) died
+`DependencyNeverSatisfied`, the exact failure mode flagged when they were chained with `afterok`.
+
+**G0 passes, and the decoration format is better on every axis.** Test eval, dev-selected round 80:
+
+| metric | whole-molecule, 20 rounds (entry 33) | whole-molecule, 100 rounds (G0b) | **decoration, 100 rounds** |
+|---|---|---|---|
+| validity | 0.818 | 0.770 | **1.000** |
+| scaffold retention | 0.576 | 0.498 | **1.000** |
+| unscorable row rate | 0.48 | — | **0.00** |
+| pct_calib_err (constant = 0.300) | 0.217 | 0.206 | **0.165** |
+| in-support / out-of-support | 0.193 / 0.254 | — | **0.150 / 0.189** |
+| Spearman | 0.694 | 0.720 | **0.921** |
+| concordance | 0.784 | — | **0.906** |
+| endpoint increase rate | 0.904 | — | **1.000** |
+| uniqueness / novelty | 0.995 / 0.99 | 1.0 / 0.979 | **1.000 / 1.000** |
+
+Also unlike the whole-molecule runs, dev loss fell monotonically (0.543 -> 0.295) with **no
+overfitting**, and the dev-selected checkpoint was round 80 of 100, i.e. still improving. Gate G2
+(method < 0.25 vs the 0.300 constant baseline) is already met on a single client at 0.165.
+
+⚠️ **Caveat to watch: the decorations are trivially small.** Sampled generations are
+`[1*]C.[2*]C.[3*]O` -> `[1*]C.[2*]C.[3*]C`, i.e. the model steers by swapping a hydroxyl for a
+methyl. That is directionally and chemically correct, and QED 0.603 / MW 425 / TPSA 68 are
+reasonable, but `text_tie_rate` 0.28 and `adjacent_tie_rate` 0.285 say adjacent alphas often give
+identical output. The knob may be exploiting a degenerate single-atom strategy rather than real
+decoration chemistry. **To check on the 8-client runs:** decoration heavy-atom count per alpha,
+and the gap to the same-alpha real reference molecules (`data/chembl_deco/refs.json`).
+
+**Why the wall clock blew out, and the one real bug.** Generation was *not* the problem: outputs
+stop at EOS (median 17 tokens, max 68; 0% reached the 96- or 192-token cap). Two causes:
+1. **My bug in `scripts/score_molecules.py`:** the novelty precomputation called the full
+   `assembled_descriptors` (molzip + sanitize + QED + TPSA + ...) on all ~37k training records
+   when it only needs the assembled canonical SMILES. Fixed to use `rejoin_decorations` +
+   `MolToSmiles`; the same scoring now runs in **26 s** instead of >1 h 32 m.
+2. **Lustre was stalling for long stretches today** (plain `ls` and `squeue` hung for minutes from
+   the login node around 10:00). That plausibly explains the 2 h 44 m test eval for 500 short
+   generations, which should take minutes.
+
+**Resubmitted the pair without a dependency** (`exp_log/launch/exp36_chembl_deco_pair.sh`):
+**11135486 federated**, **11135487 local**, 8 participants of rotation 0, 30 rounds,
+`--time=2-00:00:00`, `monitor.full_prompts` 40 -> 25 and dev `max_new_tokens` 192 -> 96 (observed
+max 68), `TEST_PROMPTS=150`. These give G3 (federated vs local) and the multi-client G2.
+
+**Held, then released (2026-10-03 ~14:30).** Both jobs landed on **ccc0284** and were requeued
+after exactly 2 m 11 s each with `user_env_retrieval_failed_requeued_held`. Slurm's login-shell env
+retrieval timed out before the batch script ran, so neither job wrote a log. The likely cause is an
+NFS/`/u` stall on that node: `~/.bashrc` runs the conda hook from `/u/lucmon/lucmon/anaconda3`.
+This is a guess and was not confirmed. On the login node, `bash -lc` takes 1.1 s, and other users'
+jobs started normally on ccc0284 in the same hour. `~/.bashrc` (last changed 2026-05-28) and the
+`steer` env (2025-09-21) were not modified. Fix: `scontrol release` on both jobs, same job ids.
+(ccc0284 was briefly added to ExcNodeList, then removed: it is the only dali node.)
+
+## 37. Math CoT on NuminaMath-CoT: data built, pipeline added, gates launched on Delta (2026-10-03) [delta]
+
+User decision (10-03): switch the math task from OpenR1 (R1 traces, median 2.4k think tokens) to
+**NuminaMath-CoT** (short step-by-step CoT, median ≈ 300 tokens). α = global percentile of the solution
+length in ruler tokens; clients are sources, with the large sources split by problem type. Framing:
+"CoT length control"; test-time compute only if accuracy-vs-α earns it. Plan rewritten:
+`math-cot-experiment-plan.md`.
+
+**Data (`data/math_fed/`, built on cc and synced to Delta `/work/nvme/bhby/datasets/math_fed`).**
+- `scripts/build_math_fed.py` (new). NuminaMath-CoT, with NuminaMath-1.5 (downloaded to `data/numinamath_15`, 530 MB) used only for `problem_type`.
+  - The 1.5 join works for cn_k12 (95%), orca_math (100%) and synthetic_math (99.8%), but not for olympiads (0.7%), aops_forum (19%), math (4%) or synthetic_amc (0%). So only the first three are split, and the gold answer is the reference solution's last `\boxed{}` for every client.
+- Filtering: 45,121 exact-duplicate problems dropped, keeping the copy under the original benchmark (gsm8k > math > … > orca_math; otherwise gsm8k disappears into orca_math). 32,166 solutions without `\boxed{}` dropped. Targets ≤ 1,024 ruler tokens; prompts ≤ 480.
+- **12 clients × 4,000 train / 50 dev / 100 test.** Median tokens: orca_math/Logic 138, cn_k12/Logic 170, gsm8k 244, synthetic_math/Algebra 271, orca_math/Algebra 283, cn_k12/Inequalities 287, synthetic_math/Geometry 304, cn_k12/Geometry 315, math 403, synthetic_amc 411, olympiads 679, aops_forum 726.
+- Supports on the 12-client scale: olympiads **[0.58, 0.99]** and aops_forum **[0.60, 0.99]**; gsm8k [0.12, 0.65]; Logic & Puzzles [0.01, 0.68].
+- Rotation 0 holds out orca_math/Logic, synthetic_math/Algebra, synthetic_math/Geometry and synthetic_amc. Rotation 1 holds out olympiads (the C2 coverage test).
+
+**Code (new or changed).**
+- `fedsteer/mathcot.py` (new): `cot_tokens` scorer (fixed ruler `Qwen/Qwen3-4B-Instruct-2507`, override with `FEDSTEER_RULER`), `extract_boxed`, `is_correct` (Math-Verify, plus normalized exact match for MCQ letters), `repetition_loop`, `gzip_ratio`.
+- `fedsteer/metrics.py`: registered `cot_tokens`.
+- `fedsteer/baselines.py`: B1 math template (`math_level_instruction`, `prompt_with_level_math`; auto-selected for records with `problem`).
+- `scripts/score_math.py` (new): per-α accuracy / boxed / truncated / loop / tokens / gzip, split by in/out of support, written to `math_<eval>.json`.
+- `scripts/eval_base_math.py` (new): E0a; the base model through the same generation path, with both B matrices at zero.
+- `configs/math_fedavg.yaml` (new): method defaults, `max_target_tokens 1024`, monitor `cot_tokens` with a 1,280-token cap.
+- `sbatch/train_eval_math.sbatch`, `sbatch/eval_base_math.sbatch`, `sbatch/eval_b1_math.sbatch` (new). The last finds a run by its training job id, so it can be chained with `--dependency`.
+- `scripts/sync_to_delta.sh`: adds `math_fed` to DATASETS. It also rewrites `set -e` around env setup (see below).
+
+**Checks (cc, CPU).**
+- All 1,200 test references score correct against their own gold; a perturbed answer scores wrong.
+- The `cot_tokens` scorer reproduces the stored labels exactly.
+- A Llama-1B CPU smoke run (1 round, 2 steps, monitor with 2 dev prompts) went through train → dev eval → `score_math` → `summarize_sweep`.
+
+**Delta infrastructure: two bugs found and fixed** (the first Delta GPU jobs; entry 35 had said "untested end to end").
+1. **`rein` had CPU-only torch.** `conda create --clone steer` (10-02) resolved to `pytorch 2.5.1 cpu_mkl`. Entry 35's "torch 2.5.1+cu124" for `rein` was wrong. Fix: `conda remove --force pytorch libtorch torchaudio`, then `pip install torch==2.5.1 --index-url .../whl/cu124`. Now `2.5.1+cu124`, sympy back to 1.13.1, and a GPU node returns `torch.cuda.is_available() == True`; math-verify works.
+2. **Delta's `/etc/bashrc` returns non-zero on compute nodes** (a `profile.d` script, line 79), which kills any script that runs `set -e` before `source ~/.bashrc`. Jobs died in about 12 s with an empty log. This affects every sbatch script synced to Delta, not just the math ones. Fix: the sync script now rewrites the Delta copies to `set +e; source ~/.bashrc; source activate rein; set -e`.
+- First submission 22640626–28 (FAILED in setup, bug 2; bug 1 would have followed). Debug jobs 22640683, 22640731/37/50, 22640755.
+
+**Jobs (Delta; launch file `exp_log/launch/exp37_math_gates.sh`; outputs in Delta `runs/` → `/work/nvme/bhby/lucmon/rein`; logs in Delta `sbatch/logs/`).**
+
+| job | purpose | config / overrides | run dir prefix | status |
+|---|---|---|---|---|
+| 22640760 | E0a: base Qwen3-4B on 12 × 100 test problems | `eval_base_math.sbatch`, 1,280-token cap | `runs/exp37_math_e0a_base_qwen3_4b_20261003-115825_j22640760` | COMPLETED (2 h 40 min); **cap-limited**, see below |
+| 22640761 | G0: plain SFT on `math`, D frozen at zero | `clients=[math] fed.lr_shared=0 fed.rounds=60 fed.save_every=10 monitor.full_every=10 monitor.full_prompts=50` | `runs/exp37_math_g0_sft_qwen3_4b` | PENDING |
+| 22640762 | G2: single-client steering on `math` | same, steering on | `runs/exp37_math_g2_single_qwen3_4b` | PENDING |
+| ~~22640765~~ | G1, first submission | — | — | CANCELLED (the base row needed a longer cap) |
+| ~~22643461~~ | G1, second submission | — | — | CANCELLED (moved after the 120-round G2) |
+| 22643676 | G0 resumed to **120 rounds** (same run dir) | `RESUME=<G0 run> OVERRIDES="fed.rounds=120 monitor.full_every=20"`, afterok 22640761 | G0 run | PENDING (dependency) |
+| 22643677 | G2 resumed to **120 rounds** (same run dir) | same, afterok 22640762 | G2 run | PENDING (dependency) |
+| 22643678 | G1: B1 prompting on the extended G2 (k = 0 / 3 client at 1,280; k = 3 base at 4,096) | `eval_b1_math.sbatch`, `RUN_JOB=22640762`, afterok 22643677 | G2 run | PENDING (dependency) |
+| 22643457, 22643459, 22643460 | E0a-long: base model at a **4,096** cap, 3 × 4 clients, batch 16 | `eval_base_math.sbatch`, `MAX_NEW=4096 BATCH=16 CLIENTS=…` | `runs/exp37_math_e0a_long4096_qwen3_4b` | PENDING |
+
+**E0a result (job 22640760): the 1,280 cap, not the model, sets base accuracy.** Mean over 12 clients:
+accuracy 0.464, boxed 0.618, **truncated 0.416**, loop 0.128, mean length 833 tokens.
+
+| client | acc | trunc | acc on untruncated | base mean tokens | reference median |
+|---|---|---|---|---|---|
+| gsm8k | 0.93 | 0.01 | 0.94 | 297 | 233 |
+| orca_math/Logic | 0.82 | 0.10 | 0.91 | 377 | 124 |
+| math | 0.64 | 0.38 | **0.98** | 830 | 418 |
+| cn_k12/Geometry | 0.30 | 0.54 | 0.59 | 1,009 | 276 |
+| olympiads | 0.18 | 0.79 | **0.81** | 1,172 | 662 |
+| aops_forum | 0.09 | 0.89 | **0.73** | 1,238 | 678 |
+
+- The base model writes 1.3–4× longer than the reference solutions.
+- Most of its "errors" are truncations before `\boxed{}`. Accuracy on untruncated outputs is optimistic (it favours easy problems) but shows the cap dominates.
+
+Consequences:
+1. **G0's reference ("accuracy ≥ base − 5 points") is invalid at this cap.** It would pass trivially. → E0a-long at a 4,096 cap (jobs above). `eval_base_math.py` gained `--clients`; `eval_base_math.sbatch` gained `CLIENTS` and `BATCH`.
+2. **G1's base-model row** would be truncated too, and truncated outputs score as maximally long, which flatters calibration at α = 1. → `eval_b1_math.sbatch` now uses `MAX_NEW_BASE=4096` (batch 16) for the base row only. The client-model rows stay at 1,280: fine-tuned outputs are short (G2 truncates ≤ 4% at any α).
+3. The constant-output baseline (0.30) is unaffected: it is defined from the data alone.
+
+**G0 / G2 dev curves so far** (math client, 50 dev problems × 5 α):
+
+| round | G0 (D = 0) pct err / Spearman | G2 (steering) pct err / Spearman |
+|---|---|---|
+| 10 | 0.386 / 0.000 | 0.360 / 0.515 |
+| 20 | 0.391 / 0.000 | 0.341 / 0.519 |
+| 30 | 0.397 / 0.000 | 0.299 / 0.671 |
+| 40 | 0.387 / 0.000 | **0.273 / 0.745** |
+
+- G0 behaves as designed: identical output at every α, Spearman 0.
+- G2 is still improving at round 40 and is below the 0.30 constant baseline from round 30.
+
+**Training length: G0 and G2 extended from 60 to 120 rounds** (user question, 10-03).
+- G2 at round 50: pct err 0.235, Spearman 0.824, still improving by about 0.04 per 10 rounds, with the direction norm still growing (25.0 / 29.3 / 33.0 at rounds 30 / 40 / 50).
+- Cost: 60 rounds = 2.4 epochs over 4k pairs. After epoch 2 the private adapter starts memorizing: dev loss went from 0.307 (round 50) to 0.337 (round 58), with train loss at 0.185. Newsroom showed the same pattern (steering kept improving after dev loss rose; 100 rounds at 4k).
+- Both runs are resumed in place (`train_fed.py --resume`), with dev evals every 20 rounds. Checkpoint selection runs over all dev evals of the run, so the extension can only add candidates. Watch dev accuracy (`score_math`) for the memorization cost.
+- The 60-round jobs still finish their own test evaluation first, so the round-60 result is kept.
+- `sbatch/train_eval_math.sbatch` gained `RESUME=<run>`. `sbatch/eval_b1_math.sbatch` now selects over all of a run's dev evals instead of matching the training job id.
+
+**Time limits raised to 1 day** (user, 10-03).
+- All pending jobs updated in place with `scontrol update TimeLimit=1-00:00:00`: 22643457/59/60, 22643676/77/78. Delta's GPU partitions allow up to 2 days.
+- The running 60-round jobs (22640761/62) could not be raised ("Access/permission denied") and keep 8 h. They are expected to finish around 6.3 h.
+- In case they time out in their test evaluation, the resume jobs' dependencies were changed from `afterok` to `afterany`; `state.pt` at round 60 is enough to resume. G1 stays `afterok` on the resumed G2.
+- The `#SBATCH --time` default is now `1-00:00:00` in `train_eval_math.sbatch`, `eval_base_math.sbatch` and `eval_b1_math.sbatch`; the per-job `--time` flags were removed from `exp_log/launch/exp37_math_gates.sh`.

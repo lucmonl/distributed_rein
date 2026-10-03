@@ -1,0 +1,81 @@
+model_name: Qwen/Qwen3-4B-Instruct-2507
+data_path: data/chembl_fed/data.jsonl
+clients_file: data/chembl_fed/clients.json
+rotation: 0
+clients: null
+out_dir: runs/chembl_fedavg_rot0
+max_train_per_client: 4000
+tie_break: average
+alpha_mode: global
+system_prompt: null
+chat_template_kwargs:
+  enable_thinking: false
+max_prompt_tokens: 256
+max_target_tokens: 96
+grad_checkpointing: true
+attn_implementation: sdpa
+lora:
+  rank_private: 16
+  rank_shared: 16
+  lora_alpha_private: 16
+  lora_alpha_shared: 16
+  dropout: 0.0
+  shared_seed: 1234
+  gain_min: 0.25
+  gain_max: 4.0
+  warp: kumaraswamy_mix
+  offset: false
+  offset_max: 2.0
+  warp_shape_min: 0.2
+  warp_shape_max: 20.0
+  warp_mix_w_init: 0.5
+  warp_step_c_init: 0.5
+  warp_step_tau_init: 0.2
+fed:
+  mode: fedavg
+  adapter: private
+  calibration: shared
+  rounds: 30
+  local_steps: 20
+  batch_size: 8
+  grad_accum: 1
+  lr_private: 0.0002
+  lr_shared: 0.0002
+  lr_gain: 0.01
+  warmup_steps: 20
+  gain_warmup_rounds: 2
+  lr_warp: 0.01
+  warp_warmup_rounds: 5
+  warp_reg: 0.01
+  save_every: 10
+  seed: 0
+reg:
+  private_wd: 0.0
+  shared_wd: 0.0
+  decorr: 0.0
+  fedprox_mu: 0.0
+  gain_l2: 0.0
+  offset_l2: 0.0
+monitor:
+  split: dev
+  loss_every: 1
+  loss_max_examples: 100
+  full_every: 10
+  full_prompts: 50
+  full_alphas:
+  - 0.0
+  - 0.25
+  - 0.5
+  - 0.75
+  - 1.0
+  full_max_new_tokens: 96
+  full_batch_size: 32
+  steer_every: 0
+  steer_prompts: 20
+  steer_alphas:
+  - 0.1
+  - 0.5
+  - 0.9
+  scorer: clogp_residual
+  max_new_tokens: 96
+  batch_size: 16
