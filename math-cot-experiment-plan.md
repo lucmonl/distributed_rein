@@ -101,7 +101,7 @@ Supports are the 5th–95th training percentiles on the 12-client global scale (
 
 - **Method: unchanged** (`configs/math_fedavg.yaml`): `W_0 + B_i^P A_i^P + g(α) B^D A^D`, shared frozen `A^D`, FedAvg on `B^D`, `calibration: shared`, `offset: false`, `adapter: private`, `alpha_mode: global`, E = 20 local steps × batch 8, rank 16, `max_prompt_tokens 512`, `max_target_tokens 1024`.
 - **Rounds.** Single-client gates: 60 rounds (2.4 epochs over 4k pairs), dev evaluation every 10. ChEMBL's G0 was undertrained at 0.8 epochs (entry 33). Federated runs start at 30 rounds; the gates' dev curves decide whether that is enough.
-- **Backbone:** Qwen3-4B-Instruct-2507 (cached on Delta). Llama-3.2-1B only for the CPU smoke test. Qwen3-8B to confirm the top rows. ⚠️ Qwen3 has very likely seen NuminaMath: this affects absolute accuracy, not comparisons.
+- **Backbone: under re-selection (entry 39).** Plain SFT on these GPT-4o solutions lowered Qwen3-4B-Instruct-2507's accuracy (entry 38; a teacher-style mismatch also reported by TESSY, arXiv 2604.14164). Six backbones are screened for familiarity (target perplexity) and headroom (base accuracy at a 4,096 cap): Qwen3-4B-2507, Qwen3-8B (no thinking), Qwen2.5-7B/3B-Instruct, Llama-3.1-8B-Instruct, Llama-3.2-1B-Instruct. Originally: Qwen3-4B-Instruct-2507 (cached on Delta). Llama-3.2-1B only for the CPU smoke test. Qwen3-8B to confirm the top rows. ⚠️ Qwen3 has very likely seen NuminaMath: this affects absolute accuracy, not comparisons.
 - **Generation:** greedy, `max_new_tokens 1280` (25% above the longest target). Outputs hitting the cap count as truncated. The current HF loop is enough: a 5-α test eval is ≈ 3M generated tokens over 12 clients. vLLM is not needed.
 - **Compute (estimate):** ≈ 1.5–2 h per single-client gate run (training ≈ 20 min, dev evaluations dominate). The 8-participant runs are expected at ≈ 6–8 h. To be replaced by measured times from entry 37's jobs.
 
@@ -117,7 +117,7 @@ As in the parent plan, with these substitutions (`scripts/score_math.py` compute
 | **Coverage (C1)** | in/out-of-support error and reach rate; the natural gaps of §3.2 |
 | **Steerability** | per-problem Spearman across α; concordance |
 | **Ties** | identical text across α (greedy) |
-| **Format (reported first; gate G0)** | `\boxed{}` present; truncated at the cap; repetition loop (a 10-word n-gram ≥ 3 times); gzip ratio |
+| **Format (reported first; gate G0)** | `\boxed{}` present; truncated at the cap; repetition loop (a 20-word n-gram ≥ 3 times; 10-word flagged restated formulas, entry 38); gzip ratio |
 | **Utility** | **accuracy** per α, in/out of support; accuracy vs. tokens per client; base-model accuracy (E0a) as the reference line |
 | **Specificity** | steps vs. tokens (more steps, or wordier steps?) ⏳ |
 
@@ -149,8 +149,8 @@ The order applies the ChEMBL lesson (entries 33–34): measure the backbone with
 | Step | What | Status |
 |---|---|---|
 | **E0a** | Base Qwen3-4B on all 12 clients' test problems: accuracy, length, format. The reference lines | ✅ at a 1,280 cap (job 22640760): **cap-limited**, 42% truncated, base outputs 1.3–4× longer than the references. 🔄 rerun at 4,096 (22643457/59/60) |
-| **G0** | Plain SFT on one client (`math`, broad support [0.20, 0.91]), `fed.lr_shared=0` so D stays exactly zero | 🔄 Delta job 22640761 |
-| **G2** | The same client with steering on: calibration, per-problem Spearman, accuracy per α | 🔄 Delta job 22640762 (round 40: pct err 0.273, Spearman 0.745) |
+| **G0** | Plain SFT on one client (`math`, broad support [0.20, 0.91]), `fed.lr_shared=0` so D stays exactly zero | ⚠️ **fails on accuracy** (entry 38): format passes, but accuracy 0.57 vs. base 0.64; on problems the base finished, 0.98 → 0.79, already at round 10 (teacher-style shift). 🔄 120-round extension 22643676 |
+| **G2** | The same client with steering on: calibration, per-problem Spearman, accuracy per α | ⚠️ round 60 (entry 38): pct err **0.226** (gate < 0.20), Spearman 0.772 ✅, accuracy = SFT ✅; range compressed (248 → 502 tokens vs. targets 77 → 1,024). 🔄 120-round extension 22643677 |
 | **G1** | B1 (k = 0 and 3, client and base model) on G2's client model; the base row at a 4,096 cap | ⏳ job 22643461, chained after G2 |
 | **E1** | 8 participants (rotation 0), federated vs. local (B2), then B3, A2, B4 | ⏳ after G0–G2 |
 | **E2** | Held-out clients join with n ∈ {16, 64, 256, 1024}; `frozen_D` vs. `local_D` (+ `prompt`). Rotation 0 (broad held-out clients), then **rotation 1 (olympiads held out)** for coverage | ⏳ |

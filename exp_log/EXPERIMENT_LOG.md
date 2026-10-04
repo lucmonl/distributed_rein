@@ -1651,3 +1651,142 @@ Consequences:
 - The running 60-round jobs (22640761/62) could not be raised ("Access/permission denied") and keep 8 h. They are expected to finish around 6.3 h.
 - In case they time out in their test evaluation, the resume jobs' dependencies were changed from `afterok` to `afterany`; `state.pt` at round 60 is enough to resume. G1 stays `afterok` on the resumed G2.
 - The `#SBATCH --time` default is now `1-00:00:00` in `train_eval_math.sbatch`, `eval_base_math.sbatch` and `eval_b1_math.sbatch`; the per-job `--time` flags were removed from `exp_log/launch/exp37_math_gates.sh`.
+
+## 38. Deco pair: federated 8-client run done; local crashed on a config conflict (2026-10-03)
+
+**11135487 (local) FAILED after 2 m 17 s, exit 1.** `configs/chembl_deco.yaml` bakes in
+`fed.calibration: shared` (the method default from entry 20) and `fed.py` rejects shared
+calibration in local mode -- nothing is aggregated there, so local training always has per-client
+calibration. The launcher overrode `fed.mode=local` but not the calibration. The Newsroom launch
+scripts avoid this by leaving calibration out of `$COMMON` and adding `=shared` only to the fed
+run; baking it into the config broke that pattern. Resubmitted as **11143950** with
+`fed.calibration=private` (`exp_log/launch/exp37_deco_local_fix.sh`).
+
+**11135486 (federated, 8 participants, 30 rounds) COMPLETED in 3 h 26 m.**
+
+| | mean | worst client |
+|---|---|---|
+| pct_calib_err (constant = 0.300) | **0.237** | **0.312** (CHEMBL243, HIV-1 protease -- *worse than constant*) |
+| in-support / out-of-support | 0.204 / 0.282 | — |
+| Spearman | 0.800 | 0.521 |
+| adjacent tie rate | **0.503** | 0.65 |
+| unscorable row rate | 0.01 | 0.03 |
+
+Validity and retention hold up at 8 clients (unscorable 0.00-0.03), so the decoration format
+transfers. But steering is much weaker than the single-client G0 (0.165): the mean clears gate G2
+only marginally and the worst client does not clear it at all.
+
+⚠️ **Undertrained, unambiguously.** Dev pctErr improved at every snapshot (0.259 -> 0.249 ->
+0.237), dev loss fell throughout (0.368 -> 0.305 -> 0.273) and **the dev-selected checkpoint was
+the final round**. Newsroom used 100 rounds; 30 is not comparable. Launched
+**11143987 fed / 11143988 local at 100 rounds** (`exp_log/launch/exp38_deco_100r.sh`); the
+30-round local (11143950) still runs so there is also a matched-budget fed-vs-local pair.
+
+**On the entry-37 degeneracy worry: partly answered, and the answer is better than feared.**
+Mean decoration size barely moves with alpha (6.0 -> 6.7 heavy atoms), but **individual clients
+move in opposite directions**, which is chemically correct -- logP rises either by adding
+lipophilic bulk or by removing polar groups:
+
+| client | a=0 | a=0.25 | a=0.5 | a=0.75 | a=1 |
+|---|---|---|---|---|---|
+| CHEMBL325 (HDAC1) | 6.2 | 6.8 | 7.7 | 9.2 | **10.9** (adds bulk) |
+| CHEMBL204 (thrombin) | 9.2 | 9.5 | 7.8 | 6.9 | **6.9** (drops polar amidines) |
+| CHEMBL240 (hERG) | 3.9 | 3.9 | 4.7 | 5.6 | 6.3 |
+| CHEMBL243 (HIV-1 protease) | 10.4 | 10.0 | 9.6 | 9.3 | 10.1 (flat -- the worst client) |
+| CHEMBL2039 (MAO-B) | 2.2 | 2.6 | 3.0 | 3.3 | 3.6 |
+
+So the `C.C.O -> C.C.C` single-atom pattern seen in G0 was CHEMBL240-specific, not the general
+strategy. **But a real quality gap remains:** real training decorations average 7-12 heavy atoms
+(12.3 in the lowest attribute decile, 7.0 mid, 10.0 in the top 30% -- a U-shape, since both
+extremes need large groups), while the model emits 2-4 for several clients. It under-decorates.
+Add decoration heavy-atom count vs the same-alpha reference to the reported metrics.
+
+**Tie rate is the live concern:** 0.46-0.65 of adjacent-alpha pairs give identical output, far
+above Newsroom's. If 100 rounds does not bring it down, the knob is too coarse on this task.
+
+## 38. Math CoT gates, results: G0 fails on accuracy, G2 steers but misses calibration (2026-10-03) [delta]
+
+Jobs 22640761 (G0, 6 h 28 min) and 22640762 (G2, 5 h 34 min) COMPLETED.
+- Runs (Delta): `runs/exp37_math_g0_sft_qwen3_4b_20261003-115907_j22640761` (selected round 50) and `runs/exp37_math_g2_single_qwen3_4b_20261003-115948_j22640762` (selected round 60, the last).
+- Report: `scripts/math_gate_report.py` (new; from saved evals only). Client `math`, 100 test problems, the same problems as E0a.
+
+**G2 per α (test, round 60).** pct err **0.226** (in-support 0.208, out-of-support 0.253), Spearman **0.772**, concordance 0.842, adjacent-decrease rate 0.253, gain 2.83 (max 4).
+
+| α | target tokens | generated median (IQR) | pct err | acc | boxed | trunc |
+|---|---|---|---|---|---|---|
+| 0 | 77 | 248 (204–306) | 0.201 | 0.53 | 0.99 | 0.01 |
+| 0.25 | 292 | 353 (280–435) | 0.224 | 0.54 | 1.00 | 0.00 |
+| 0.5 | 403 | 431 (365–512) | 0.193 | 0.55 | 0.98 | 0.02 |
+| 0.75 | 530 | 454 (383–551) | 0.207 | 0.53 | 1.00 | 0.00 |
+| 1 | 1,024 | 502 (416–616) | 0.306 | 0.57 | 0.98 | 0.02 |
+
+- **The range is compressed at both ends:** generated medians run 248 → 502 against targets 77 → 1,024.
+- The dev curve flattened between rounds 50 and 60 (0.235 → 0.232).
+- An example problem: the α grid changes the solution's detail (one-paragraph sketch → numbered, bolded steps), with the same GPT-4o house format.
+
+**Accuracy, the same 100 problems.**
+
+| model | acc | boxed | trunc | median tokens |
+|---|---|---|---|---|
+| base (cap 1,280) | 0.64 | 0.65 | 0.38 | 740 |
+| plain SFT (G0, round 50) | 0.57 | 0.98 | 0.02 | 408 |
+| G2, α = 0 … 1 | 0.53–0.57 | ≥ 0.98 | ≤ 0.02 | 248–502 |
+
+- SFT vs. base, paired: SFT right / base wrong 7; SFT wrong / base right 14.
+- **On the 62 problems where the base finished: base 0.98, SFT 0.79.**
+- The drop is already there at round 10 (G0 dev accuracy 0.60–0.64, flat over rounds 10–60). So it is a shift to the GPT-4o solution style, not overfitting. The student (Qwen3-4B-Instruct-2507) reasons better in its own long style than in the teacher's.
+- **G2 costs no accuracy against SFT** (paired +13/−17 … +9/−9 per α, none significant).
+- **Accuracy is flat in α** (0.53–0.57): length here is detail, not compute, as the plan's framing anticipated.
+
+**Loop metric corrected.** The 10-word × 3 detector mostly fired on restated formulas (e.g. a `\cot(\sum \operatorname{arccot} z_k)` expression repeated). Rates by definition:
+
+| | 10 × 3 | 20 × 3 | 10 × 5 |
+|---|---|---|---|
+| base | 0.110 | 0.020 | 0.030 |
+| G0 | 0.090 | 0.020 | 0.030 |
+| G2 | 0.054 | 0.002 | 0.016 |
+
+The default is now 20 × 3 (`fedsteer/mathcot.py`; `scripts/score_math.py` docstring updated). Synced, so the queued jobs use it.
+
+**Gate verdicts.**
+- **G0: FAIL on accuracy.** Format passes: boxed 0.98, truncation 0.02, loops 0.02. Accuracy is 0.57 vs. a base reference of 0.64 even at the cap-limited 1,280 setting; E0a-long (4,096) will raise the reference and widen the gap.
+- **G2: FAIL on calibration** (0.226, needs < 0.20). Passes Spearman (0.772 ≥ 0.7) and accuracy vs. SFT (in-support 0.54 vs. 0.57).
+
+Pending: G0/G2 extended to 120 rounds (22643676/77), G1 (22643678), E0a-long (22643457/59/60). All PENDING (queue), none started yet.
+
+## 39. Backbone screen for the math-CoT task; Qwen3-4B jobs abandoned (2026-10-03) [delta]
+
+**Decision (user, 10-03): the accuracy loss from SFT is the important problem**, so the queued Qwen3-4B jobs were cancelled before they started:
+- E0a-long (22643457/59/60);
+- the 120-round G0/G2 extensions (22643676/77);
+- G1 (22643678).
+
+The completed 60-round G0/G2 (entry 38) stay as the record of the style-mismatch result.
+
+**Literature (checked 10-03).** SFT on another model's solutions can lower a strong student's reasoning; the documented cause is a style or distribution mismatch.
+- Huang et al. 2026, arXiv 2604.14164 (TESSY): Qwen3-8B fine-tuned on stronger teachers' data loses 3.25 / 10.02 points on LiveCodeBench-Pro / OJBench.
+- Ren et al., EMNLP 2024 ("I Learn Better If You Speak My Language"): the target data's perplexity under the student predicts how well fine-tuning goes.
+
+So the fix is a backbone for which GPT-4o's style is familiar and an upgrade. Self-generated targets were rejected: one generator would erase the per-client solution styles (87% client attribution with math masked; the PFL "local characteristics" side).
+
+**Screen (no training): `scripts/backbone_screen.py` (new) + `sbatch/backbone_screen.sbatch` (new), launch file `exp_log/launch/exp39_backbone_screen.sh`.**
+- *Familiarity:* mean target-token NLL / perplexity of 42 train solutions per client (504 in total), with the training chat formatting and the base model (LoRA with both B matrices at zero).
+- *Headroom:* greedy base accuracy, boxed, truncation and length on 50 test problems from each of gsm8k, cn_k12/Geometry, math and olympiads, at a **4,096** cap, then `score_math.py`.
+- Models staged on Delta's `HF_HOME`:
+  - copied from the cc cache: Llama-3.1-8B-Instruct (gated) and Qwen2.5-7B-Instruct;
+  - downloaded on Delta: Qwen2.5-3B-Instruct;
+  - already present: Qwen3-4B-Instruct-2507, Qwen3-8B, Llama-3.2-1B-Instruct.
+- All offline-load checked on Delta. Chat formatting checked for every model on cc; Qwen3-8B gets the empty `<think></think>` of non-thinking mode.
+
+| job | backbone | run dir prefix | status |
+|---|---|---|---|
+| 22647630 | Qwen3-4B-Instruct-2507 (reference: the G0 backbone) | `runs/exp39_screen_qwen3_4b_2507` | PENDING |
+| 22647631 | Qwen3-8B, thinking off | `runs/exp39_screen_qwen3_8b_nothink` | PENDING |
+| 22647633 | Qwen2.5-7B-Instruct | `runs/exp39_screen_qwen25_7b` | PENDING |
+| 22647634 | Qwen2.5-3B-Instruct | `runs/exp39_screen_qwen25_3b` | PENDING |
+| 22647636 | Llama-3.1-8B-Instruct | `runs/exp39_screen_llama31_8b` | PENDING |
+| 22647638 | Llama-3.2-1B-Instruct | `runs/exp39_screen_llama32_1b` | PENDING |
+
+Next: G0 (plain SFT, D frozen at zero) on the one or two best candidates (lowest perplexity, with base accuracy below the data's level), then G2.
+
+**Infrastructure note.** A remote command that also ran `huggingface-cli whoami` blocked the tool's shell for about 30 minutes, with no output at all. Remote calls now get `timeout` and `</dev/null`.

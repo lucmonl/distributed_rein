@@ -75,9 +75,10 @@ def is_correct(text: str, gold: str) -> bool:
     return norm(pred) == norm(gold)
 
 
-def repetition_loop(text: str, n: int = 10, times: int = 3) -> bool:
+def repetition_loop(text: str, n: int = 20, times: int = 3) -> bool:
     """True if some word n-gram occurs ``times`` or more: the signature of a generation that
-    reaches a length by looping rather than by reasoning."""
+    reaches a length by looping rather than by reasoning.  n = 20 words: with n = 10 the check
+    mostly fired on restated formulas (entry 37: base 0.110 -> 0.020, G0 0.090 -> 0.020)."""
     w = text.split()
     if len(w) < n * times:
         return False

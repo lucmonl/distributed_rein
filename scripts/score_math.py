@@ -7,7 +7,7 @@ Reports, per client and per alpha:
   accuracy    final \\boxed{} answer equals the gold answer (Math-Verify)   <- utility
   boxed       share of generations with a \\boxed{} answer                  <- gate G0
   truncated   share that hit the generation cap (length >= max_new_tokens - 1)
-  loop        share with a repeated 10-word n-gram (>= 3 times)            <- gate G0
+  loop        share with a repeated 20-word n-gram (>= 3 times)            <- gate G0
   tokens      mean length in ruler tokens (the attribute)
   gzip        mean compressed/raw ratio (low = repetitive)
 and splits accuracy / format by whether alpha lies in the client's own support.
