@@ -1363,6 +1363,28 @@ Files: `math-cot-experiment-plan.md` (new), `scripts/openr1_stats.py` (new),
 - **Finer partition** (× question_type, 23 groups): medians span 0.15 → 0.78; widths are 0.57–0.88. The narrowest are hard banks missing the low end (cn_contest/Geometry [0.41, 0.98], aops_forum/Number Theory [0.29, 0.98]). Easy banks reach 0.81–0.95 at the top.
 - **Retraction:** the 0.45 uncovered share in addendum 1 used role assignments that put every held-out client in the trace-only role, and it included `solution` targets. It is superseded.
 
+**Addendum 3 (2026-10-03): short-CoT alternative, AI-MO/NuminaMath-CoT** (user: R1 traces are too long to learn).
+Downloaded to `/projects/illinois/eng/cs/arindamb/lucmon/data/numinamath_cot` (1.2 GB), symlinked as `data/numinamath_cot`.
+New script `scripts/numina_cot_stats.py` → `data/numinamath_cot/stats.json`.
+- **Size and length:** 859,494 problems, one GPT-4o step-by-step solution each. 2.79 chars/token (Spearman 0.953). Solution tokens p5 / p50 / p95 / p99 = 118 / 356 / 914 / 1,158, about 7× shorter than R1 think parts (median 2,406).
+- **Natural skew with limited spectra**, 8 sources with ≥ 5k rows, on the global scale:
+
+  | source | median | support |
+  |---|---|---|
+  | synthetic_math | 0.22 | [0.03, 0.63] |
+  | orca_math | 0.31 | [0.01, 0.72] |
+  | gsm8k | 0.32 | [0.08, 0.65] |
+  | cn_k12 | 0.34 | [0.02, 0.84] |
+  | synthetic_amc | 0.53 | [0.20, 0.77] |
+  | math | 0.55 | [0.10, 0.85] |
+  | aops_forum | 0.87 | [0.59, 0.99] |
+  | olympiads | 0.87 | [0.56, 0.98] |
+
+  Median spread 0.64, mean support width **0.61** (R1 CoT-only: 0.81).
+- **Learnability:** source explains 0.48 of log-length variance. A TF-IDF ridge reaches held-out R² 0.655 overall and **0.34 within a source**, so about two thirds of within-client variation is not predictable from the text.
+- **Answer format:** `\boxed{}` present in ≥ 0.93 of solutions for every source except aops_forum (0.61).
+- **Only 8 sources reach 5k** (amc_aime has 4,070), so 12 clients need the large sources split, e.g. by topic.
+
 ## 37. Results: C1 at 8B (Qwen3-8B, exp28); gain-clamp caveat for every local baseline (2026-10-03)
 
 (Entry numbers 30–32 are used twice in this log: the ChEMBL entries from another session reuse them. This entry continues after 36.)
@@ -1412,28 +1434,6 @@ Files: `math-cot-experiment-plan.md` (new), `scripts/openr1_stats.py` (new),
 - **Needed before C1 is final:** local runs with a wider gain range (`lora.gain_max=16`), 1B first (~8.7 h), then 8B if the gap changes.
 
 **Environment note:** `fedsteer/metrics.py` now imports `fedsteer/molecules.py` (ChEMBL work from another session), which needs `rdkit` at import time. Scripts that import `fedsteer` must run in the `steer` environment, not the system `python3`.
-
-**Addendum 3 (2026-10-03): short-CoT alternative, AI-MO/NuminaMath-CoT** (user: R1 traces are too long to learn).
-Downloaded to `/projects/illinois/eng/cs/arindamb/lucmon/data/numinamath_cot` (1.2 GB), symlinked as `data/numinamath_cot`.
-New script `scripts/numina_cot_stats.py` → `data/numinamath_cot/stats.json`.
-- **Size and length:** 859,494 problems, one GPT-4o step-by-step solution each. 2.79 chars/token (Spearman 0.953). Solution tokens p5 / p50 / p95 / p99 = 118 / 356 / 914 / 1,158, about 7× shorter than R1 think parts (median 2,406).
-- **Natural skew with limited spectra**, 8 sources with ≥ 5k rows, on the global scale:
-
-  | source | median | support |
-  |---|---|---|
-  | synthetic_math | 0.22 | [0.03, 0.63] |
-  | orca_math | 0.31 | [0.01, 0.72] |
-  | gsm8k | 0.32 | [0.08, 0.65] |
-  | cn_k12 | 0.34 | [0.02, 0.84] |
-  | synthetic_amc | 0.53 | [0.20, 0.77] |
-  | math | 0.55 | [0.10, 0.85] |
-  | aops_forum | 0.87 | [0.59, 0.99] |
-  | olympiads | 0.87 | [0.56, 0.98] |
-
-  Median spread 0.64, mean support width **0.61** (R1 CoT-only: 0.81).
-- **Learnability:** source explains 0.48 of log-length variance. A TF-IDF ridge reaches held-out R² 0.655 overall and **0.34 within a source**, so about two thirds of within-client variation is not predictable from the text.
-- **Answer format:** `\boxed{}` present in ≥ 0.93 of solutions for every source except aops_forum (0.61).
-- **Only 8 sources reach 5k** (amc_aime has 4,070), so 12 clients need the large sources split, e.g. by topic.
 
 ## 36. Attribution settled: the whole-molecule format is the problem, not steering (2026-10-03)
 
@@ -1780,13 +1780,665 @@ So the fix is a backbone for which GPT-4o's style is familiar and an upgrade. Se
 
 | job | backbone | run dir prefix | status |
 |---|---|---|---|
-| 22647630 | Qwen3-4B-Instruct-2507 (reference: the G0 backbone) | `runs/exp39_screen_qwen3_4b_2507` | PENDING |
-| 22647631 | Qwen3-8B, thinking off | `runs/exp39_screen_qwen3_8b_nothink` | PENDING |
-| 22647633 | Qwen2.5-7B-Instruct | `runs/exp39_screen_qwen25_7b` | PENDING |
-| 22647634 | Qwen2.5-3B-Instruct | `runs/exp39_screen_qwen25_3b` | PENDING |
-| 22647636 | Llama-3.1-8B-Instruct | `runs/exp39_screen_llama31_8b` | PENDING |
-| 22647638 | Llama-3.2-1B-Instruct | `runs/exp39_screen_llama32_1b` | PENDING |
+| 3308052 [dtai] | Qwen3-4B-Instruct-2507 (reference: the G0 backbone) | `runs/exp39_screen_qwen3_4b_2507` | CANCELLED after 2 of 4 headroom clients |
+| 3308053 [dtai] | Qwen3-8B, thinking off | `runs/exp39_screen_qwen3_8b_nothink` | CANCELLED after 2 of 4 headroom clients |
+| 3308054 [dtai] | Qwen2.5-7B-Instruct | `runs/exp39_screen_qwen25_7b` | COMPLETED (35 min) |
+| 3308056 [dtai] | Qwen2.5-3B-Instruct | `runs/exp39_screen_qwen25_3b` | COMPLETED |
+| 3308058 [dtai] | Llama-3.1-8B-Instruct | `runs/exp39_screen_llama31_8b` | CANCELLED after 3 of 4 headroom clients |
+| 3308063 [dtai] | Llama-3.2-1B-Instruct | `runs/exp39_screen_llama32_1b` | COMPLETED |
 
 Next: G0 (plain SFT, D frozen at zero) on the one or two best candidates (lowest perplexity, with base accuracy below the data's level), then G2.
 
 **Infrastructure note.** A remote command that also ran `huggingface-cli whoami` blocked the tool's shell for about 30 minutes, with no output at all. Remote calls now get `timeout` and `</dev/null`.
+
+**Moved to DeltaAI (dtai-1), 10-04.** The Delta submissions 22647630–38 never started (Priority, no start estimate) and were cancelled; the screen was resubmitted on dtai, where 5 of 6 started at once.
+
+DeltaAI setup (user-provided header: `--ntasks-per-node=16 --partition=ghx4 --gpus-per-node=1 --account=bhby-dtai-gh`):
+- **Architecture:** dtai-1 = gh-login01, **aarch64**; ghx4 nodes have 4 × GH200 (120 GB).
+- **Filesystems:** `/work/nvme/bhby` is shared with Delta, so `runs/`, datasets and `HF_HOME` are the same directories. **Home is not shared**: the code goes to dtai's own `/u/lucmon/rein`.
+- **Env:** dtai has its own conda (`/work/nvme/bhby/lucmon/anaconda3_deltaai`). New env **`rein-gh`** = `conda create --clone steer` (dtai's steer) + scipy 1.17.1, scikit-learn 1.9.1, rdkit 2026.03.6, math-verify (all missing from steer).
+  - torch **2.13.0+cu129** (pip; the clone kept CUDA, checked).
+  - transformers 4.56.0 and peft 0.14.0, identical to Delta. numpy 2.4.6.
+  - ⚠️ torch 2.13 vs. 2.5.1 on Delta and cc, plus a different architecture: **compare dtai runs only with dtai runs.** The whole screen runs on dtai for that reason.
+- **SSH:** the `dtai-1` block in `~/.ssh/config` lacked `ControlMaster auto`, so `ssh -fN dtai-1` made no reusable socket. Added it (backup `~/.ssh/config.bak-20261004`).
+- **Sync:** `scripts/sync_to_delta.sh --host dtai` (new option). It syncs the code to dtai's home, links `runs/` and `data/` to the shared `/work` directories, and rewrites the sbatch headers to account `bhby-dtai-gh`, partition `ghx4` and env `rein-gh` (plus `--mem=64G` and the `set +e` bashrc guard).
+- **Smoke test:** job 3308023, Qwen2.5-3B with tiny settings, COMPLETED in 1 min 39 s on gh064. Load, familiarity, generation and `score_math` all worked.
+- The launch file `exp_log/launch/exp39_backbone_screen.sh` takes `HOST=dtai-1`.
+
+**Screen, familiarity results** (mean target-token NLL over 12 clients × 42 GPT-4o solutions; base models, training chat format; dtai):
+
+| backbone | NLL | perplexity |
+|---|---|---|
+| Qwen2.5-3B-Instruct | **0.537** | **1.71** |
+| Qwen2.5-7B-Instruct | **0.560** | **1.75** |
+| Llama-3.1-8B-Instruct | 0.642 | 1.90 |
+| Llama-3.2-1B-Instruct | 0.705 | 2.02 |
+| Qwen3-8B (thinking off) | 1.075 | 2.93 |
+| Qwen3-4B-Instruct-2507 (G0 backbone) | **1.292** | **3.64** |
+
+The GPT-4o solutions are about 2.4× less surprising (in NLL) to Qwen2.5 than to Qwen3-4B-2507, which is the backbone that lost accuracy in G0. This is consistent with the style-mismatch account (Ren et al.). Headroom (base accuracy at 4,096) is still running.
+
+**Screen, headroom results and the backbone decision** (dtai; 50 test problems per client, 4,096 cap; `runs/exp39_screen_*`).
+
+| backbone | ppl | gsm8k acc / median tok | cn_k12/Geometry acc / trunc / loop / median tok | math acc / median tok | olympiads acc / median tok |
+|---|---|---|---|---|---|
+| reference median tokens | — | 240 | 261 | 413 | 665 |
+| **Qwen2.5-7B-Instruct** | 1.75 | 0.98 / 273 | 0.52 / 0.00 / 0.02 / 570 | 0.72 / 570 | 0.48 / 641 |
+| Qwen2.5-3B-Instruct | 1.71 | 0.92 / 295 | 0.52 / 0.00 / 0.04 / 535 | 0.68 / 513 | 0.36 / 739 (trunc 0.02) |
+| Llama-3.1-8B-Instruct | 1.90 | 0.98 / 238 | **0.14 / 0.26 / 0.24** / 632 | 0.64 (trunc 0.18, loop 0.22) / 410 | cancelled |
+| Llama-3.2-1B-Instruct | 2.02 | **0.02** (boxed 0.02) / 193 | 0.08 / 0.12 / 0.12 / 506 | 0.14 (boxed 0.44) / 356 | 0.00 (boxed 0.28, trunc 0.24) / 697 |
+| Qwen3-8B, no thinking | 2.93 | 0.94 / 268 | 0.42 / 0.10 / 0.10 / 800 | cancelled | cancelled |
+| Qwen3-4B-Instruct-2507 | 3.64 | 0.98 / 266 | 0.48 / 0.18 / 0.04 / **1,224** | cancelled | cancelled |
+
+**Decision: Qwen2.5-7B-Instruct.**
+- It is the most familiar with the data, tied with the 3B.
+- Its format is clean: 100% boxed, no truncation, ≤ 2% loops.
+- Its natural lengths are already near the references, so fine-tuning nudges its style instead of overriding it.
+- Its accuracy is moderate (0.48–0.98), with room to change.
+
+Rejected:
+- Llama-3.1-8B degenerates on cn_k12/Geometry (26% truncated at 4,096, 24% loops).
+- Llama-3.2-1B cannot follow the answer format.
+- The Qwen3 models are unfamiliar and verbose (Qwen3-4B: median 1,224 tokens on Geometry against a reference of 261).
+
+Qwen2.5-3B is the cheaper fallback. The three slow Qwen3 / Llama-8B jobs were cancelled once the decision no longer depended on them, since they kept drawing on the allocation while the new jobs queued.
+
+**User direction (10-04):** focus on the CoT length; accuracy is reported, not gated. The backup if accuracy still degrades is the gold answer in the prompt: `scripts/make_answer_prompt_data.py` (new) built `data/math_fed_ans/` (same records, prompts end in "The final answer is $X$. Please reason step by step to reach it, …"). It is synced to the shared `/work` and added to the sync DATASETS.
+
+## 38. Design of the calibration (gain) function: learnable vs. constant, shared vs. per-client (2026-10-03)
+
+**Questions (user):**
+1. Does the learnable, non-linear calibration g(α) = s·h(α) help compared with a constant one, g(α) = α?
+2. Should it be shared by all clients or kept per client?
+
+**Design:** Llama-3.2-1B, 4k per client, 100 rounds, federated, no offset, standard pipeline (dev selection → test → quality → judge). Each arm differs from the method run 11063910 only in g.
+
+| Arm | g(α) | Overrides | Question | Job |
+|---|---|---|---|---|
+| Method (existing, 11063910) | s·h(α), shared, s and the warp h learned | `fed.calibration=shared` | reference | done (0.151, entry 20) |
+| **const** | α (s = 1, h = identity) | `lora.warp=none fed.fix_gain=true` | Q1 | 11145307 |
+| **linear** | s·α, shared, s learned | `lora.warp=none` | Q1: learned scale vs. learned non-linearity | 11145308 |
+| **private** | s_i·h_i(α), per client | `fed.calibration=private` | Q2 | 11145309 |
+
+**Notes:**
+- Earlier evidence on Q2 *with* an offset: shared 0.158 vs. private 0.155 (11063906 vs. 11041282, entry 20). The private arm here completes the no-offset pair.
+- New-client evidence (E2, entry 30): the shared calibration gives the same curve as one trained per client.
+- Federated per-client gains stay inside the clamp (0.97–2.2 in 11041282), so `gain_max` stays 4. The clamp issue of entry 37 concerns local runs only.
+- Run directories in project space (`/u/lucmon/lucmon/rein_runs/`, linked into `runs/`), because of the home quota.
+- What to compare (with `compare_runs.py`, per client, paired bootstrap): error in/out of support, reach, Spearman, near-ties, quality, judge, house style. For Q2 also the per-client calibration curves (from the eval files' warp curves).
+
+**Launch:** [exp38_gain_design.sh](launch/exp38_gain_design.sh). About 6.5 h each once running.
+
+## 39. Gain cap kept at 4 everywhere; home file-count analysis and a correction (2026-10-03)
+
+**Decision (user):** the per-client gain cap stays at 4 (`lora.gain_max = 4`) in every run, so all comparisons use the same calibration range. That includes the calibration-design arms of entry 38 and all earlier federated and local runs. The local rerun with a wider range (entry 37) is **not** submitted. The observation that most local gains end at the cap stays as a caveat for the write-up.
+
+**Home file count** (`/u/lucmon`, 455k files; soft limit 490k, hard limit 500k):
+- 16 VS Code / Cursor remote-server installations (`.vscode-server*`, `.cursor-server`): ≈ 386k files (85%).
+- `.local`, `.cache`, `course`, `mlopt`, `.codex`, `.cargo`, others: ≈ 69k.
+- `rein` (this project, including `.git`): 923 files, 3.1 GB (data ~350 MB, SLURM logs, code).
+- By size: `.cache` 17.4 GB, `tensorflow_datasets` 15.6 GB, editor servers 1–4 GB each.
+- **Our code is not the cause.**
+
+**Correction to entry 28:** `rein/runs` has been a symlink into project space (`/projects/illinois/eng/cs/arindamb/lucmon/rein/runs`) since 09-29. So run directories, code snapshots and evaluation files never counted against the home quota. Moving the 8B runs to `/u/lucmon/lucmon/rein_runs/` (also project space) was unnecessary but harmless; they stay linked into `runs/`.
+
+## 39. ChEMBL 100-round fed/local pair: G2 passes, **C1/G3 fails** (2026-10-04)
+
+All four deco runs are in: fed-30 (11135486), local-30 (11143950), fed-100 (11143987),
+local-100 (11143988). Test evals, mean over 8 clients, constant-output baseline 0.300:
+
+| run | err | in-sup | out-sup | rho | ties | reach | range | unscor | worst |
+|---|---|---|---|---|---|---|---|---|---|
+| fed-30 | 0.235 | 0.204 | 0.282 | 0.789 | 0.505 | 0.119 | 0.437 | 0.006 | 0.312 |
+| local-30 | 0.213 | 0.185 | 0.255 | 0.822 | 0.468 | 0.146 | 0.491 | 0.003 | 0.299 |
+| **fed-100** | **0.194** | 0.177 | 0.219 | 0.856 | 0.390 | 0.200 | 0.562 | 0.008 | 0.271 |
+| **local-100** | **0.184** | 0.166 | 0.212 | 0.868 | 0.367 | 0.203 | 0.576 | 0.010 | 0.270 |
+
+**G2 passes:** both 100-round runs are well below the 0.300 constant baseline and below the 0.25
+gate. The 30-round runs were undertrained exactly as diagnosed; 100 rounds improved every metric
+(fed err 0.235 -> 0.194, ties 0.505 -> 0.390, reach 0.119 -> 0.200, range 0.437 -> 0.562), and
+round 100 was *still* the dev-selected checkpoint.
+
+**G3 / claim C1 fails, with statistical backing.** `scripts/compare_runs.py` paired bootstrap over
+test inputs, fed-100 vs local-100: **federated significantly better on 0/8 clients, significantly
+worse on 4/8** (CHEMBL325 +0.027*, CHEMBL4078 +0.022*, CHEMBL2835 +0.013*, CHEMBL2039 +0.011*).
+Only CHEMBL240 is significantly better, and only out-of-support (-0.019*). Raw per-client counts:
+federated better on 0/8 at 30 rounds, 1/8 at 100 rounds.
+
+**Crucially, federation does not help out-of-support either** (0.219 vs 0.212), which is where the
+coverage argument lives.
+
+**Why -- and it is the reason predicted in plan §3.3, not a method failure.** ChEMBL clients have
+**no coverage gaps to fill**: only **17.2%** of attribute variance is between clients (entry
+analysis, 2026-10-03), each client's support spans ~[0.02, 0.95], and the mean uncovered share of
+the alpha scale is 0.19. So "out-of-support" here means the thin 5% tails of an already-broad
+support, not a genuine gap -- exactly the gap-vs-tail distinction `federated-steering-plan.md` §4
+flags as needing separation. Federation therefore offers no coverage benefit while still paying
+the cost of constraining one direction to serve 8 clients whose decoration chemistry differs
+(decoration-vocabulary Jaccard 0.155). Local-only wins because it is strictly less constrained.
+
+⚠️ **A mechanism I checked and must NOT claim.** The fed run's `client_delta_cos_mean` collapses
+from 0.604 to ~0.000 over training, which looked like "the clients disagree about the direction".
+**Newsroom does the same**: exp28 Qwen3-8B 0.739 -> -0.000, nr_global_fedavg 0.570 -> +0.000,
+toy 0.861 -> +0.008. So the collapse is a generic property of this setup (once the direction is
+learned, the residual per-client gradients are noise, which is near-orthogonal), **not** a
+ChEMBL-specific pathology, and it does not explain the C1 failure.
+
+**Decoration under-sizing partly resolved by longer training** (entry 38's concern). Mean heavy
+atoms per alpha now 5.8 / 5.9 / 6.0 / 6.5 / 7.2 (was 6.0 -> 6.7), and CHEMBL325 reaches 12.6 at
+alpha 1, matching the 10-12 of real molecules at the extremes. Still small for CHEMBL2039
+(2.9-4.0) and CHEMBL4078 (4.2-4.9) against a real-reference 7-12.
+
+**Dissociation worth noting:** dev *loss* bottomed around round 60 (0.266) and rose to 0.291 by
+round 100, while steering error kept falling (0.216 -> 0.185). LM-likelihood overfitting and
+control quality come apart, so dev loss is the wrong early-stopping signal for this task.
+
+**What this means for the paper.** As constructed, **ChEMBL cannot test C1** -- there is nothing
+for collaboration to contribute. Options: (a) run the controlled truncation experiment (remove
+part of each client's alpha range and test outside it), which is the only way to create a real gap
+here and is already in the plan; (b) keep ChEMBL purely as a C2/portability and generality task
+and state plainly that C1 is tested on Newsroom; (c) drop it. Not yet decided.
+
+## 40. Controlled coverage experiment on ChEMBL: complementary truncation of ALL clients (2026-10-04)
+
+Entry 39 showed C1/G3 fails on ChEMBL because the clients have no coverage gaps. This experiment
+manufactures them. **New script `scripts/truncate_chembl.py`, new data `data/chembl_deco_trunc`.**
+
+**Why all 8 clients and not the 3-client subset in the plan.** The only real constraint is that
+*someone must still hold the region the others are missing* -- truncating every client in the same
+direction would leave no client with high-alpha data, the shared direction could never learn that
+region, and the experiment would test nothing. That forbids truncating everyone the *same* way,
+not truncating everyone. Complementary truncation satisfies the constraint and is strictly better:
+8 clients with real gaps instead of 3, and it is literally the plan's motivating sentence ("each
+client's data is skewed, and the skews differ"). The 3-client subset also leaves 5 donors with
+unrealistically complete coverage.
+
+**Design.** alpha is computed under the full (untruncated) equal-weight mixture of participant
+CDFs -- the natural meaning of "the top 40% of the range". Clients below the pooled alpha median
+keep only alpha <= 0.6; clients above keep only alpha >= 0.4. Dev and test are **untouched**, so
+every client is tested in its own removed region against real molecules.
+
+| client | side | alpha median | train full | kept | kept % | retained alpha |
+|---|---|---|---|---|---|---|
+| CHEMBL243 | lose_top | 0.27 | 2,912 | 2,068 | 71.0% | [0.00, 0.60] |
+| CHEMBL204 | lose_top | 0.29 | 3,278 | 2,495 | 76.1% | [0.00, 0.60] |
+| CHEMBL325 | lose_top | 0.40 | 3,188 | 1,979 | 62.1% | [0.00, 0.60] |
+| CHEMBL2835 | lose_top | 0.45 | 2,215 | 1,459 | 65.9% | [0.00, 0.60] |
+| CHEMBL4078 | lose_bottom | 0.55 | 2,376 | 1,689 | 71.1% | [0.40, 1.00] |
+| CHEMBL2039 | lose_bottom | 0.56 | 1,396 | 1,040 | 74.5% | [0.40, 1.00] |
+| CHEMBL240 | lose_bottom | 0.62 | 4,000 | 3,088 | 77.2% | [0.40, 1.00] |
+| CHEMBL228 | lose_bottom | 0.64 | 2,359 | 1,848 | 78.3% | [0.40, 1.00] |
+
+4 lose_top / 4 lose_bottom, overlap band [0.4, 0.6], union still covers [0, 1]. 15,666 participant
+training rows (was 21,724).
+
+**Launched:** **11152030 federated** / **11152031 local**, 100 rounds (entry 39: 30 is
+undertrained), rotation 0, `data/chembl_deco_trunc`.
+
+**Caveat to state when reporting:** truncation cuts each client's training data to 62-78%, so
+absolute numbers are not comparable to the untruncated runs of entry 39. The valid comparison is
+federated vs local *within* the truncated setting, and specifically the error in each client's
+removed region.
+
+**What the outcomes would mean.**
+- Federated beats local in the removed regions -> C1 holds when a gap exists, and entry 39 is a
+  property of ChEMBL's natural coverage, not of the method. ChEMBL then earns a place as a second
+  task with this experiment as its C1 evidence.
+- Federated still does not win -> the method's collaboration claim does not transfer off Newsroom
+  even with gaps present, which is a substantive negative result and an argument for dropping
+  ChEMBL rather than reporting it weakly.
+
+## 41. Natural coverage skew replaces entry 40's hard cut (2026-10-04)
+
+**Entry 40's truncation was artificial and the jobs were cancelled before starting**
+(11152030/11152031). Three things were wrong with a hard `alpha <= 0.6` / `>= 0.4` cut:
+
+1. **Wrong mechanism.** It censored at the molecule level. Real library skew comes from *which
+   chemical programmes a company ran*, and a programme (a congeneric series sharing a scaffold)
+   occupies a narrow property band. Nobody deletes all compounds above a logP threshold.
+2. **Hard edges.** It left *exactly zero* mass beyond the cut. Newsroom's nypost.com support
+   starts at 0.51, meaning it has *few* low-extractiveness summaries, not none.
+3. **Too uniform -- this was the worst of the three.** It gave all 8 clients identical window
+   widths, which is **more** artificial than the real data. Measured Newsroom supports: only
+   **2 of 8 clients are strongly skewed** (theguardian.com 0.04-0.55 width 0.50, nypost.com
+   0.51-0.95 width 0.44); the other six are broad (0.67-0.96). Forcing uniform skew would have
+   made the ChEMBL setting less realistic than Newsroom, not more.
+
+**New `scripts/skew_chembl.py`** keeps the one structural requirement -- some client must still
+hold what another lacks, or transfer is untestable -- and otherwise reproduces the *kind* of skew
+Newsroom has:
+- **series-level selection:** whole scaffold series are kept or dropped,
+  `p(keep) = (1 - beta_i) + beta_i * sigmoid(s_i (alpha_series - 0.5) / tau)`, tau = 0.12;
+- **within-series thinning:** a weaker ramp (tau_mol = 0.22, strength 0.75 * beta_i) on molecules
+  inside surviving series, because SAR exploration concentrates where the team was optimising.
+  Series selection alone could not narrow a support below ~0.72, since a single ChEMBL series
+  itself spans ~0.31 of the alpha scale;
+- **heterogeneous strength:** beta_i from 0.95 down to 0.0, interleaved across the two sides so
+  each side has one strongly skewed client. (A first pass put both strong betas on low-median
+  clients, leaving nobody short of low alpha and half the transfer question untested.)
+
+| client | beta | side | kept | support (5-95%) | width | tail mass | n in tail |
+|---|---|---|---|---|---|---|---|
+| CHEMBL243 | 0.95 | low | 54% | [0.01, 0.54] | 0.53 | 0.0121 | 19 |
+| CHEMBL204 | 0.60 | low | 72% | [0.02, 0.78] | 0.75 | 0.0387 | 91 |
+| CHEMBL2835 | 0.10 | low | 92% | [0.07, 0.91] | 0.83 | 0.1471 | 300 |
+| CHEMBL325 | 0.30 | low | 80% | [0.14, 0.97] | 0.84 | 0.1745 | 444 |
+| CHEMBL2039 | 0.25 | high | 88% | [0.16, 0.92] | 0.76 | 0.0679 | 83 |
+| CHEMBL240 | 0.50 | high | 70% | [0.22, 0.97] | 0.75 | 0.0466 | 130 |
+| CHEMBL228 | 0.90 | high | 56% | [0.37, 0.98] | 0.61 | 0.0038 | 5 |
+| CHEMBL4078 | 0.00 | high | 100% | [0.01, 0.95] | 0.94 | 0.1351 | 321 |
+
+Support widths **min 0.53, median 0.76, max 0.94** against Newsroom's **0.44 / 0.81 / 0.96**.
+CHEMBL243 [0.01, 0.54] is almost exactly theguardian.com [0.04, 0.55]; CHEMBL228 [0.37, 0.98] is
+the nypost.com analogue. **No tail is hard-censored** -- the two most skewed clients still hold 19
+and 5 molecules in their disfavoured region. 16,207 participant train rows (was 21,724).
+
+Dev and test remain untouched, so each client is still evaluated across the whole alpha grid
+against real molecules, including in the region its training data barely covers.
+
+**Launched: 11152110 federated / 11152111 local**, 100 rounds, rotation 0.
+
+Caveat unchanged from entry 40: training data drops to 54-100% per client, so absolute numbers are
+not comparable with entry 39's untruncated runs; the comparison is federated vs local *within*
+this setting, read per client and split by support.
+
+## 42. Natural skew v2: stronger high side, and middle-only clients (2026-10-04)
+
+Entry 41's v1 (11152110/11152111) was cancelled before starting, on two objections.
+
+**(1) The high side was under-skewed** -- [0.37, 0.98] against nypost.com's [0.51, 0.95].
+**Cause, measured:** the clients' *natural* alpha medians only span 0.27-0.64, because the global
+alpha scale is built from these same eight clients. CHEMBL228's natural 25th percentile is already
+0.44. A propensity ramp centred at 0.5 therefore disfavours only half the range and cannot lift a
+high-side 5th percentile to ~0.5. Fix: the ramp **centre is now a per-role parameter** (0.54 for
+the high specialist, 0.46 for the low one) with a sharper tau (0.07) at beta 0.97.
+
+**(2) Added middle-only clients -- a regime Newsroom does not contain.** Every Newsroom client is
+one-sided (skewed low or high). A client holding only mid-range alpha must borrow **both** tails,
+so the shared direction has to extrapolate in both directions for the same client. That is a
+strictly harder test of C1 than one-sided skew, and realistic: a lead-optimisation group that
+stays in the drug-like sweet spot. Propensity is a Gaussian bell on alpha rather than a sigmoid.
+The percentile-based support definition handles these correctly (the support stays contiguous), and
+`metrics.py` already splits out-of-support reach into below/above, so both tails are measured.
+A *barbell* client (endpoints only, missing the middle) was considered and **rejected**: its
+5th-95th percentile support would read as [0.05, 0.95] and hide the hole, so the current support
+definition would mis-measure it. That would need a density-based support first.
+
+Roles are assigned by natural alpha median: lowest -> low specialist, highest -> high specialist,
+most central -> strong middle, then outward.
+
+| client | role | kept | support (5-95%) | width | <0.25 | >0.75 |
+|---|---|---|---|---|---|---|
+| CHEMBL243 | low_specialist | 54% | [0.01, 0.41] | 0.40 | 0.830 | **0.010** |
+| CHEMBL204 | untouched | 100% | [0.03, 0.91] | 0.88 | 0.461 | 0.145 |
+| CHEMBL2039 | low_moderate | 51% | [0.12, 0.89] | 0.77 | 0.173 | 0.163 |
+| CHEMBL2835 | middle_moderate | 67% | [0.13, 0.87] | 0.74 | 0.255 | 0.165 |
+| CHEMBL240 | broad | 91% | [0.15, 0.96] | 0.81 | 0.121 | 0.347 |
+| CHEMBL325 | high_moderate | 64% | [0.16, 0.98] | 0.82 | 0.149 | 0.364 |
+| CHEMBL4078 | **middle_strong** | 48% | **[0.28, 0.81]** | 0.53 | **0.040** | **0.080** |
+| CHEMBL228 | high_specialist | 55% | **[0.46, 0.98]** | 0.53 | **0.009** | 0.620 |
+
+Widths **min 0.40, median 0.76, max 0.88** against Newsroom's **0.44 / 0.81 / 0.96** -- the
+extreme is now slightly *more* skewed than Newsroom's, which was the point. Every edge stays soft:
+the low specialist keeps ~16 molecules above alpha 0.75, the high specialist ~12 below 0.25, the
+strong middle client ~45 below 0.25 and ~91 above 0.75. Clients covering each alpha: 0.1 -> 25%,
+0.5 -> 88%, 0.9 -> 50%, so the ends are thin but genuinely held by someone.
+15,151 participant train rows (was 21,724). ⚠️ CHEMBL2039 falls to 710 rows, the smallest client.
+
+**Launched: 11152198 federated / 11152199 local**, 100 rounds, rotation 0.
+
+**What to read first when they finish:** per-client error in each client's own missing region --
+the low specialist above 0.75, the high specialist below 0.25, and **both** tails for
+CHEMBL4078. If federation wins anywhere, it should win there.
+
+## 40. Math CoT with Qwen2.5-7B-Instruct: gates + C1 launched on DeltaAI (2026-10-04) [dtai]
+
+Launch file `exp_log/launch/exp40_math_qwen25_7b.sh`. All jobs run on dtai-1 (`ghx4`, env `rein-gh`); outputs go to the shared `runs/` (`/work/nvme/bhby/lucmon/rein`).
+- 100 rounds × 20 steps × batch 8 (4 epochs).
+- Dev evals every 20 rounds: 50 problems for the single-client runs, 20 per client for E1. Generation batch 64; test evals at 100 problems with the 1,280 cap.
+- `sbatch/train_eval_math.sbatch` gained `EVAL_BATCH`.
+- The smoke test guards the first training on dtai (torch 2.13, aarch64); every real run is `afterok` on it.
+
+| job | purpose | overrides (beyond `model_name=Qwen/Qwen2.5-7B-Instruct`) | run dir prefix | status |
+|---|---|---|---|---|
+| 3308443 | smoke: 2 clients, 2 rounds × 5 steps, 4-prompt evals, 128-token cap | `clients=[math,olympiads] fed.rounds=2 fed.local_steps=5 …` | `runs/exp40_smoke_qwen25_7b` | PENDING (Priority) |
+| 3308444 | G0: plain SFT on `math`, D = 0 | `clients=[math] fed.lr_shared=0 fed.rounds=100 …` | `runs/exp40_g0_sft_qwen25_7b` | PENDING (afterok smoke) |
+| 3308445 | G2: single-client steering on `math` | `clients=[math] fed.rounds=100 …` | `runs/exp40_g2_single_qwen25_7b` | PENDING (afterok smoke) |
+| 3308446 | G1: B1 prompting on G2's checkpoint | `eval_b1_math.sbatch RUN_JOB=3308445` | (into G2's run) | PENDING (afterok G2) |
+| 3308447 | **E1 federated**, rotation 0 (8 participants), shared calibration, no offset | `fed.rounds=100 monitor.full_prompts=20 …`, 2-day limit | `runs/exp40_e1_fed_qwen25_7b` | PENDING (afterok smoke) |
+| 3308448 | **E1 local-only** (B2) | `fed.mode=local fed.calibration=private`, otherwise identical | `runs/exp40_e1_local_qwen25_7b` | PENDING (afterok smoke) |
+
+**Entry 40 update (math, 10-04):**
+- The `ghx4` queue filled during the day: 165 running and 2,768 pending. The smoke test's estimated start became 2026-10-05 13:57.
+- The `afterok:smoke` dependency of G0 / G2 / E1-fed / E1-local (3308444/45/47/48) was removed with `scontrol update Dependency=`, so they queue in parallel with the smoke test instead of after it. If the smoke test fails, cancel them before they start. G1 (3308446) stays `afterok` on G2.
+- Delta (2,435 pending) and cc (182 pending) were no better.
+
+**Log hygiene note.** A parallel session (ChEMBL) appends to this file with overlapping entry numbers. The math entries are 37, 38, 39 and 40, each titled "Math CoT …" (and tagged [delta] or [dtai]). From now on the math entries are only *appended* (no read-modify-write), so as not to overwrite the other session's appends.
+
+## 40. Results: calibration design, question 1 (learned vs. constant gain) (2026-10-04)
+
+Jobs from entry 38: const 11145307 and linear 11145308 done (10-04 ~12:50); both selected round 100. Report: `exp_log/reports/gain_design_const_linear.txt`. The private arm (11145309, question 2) is still running.
+
+**Test** (200 articles per client):
+
+| Arm | g(α) | Pct error (worst) | In-support | Out-of-support (worst) | Reach | Spearman | Near-tie |
+|---|---|---|---|---|---|---|---|
+| Method | s·h(α), learned (s = 1.93) | **0.151** (**0.199**) | 0.135 | **0.161** (**0.188**) | 0.39 | **0.933** | 0.20 |
+| Const | α | 0.153 (0.217) | **0.134** | 0.165 (0.207) | **0.40** | 0.927 | 0.20 |
+| Linear | s·α, learned (s = 1.94) | 0.153 (0.208) | 0.136 | 0.164 (0.200) | 0.39 | 0.931 | 0.22 |
+
+**Per client** (paired bootstrap):
+- Const − method: better on 1/8 (people.com −0.008), worse on 1/8 (reuters.com +0.018); the rest tie.
+- Linear − method: better on 1/8, worse on 3/8 (cbc.ca, reuters.com, nypost.com; +0.005 to +0.011).
+- Quality (AlignScore, BERTScore, length, judge) is the same across the three.
+
+**Reading:**
+- The learned calibration adds little: mean error 0.151 vs. 0.153.
+- The visible benefit is on the copy-heavy clients and the worst case: reuters.com 0.199 vs. 0.217 for const; worst client 0.199 vs. 0.217.
+- **Why so small:**
+  - The method's learned warp is essentially the identity (h(0.25) = 0.251, h(0.5) = 0.501, h(0.75) = 0.751), so its g is linear, s·α with s = 1.93, the same as the linear arm learns (1.94).
+  - With s fixed at 1, the direction D grows instead (D → cD is equivalent to s → s·c).
+  - Under the global percentile scale the response is already close to linear in α, so a non-linear map has little to correct.
+- **Caveat:** the warp is pulled toward the identity by a small penalty (`fed.warp_reg = 0.01`). An unpenalized warp might deviate more; not tested.
+- **Implication for the paper:** the calibration can be presented as a learned scale with an optional warp. The essential parts of the design are the global α scale and the shared direction, not the non-linearity. A1 shows g(α) = α nearly matches on average and is somewhat worse on the copy-heavy clients and the worst client.
+
+## 41. Results: calibration design, question 2 (shared vs. per-client) (2026-10-04)
+
+Job 11145309 (private calibration, no offset) done 10-04 14:50; selected round 100. Compared with the method (shared, no offset, 11063910) and the earlier with-offset pair (shared 11063906, private 11041282). Report: `exp_log/reports/gain_design_shared_private.txt`.
+
+**Test:**
+
+| Calibration | Offset | Pct error (worst) | In-support | Out-of-support (worst) | Reach | Spearman | Endpoint near-tie |
+|---|---|---|---|---|---|---|---|
+| **Shared** (method) | no | **0.151 (0.199)** | 0.135 | **0.161 (0.188)** | 0.39 | **0.933** | 0.002 |
+| Per-client | no | 0.168 (0.320) | 0.135 | 0.183 (0.365) | 0.37 | 0.915 | 0.046 |
+| Shared | yes | 0.158 (0.229) | 0.141 | 0.167 (0.204) | 0.38 | 0.920 | 0.002 |
+| Per-client | yes | 0.155 (0.229) | 0.134 | 0.165 (0.253) | 0.40 | 0.926 | 0.009 |
+
+**Per client, per-client − shared (no offset):**
+- Better on 3/8, by small amounts: theguardian.com −0.015, people.com −0.009, wsj.com −0.006.
+- **Worse on 2/8:** reuters.com +0.026 and **nypost.com +0.143**; nypost.com's out-of-support error goes from 0.188 to 0.365.
+- With an offset the two are close: per-client better on 4/8, worse on nypost.com (+0.042).
+
+**Mechanism (nypost.com):**
+- Its data covers only α ∈ [0.51, 0.95], so a per-client calibration is fitted only there. It learned a small gain (s = 0.68) and a strongly bent warp (h(0.5) = 0.28).
+- Without an offset, g(0) = 0, and the adapter alone already produces copied leads. So the low α it never saw are unreachable.
+- Output percentile at α = 0, .25, .5, .75, 1: per-client 0.64, 0.70, 0.76, 0.85, 0.90 (34% of articles give near-identical text at α = 0 and 1). Shared 0.18, 0.41, 0.71, 0.84, 0.90.
+- reuters.com (also copy-heavy) learned s = 0.86 and starts at 0.29 instead of 0.22.
+- An offset partly repairs this (o = −0.58 for nypost.com, entry 16), hence the closer with-offset pair.
+- Clients with broad support learn near-linear curves (s 1.5–2.0, h(0.5) ≈ 0.45–0.56), close to the shared one.
+
+**Answer to question 2: share it.**
+- A per-client calibration can only be fitted where the client has data. It extrapolates badly for exactly the skewed clients federation is meant to help, and it brings at most small in-support gains for broad clients.
+- Shared calibration has the best mean and worst client, and needs no per-client fitting for new clients (E2, entry 30: same curve as private).
+- Together with question 1 (entry 40): **one shared, learned scale** is the robust choice. The warp is optional (it stays near the identity). No offset is needed once the calibration is shared.
+
+## INFRA-ANVIL-1. Purdue Anvil surveyed and set up for the molecule workstream (2026-10-04)
+
+Relayed from the user by another session: Anvil is available when cc (dali / IllinoisComputes-GPU)
+or Delta are backed up. Namespaced `INFRA-ANVIL-` because it is shared infrastructure, not one
+workstream's experiment (see the namespace convention: `NR-`, `MATH-`, `MOL-`).
+
+**Cost, measured -- the number everyone needs before spending this.**
+`scontrol show partition ai|gpu` gives `TRESBillingWeights=GRES/gpu=1.0`, i.e. **1 SU per
+GPU-hour**, so the 500 SU allocation is **500 GPU-hours**. `mybalance`: 500.0 limit, 0.0 used.
+A 100-round ChEMBL fed/local pair is ~12 GPU-hours = **~12 SU, 2.4% of the allocation**. Cheap.
+
+**Capacity -- the reason to bother.** `sinfo -p ai,gpu`: 17 of ~21 `ai` nodes and 10 of 16 `gpu`
+nodes were in `mix-` (partly free) while this session's cc jobs sat on `(Priority)` for hours.
+4 GPUs per node, `--gpus-per-node=1`, 48 h max, `gpu-debug` for 30-minute tests.
+
+⚠️ **Correction to the relayed note:** it said /home is 85% full. `myquota` for x-zchen17 reports
+**home 34.4 KB of 25 GB (0.0%)**, scratch 0 of 100 TB, projects 0 of 5 TB. The 85% figure is
+presumably the whole filesystem, not this account's quota. Space is not a constraint; even so the
+env, HF cache and run outputs all go to scratch rather than home.
+
+**State before this entry:** nothing existed -- empty scratch, no env, no code, no data, no models,
+no jobs queued on `cis260796-ai`. Nobody else had claimed it.
+
+**New `scripts/setup_anvil.sh`** (deliberately a separate script, *not* an edit to
+`scripts/sync_to_delta.sh`, which the math-CoT workstream owns and is actively using).
+Layout, all under `lucmon/` as instructed since the account is x-zchen17's, not the user's:
+
+| path | contents |
+|---|---|
+| `/anvil/scratch/x-zchen17/lucmon/rein` | code (rsync from cc, `--delete`; cc stays the only place code is edited) |
+| `/anvil/scratch/x-zchen17/lucmon/data/{chembl_deco,chembl_deco_skew}` | datasets, symlinked into `rein/data/` |
+| `/anvil/scratch/x-zchen17/lucmon/runs` | run outputs, symlinked to `rein/runs` |
+| `/anvil/scratch/x-zchen17/lucmon/envs/rein` | conda env (`module load conda`; no pytorch module exists on Anvil, so torch comes from pip) |
+| `/anvil/scratch/x-zchen17/lucmon/hf_home` | `HF_HOME`; Qwen3-4B-Instruct-2507 (7.6 GB) |
+
+✅ Code and both ChEMBL datasets synced (45 MB). 🔄 Conda env + model download running
+(`scripts/setup_anvil.sh`, ~2.5 GB of wheels plus 7.6 GB of weights). Setup costs 0 SU -- it is
+all login-node work.
+
+⏳ **Still to write: an Anvil sbatch.** `sbatch/train_eval_chembl.sbatch` is cc-specific
+(`--account=lucmon-ic`, `--partition=dali,IllinoisComputes-GPU`, `--gres=gpu:1`,
+`source activate steer`, cc paths). The Anvil version needs `--account=cis260796-ai`,
+`-p ai`, `--gpus-per-node=1`, `module load conda && source activate $ROOT/envs/rein`,
+`HF_HOME=$ROOT/hf_home`.
+
+**Not duplicating work:** the cc pair 11152198 / 11152199 (natural-skew fed/local, entry 42) stays
+queued. Once Anvil is ready, whichever is still pending gets submitted there and the cc copy
+cancelled -- running both would waste either cc GPU time or SU.
+
+## MATH-1. dtai training path verified; smoke-test bug; Anvil option assessed (2026-10-04) [dtai]
+
+First entry under the `MATH-` namespace (see the log convention). Continues entry "40. Math CoT with Qwen2.5-7B-Instruct … [dtai]".
+
+**The first smoke test (3308443) FAILED in 39 s, from my bug, not dtai.**
+- Its override `clients=[math,olympiads]` contains a comma, and `sbatch --export` splits on commas, so the YAML override was truncated (`ParserError: while parsing a flow sequence`).
+- The real jobs (G0 3308444, G2 3308445, E1 3308447/48) have no comma in their overrides. Their `afterok` dependency on it had already been removed, so they were unaffected.
+- **Rule:** no commas inside `OVERRIDES` passed through `--export`.
+
+**Smoke test, second attempt (3309218): training WORKS on dtai** (torch 2.13 / aarch64 / GH200, env `rein-gh`).
+- `--partition=test` was refused for account `bhby-dtai-gh`. **`--partition=ghx4-interactive` (2 h limit) accepted it and started immediately** (gh058), while `ghx4` estimated the next day.
+- Config: the 8 rotation-0 clients, 1 round × 2 local steps, 4-prompt dev and test evals, 128-token cap; run `runs/exp40_smoke2_qwen25_7b_20261004-161059_j3309218`.
+- Round 0 logged: mean loss 0.514, delta cos 0.218 (FedAvg over 8 clients), **36.2 s for 16 steps = 2.3 s/step (7B, batch 8)**, dev loss 0.496. The full dev eval and `score_math` ran. Peak GPU memory ≈ 40 of 98 GB.
+- Implied E1 cost: 100 rounds × 8 clients × 20 steps × 2.3 s ≈ **10 h of training per run**, plus evals.
+
+**Queue (dtai `ghx4`):** G0/G2/E1-fed/E1-local are PENDING with an estimated start of **2026-10-05 17:37**; G1 waits on G2.
+
+**Anvil (shared infrastructure, see INFRA-ANVIL-1):** 1 SU per GPU-hour, 500 SU shared by all workstreams; capacity was free on 10-04. The math suite (G0 + G2 + G1 + the E1 pair) would cost roughly **50–60 SU (10–12% of the allocation)**. It would also need math-verify and Qwen2.5-7B (15 GB) added to the molecule session's shared env and cache. **Not used yet: pending a decision by the user**, since it is a borrowed, shared allocation. If used, move the whole suite, so that all math comparisons stay on one host and one torch version.
+
+## INFRA-ANVIL-2. Anvil usable (ai only), plus three unused GPU partitions found on cc (2026-10-04)
+
+Follows INFRA-ANVIL-1. All of this is now in the shared memory `reference-slurm.md` and a new
+`feedback-cluster-failover.md`, and was messaged to the news-summarization, math-CoT and SLURM
+sessions.
+
+**Anvil: set up, with four corrections to the relayed note.**
+1. **`-A cis260796-ai` can use `-p ai` ONLY** (`sacctmgr show assoc` -> `Partition=ai`). `-p gpu`
+   and `-p gpu-debug` are rejected: *"You are submitting a job to a non-AI partition while using
+   an AI allocation."* So there is no 30-minute debug queue for this allocation.
+2. **Multi-partition is impossible there:** `-p ai,gpu` -> *"Multiple partition job request not
+   supported when a partition is set in the association."*
+3. **`/home` is not 85% full:** `myquota` gives home 34.4 KB / 25 GB (0.0%), scratch 0 / 100 TB,
+   projects 0 / 5 TB. The 85% was presumably the whole filesystem.
+4. **1 SU per GPU-hour** (`TRESBillingWeights=GRES/gpu=1.0`), so 500 SU = **500 GPU-hours** --
+   generous, not tight. A 100-round fed/local pair is ~12 SU. Setup cost 0 SU.
+Also: `wholenode`, `shared`, `standard`, `wide`, `highmem`, `debug`, `profiling` are **CPU-only**
+(null GRES), so they cannot run these jobs regardless of permissions. Only `ai` (21 nodes), `gpu`
+(16) and `gpu-debug` (16) carry `gpu:4`.
+
+**Layout mirrors cc** (code in home, bulk on scratch via symlinks), per the user on 10-04:
+code `/home/x-zchen17/lucmon/rein` (1.3 MB); `data/<n>` -> `$SCRATCH/lucmon/data/<n>`, `runs` ->
+`$SCRATCH/lucmon/runs`, env `$SCRATCH/lucmon/envs/rein` (18 GB), `HF_HOME=$SCRATCH/lucmon/hf_home`
+(7.6 GB, Qwen3-4B-Instruct-2507). Env **pinned to cc's `steer`**: torch 2.5.1+cu124, transformers
+4.56.0, numpy 1.26.3, pyarrow 19.0.0 -- an unpinned install had given torch 2.14.1 / transformers
+5.18.0, a major-version jump that risks the hand-rolled LoRA wrapping and would make Anvil numbers
+non-comparable with the cc runs beside them. No pytorch module exists on Anvil, so torch is pip.
+Scripts: `scripts/setup_anvil.sh`, `sbatch/train_eval_chembl_anvil.sbatch`. `sync_to_delta.sh` was
+deliberately left alone (the math-CoT workstream owns it).
+
+**cc: three GPU partitions were going unused.** `lucmon`'s associations are *not* partition-pinned,
+so multi-partition submission works. `dali,IllinoisComputes-GPU` is only 5 GPU nodes. Deciding
+number: **peak GPU memory 18.0 GiB** for the 4B ChEMBL run (`GPU_LOG=1`).
+
+| partition | AllowAccounts | MaxTime | verdict (~6 h, 4B) |
+|---|---|---|---|
+| `scavenger` | **ALL** | 1 d | ✅ **added**, 19 GPU nodes; exclude `ccc0089,ccc0090` (16 GB V100s) |
+| `secondary` | ALL | 4 h | ✗ too short (run takes ~6 h, nothing auto-resumes); ok for smoke tests |
+| `ic-express` | acc-illinoiscomputes | 8 h | ✗ H100 MIG `1g.20gb`: 20 GB vs 18.0 GiB peak, no headroom |
+| `eng-research-gpu` | acc-eng-research | 2 d | ✗ lucmon-ic not in that account |
+
+`sbatch/train_eval_chembl.sbatch` now uses
+`--partition=dali,IllinoisComputes-GPU,scavenger --exclude=ccc0387,ccc0089,ccc0090`.
+⚠️ **Gotcha:** in a multi-partition request `--time` must fit the *smallest* MaxTime in the set.
+With `scavenger` the cap is 24 h, so `--time=2-00:00:00` fails with *"Requested time limit is
+invalid"*. `exp_log/launch/exp42_chembl_skew_roles.sh` now uses `--time=24:00:00`.
+`scavenger` is preemptible; a requeued job restarts from round 0 with a new stamp, so recovery is
+via the 20-round snapshots plus `train_fed.py --resume`.
+
+⚠️ **My error, and the rule that came out of it.** To widen the partition list I cancelled
+11152198 / 11152199 -- which had *just been allocated* ccc0388 and ccc0284. I killed running work,
+and the resubmit then failed on the time-limit rule above, leaving nothing running. User
+instruction: **when racing a job across clusters, cancel the other copies only once one is
+actually RUNNING, never in order to resubmit with better settings.** Check
+`squeue -j <id> -h -o "%T %M %R"` before any `scancel`. Resubmitted as **11156942 fed /
+11156950 local** (24 h, wider pool). Anvil smoke test **21067708** is queued on `-p ai`.
+
+## MATH-2. Qwen2.5-7B math suite raced on cc as well; automatic race watcher (2026-10-04) [cc+dtai]
+
+**Why:** dtai's `ghx4` queue estimated a start of 2026-10-05 17:37 for the suite in entry "40. Math CoT with Qwen2.5-7B-Instruct [dtai]". The user's standing rule (memory `feedback-cluster-failover`): queueing is the main bottleneck, so submit to several clusters and cancel the other copies **only once one is RUNNING**. Anvil is not used yet: that awaits the user's answer on spending the shared SU (MATH-1).
+
+**cc copies** (launch `exp_log/launch/MATH-2_qwen25_7b_cc_race.sh`; identical overrides to the dtai copies; partitions `dali,IllinoisComputes-GPU`, A100 80 GB / H200; env `steer`; run dirs under cc `runs/` → `/projects/illinois/eng/cs/arindamb/lucmon/rein/runs`):
+
+| race | cc job | dtai job | note |
+|---|---|---|---|
+| G0 (plain SFT, `math`) | 11157615 | 3308444 | |
+| G2 (steering, `math`) | 11157616 | 3308445 | |
+| G1 (B1 prompting, afterok G2 on the same host) | 11157617 | 3308446 | cancelled together with its host's G2 copy |
+| E1 federated | 11157618 (3-day limit) | 3308447 | group "E1": fed and local are kept on **one** host |
+| E1 local | 11157619 (3-day limit) | 3308448 | group "E1" |
+
+Partitions not used, per the molecule session's survey: `scavenger` and `secondary` (24 h / 4 h caps are too short for E1) and `ic-express` (20 GB MIG slices).
+
+**math-verify on cc without touching the shared `steer` env:** `pip install --no-deps --target /u/lucmon/lucmon/pylib/mathverify math-verify==0.9.0 latex2sympy2_extended==1.11.0 antlr4-python3-runtime==4.13.2`.
+- It uses the env's sympy 1.13.1; verified `verify(1/2, 0.5) = True`, `verify(3, 4) = False`.
+- The math sbatch scripts (`train_eval_math`, `eval_b1_math`, `eval_base_math`, `backbone_screen`) add that directory to `PYTHONPATH` only if it exists. On Delta and dtai the envs already have math-verify.
+
+**`scripts/race_watch.py` (new):** runs detached on cc-login1 (`nohup setsid`, pid 1269842, 5-minute polls, 96 h max); spec `exp_log/launch/MATH-2_race.json`; log **`sbatch/logs/race_MATH-2.log`**.
+- A copy is cancelled only when another copy of its race (or its group) has started, and only if a fresh check right before `scancel` still says PENDING.
+- Dependents (G1) of a cancelled G2 copy are cancelled with it. A host that fails to answer is left alone.
+- A dry run (cancellation disabled) read all 10 job states correctly and cancelled nothing while all were pending.
+- ⚠️ It reaches dtai through the `ssh -fN dtai-1` master on cc-login1. If that dies, the watcher stops cancelling dtai copies (it logs that) and both copies could end up running.
+
+⚠️ **Cross-host comparability:** cc runs torch 2.5.1 on A100s and dtai runs torch 2.13 on GH200s. The single-client gates may finish on different hosts (each gate is read on its own); the E1 pair cannot, by construction.
+
+## MATH-3. Third copies of the gates on cc `scavenger`; race watcher made preemption-aware (2026-10-04) [cc]
+
+Follows MATH-2, triggered by the cc `scavenger` partition reported in INFRA-ANVIL-2. Anvil is still not used: it awaits the user's answer on spending the shared SU (MATH-1). A peer session's view that 500 SU is generous is not the user's approval.
+- **Only the single-client gates go to `scavenger`**: about 4–5 h each, within its 24 h cap. The E1 pair needs well over 24 h on an A100, so it stays on `dali,IllinoisComputes-GPU` and dtai.
+- **Nodes:** H100 / H200 / L40S only, via `--exclude`:
+  - ccc0089/90 (V100 16 GB);
+  - ccc0232–0236 (Quadro RTX 6000, 24 GB, too small for the 7B);
+  - ccc0496–0499 (RTX6000B, Blackwell, which needs CUDA ≥ 12.8; cc's torch is 2.5.1+cu118).
+- **Jobs:**
+  - 11157678 (G0, scavenger) and 11157682 (G2, scavenger): `--time=12:00:00`, same overrides as the other copies;
+  - 11157683 (G1, afterok the scavenger G2, on the *regular* cc partitions).
+
+  Launch: `SCAV=1 bash exp_log/launch/MATH-2_qwen25_7b_cc_race.sh`.
+- **`scripts/race_watch.py`: preemption-aware.** Hosts in the spec's `"preemptible"` list (here `ccscav`) win only by **COMPLETING**, not by starting: a scavenger copy can be preempted and requeued from round 0, and treating its start as a win would have cancelled the safe copies. Their *pending* copies are cancelled like any loser once a non-preemptible copy starts. A running scavenger copy is left alone (worst case a duplicate run on free cc time).
+- **Watcher restarted** with the 3-host spec (`exp_log/launch/MATH-2_race.json`): old pid 1269842 had taken no action and was stopped; new pid **1301173**; same log `sbatch/logs/race_MATH-2.log`.
+
+## MOL-13. exp42 skew pair duplicated onto Anvil to race the cc copies (2026-10-04)
+
+Correcting my own framing in INFRA-ANVIL-2: I described the cc skew pair and the Anvil *smoke test*
+as a race whose loser should be cancelled. They were **different tasks**, so that was wrong --
+the failover rule only applies to **duplicate copies of one experiment** on different
+allocations. The math-CoT workstream had already got this right (`math2_g0_sft_cc` alongside
+`math2_g0_sft_scav`).
+
+So the exp42 natural-skew experiment now has two copies of each job:
+
+| job | cc (`lucmon-ic`, dali/IC/scavenger, 24 h) | Anvil (`cis260796-ai`, `-p ai`, 20 h) |
+|---|---|---|
+| federated, 100 rounds | 11156942 | 21068552 |
+| local, 100 rounds | 11156950 | 21068553 |
+
+Launch script `exp_log/launch/exp43_skew_anvil_duplicate.sh`. Identical data
+(`data/chembl_deco_skew`), identical overrides, and the Anvil env is pinned to cc's versions
+(torch 2.5.1+cu124, transformers 4.56.0), so whichever wins is comparable with the entry MOL-9
+untruncated runs.
+
+**The Anvil smoke test 21067708 was cancelled** rather than left to run: it had not started, and
+it competed with these real jobs for the same `ai` allocation. The real run's own first rounds
+validate the stack just as well, and a stack failure surfaces in minutes at ~0 SU.
+
+**Cancellation policy for this race:** cancel the loser once the winner is `RUNNING` *and past
+startup* (model loaded, round 1 in the log) -- not merely `RUNNING`, because the Anvil environment
+is newly built and could still fail early. Budget impact if Anvil wins: ~12 SU of 500.
+
+## MATH-4. Cluster rule: math-CoT on Delta + dtai only; cc copies withdrawn, Delta copies race dtai (2026-10-04) [delta+dtai]
+
+**User rule (relayed by another session, recorded at the top of memory `reference-slurm.md`):** math-CoT → Delta and DeltaAI only; news-summarization and molecule-generation → cc and Anvil only. This supersedes the cc parts of MATH-2 / MATH-3; Anvil was never used for math.
+
+**cc withdrawn.**
+- The watcher (pid 1301173) was stopped; it had taken no action.
+- All 8 cc math jobs were cancelled after a per-job check that each was still PENDING (none had started): 11157615/16/17/18/19 (regular partitions) and 11157678/82/83 (scavenger).
+- They would otherwise have competed with the other workstreams' jobs on cc. No math job remains on cc.
+- `/u/lucmon/lucmon/pylib/mathverify` stays on disk; it is unused unless math runs on cc again.
+
+**Delta copies** (launch `exp_log/launch/MATH-4_qwen25_7b_delta_race.sh`; same overrides; `--partition=gpuA100x8,gpuH200x8`, 80 GB+ only, since `gpuA100x4` is 40 GB, about the 7B's ~40 GB peak measured on dtai; env `rein` torch 2.5.1+cu124; shared `/work` model cache and data):
+
+| race | Delta | dtai |
+|---|---|---|
+| G0 | 22665955 | 3308444 |
+| G2 | 22665956 | 3308445 |
+| G1 (afterok G2, same host) | 22665957 | 3308446 |
+| E1 federated (2-day limit) | 22665958 | 3308447 |
+| E1 local (2-day limit) | 22665959 | 3308448 |
+
+**Watcher:** new pid **1478227**, spec `exp_log/launch/MATH-4_race.json`, log **`sbatch/logs/race_MATH-4.log`**. Same rules: cancel only once a copy RUNS, with a fresh PENDING check before each `scancel`; the E1 pair stays on one host; G1 follows its host's G2. It needs both SSH masters on cc-login1 (`delta-login2`, `dtai-1`).
+
+⚠️ Delta (torch 2.5.1, A100/H200) and dtai (torch 2.13, GH200) differ, so a gate may finish on either host; the E1 pair cannot split.
+
+## MATH-5. Every Qwen2.5-7B run went NaN (SDPA backward on long batches); fixed with eager attention + NaN guard; suite resubmitted (2026-10-05) [dtai+delta]
+
+**What happened to the MATH-4 race.**
+- All four dtai copies started on 10-04 between 22:42 and 22:47, far earlier than the estimated 10-05 17:37: G0 3308444 (gh128), G2 3308445 (gh003), E1-fed 3308447 (gh086), E1-local 3308448 (gh128).
+- `race_watch.py` cancelled the five Delta copies (22665955–59) correctly, each confirmed PENDING, then exited.
+
+**But every run went NaN** (analysis on 10-04 at 23:58, about 75 min in):
+
+| run | first NaN | evidence |
+|---|---|---|
+| G0 (`math`, D = 0) | after round 4 | train loss 0.39 → 0.33 → 0.31 → 0.33 → 0.33 (rounds 0–4); dev loss NaN from round 4, train loss NaN from round 5 |
+| G2 (`math`) | round 4 | `direction_norm` 3.1 → 5.8 → 7.6 → 9.0 → NaN, the same step as G0 |
+| E1-fed | round 0, client **olympiads** | other clients finite (aops_forum 0.319, cn_k12/Geometry 0.470, gsm8k 0.333, math 0.376, …); the server average turned the shared direction NaN, so every client was NaN from round 1 |
+| E1-local | olympiads in round 0, aops_forum in round 2, math in round 3 | the other clients stayed finite (orca_math/Algebra 0.30 → 0.14) |
+
+- Dev evals of all four (G0 / G2 at rounds 20 and 40): pct err 0.484, Spearman 0, i.e. degenerate output.
+- **Deterministic per batch:** the same client failed at the same step in fed and local, and G0 and G2 failed together. The longest-solution clients failed first.
+- All four were cancelled (states confirmed RUNNING; work unrecoverable, since the first snapshot, at round 10, came after the corruption), together with G1 3308446 (PENDING).
+
+**Diagnosis** (dtai `ghx4-interactive`, 1 job per user; `clients=[olympiads]`, 2 rounds × 20 steps, same seed and batches):
+- **`fedsteer/fed.py`: new NaN guard.** A step whose loss or gradient norm is non-finite is skipped (no optimizer update; `clip_grad_norm_` would otherwise turn an inf norm into NaN weights) and reported: sequence lengths, target tokens, α, and the parameters with non-finite gradients. The count goes into the round log (`skipped_steps`).
+  - Default on: it changes behaviour only in the case that used to corrupt the weights.
+  - Shared code (other workstreams use `fed.py` too). The normal path was unchanged in a cc CPU smoke run (Llama-1B).
+- **3311333, baseline (SDPA):**
+  - `[nan-guard] round 0 client olympiads step 5: non-finite grad; seq lens [929, 1088, 576, 778, 747, 710, 698, 531], target tokens [707, 972, …]; 588 params with non-finite grads` (every LoRA matrix down to layer 0).
+  - **The forward loss was finite; the backward pass produced the non-finite gradients**, on the batch with the longest sequence so far (1,088 tokens).
+  - The guard skipped it and training continued (dev loss 0.632 → 0.630).
+- **3311345, `attn_implementation=eager`:** the **same 40 steps, including that batch: no non-finite value**. Dev loss 0.648 → 0.637; 33.8 vs. 30.8 s per round (~10% slower).
+- **Conclusion:** SDPA's backward on long batches with this torch (2.13, aarch64 / GH200) gives non-finite gradients. The Qwen3-4B runs on Delta (torch 2.5.1, SDPA, 60 rounds) never showed it.
+- The guard alone would not be an acceptable fix: it would systematically drop the longest batches, which hold the high-α examples the knob must learn.
+- The third planned variant (no gradient checkpointing) was not run: the per-user submit limit, and eager already isolates the cause.
+
+**Fix:** `configs/math_fedavg.yaml` now sets `attn_implementation: eager` (math-only config; comment cites this entry). The NaN guard stays as a safety net; any `skipped_steps > 0` must be reported with results.
+
+**Resubmitted** (launch `exp_log/launch/MATH-5_qwen25_7b_eager.sh`; same overrides as entry 40; new run prefixes `runs/math5_*`, so the NaN runs (`exp40_*`) cannot be confused with these):
+
+| race | dtai | Delta (`gpuA100x8,gpuH200x8`) |
+|---|---|---|
+| G0 | 3311353 | 22671278 |
+| G2 | 3311354 | 22671279 |
+| G1 (afterok G2, same host) | 3311355 | 22671280 |
+| E1 federated (2-day limit) | 3311356 | 22671281 |
+| E1 local (2-day limit) | 3311357 | 22671282 |
+
+**`scripts/race_watch.py` changes:**
+- `--min_running_s` (here 1200): a copy wins only after RUNNING for 20 min (past model load and round 1), per the updated memory rule that a fresh setup can crash in its first minutes.
+- **Latent bug fixed:** a copy that FAILED early used to count as "started" and could have cancelled its healthy twin; now only RUNNING (past the minimum) or COMPLETED wins.
+- Watcher pid **3398675**, spec `exp_log/launch/MATH-5_race.json`, log **`sbatch/logs/race_MATH-5.log`**.

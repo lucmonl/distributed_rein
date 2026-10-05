@@ -11,17 +11,29 @@
 #   /u/lucmon/rein/data/<name> -> /work/nvme/bhby/datasets/<name>
 #   HF cache: /work/nvme/bhby/lucmon/hf_home (HF_HOME)
 #
-# Usage: scripts/sync_to_delta.sh [--dry-run] [--data]   (--data also syncs the datasets)
+# Usage: scripts/sync_to_delta.sh [--dry-run] [--data] [--host delta|dtai]   (--data also syncs the datasets)
+#
+# --host dtai: DeltaAI (dtai-1 = gh-login01, aarch64 GH200, partition ghx4).  /work is SHARED with
+# Delta (runs/, datasets, HF cache are the same directories) but home is NOT: the code goes to
+# dtai's own /u/lucmon/rein.  Its conda is /work/nvme/bhby/lucmon/anaconda3_deltaai with env
+# rein-gh (clone of dtai's steer + scipy, scikit-learn, rdkit, math-verify).  Needs ssh -fN dtai-1.
 set -euo pipefail
-HOST=delta-login2
+HOST=delta-login2; ACCOUNT=bhby-delta-gpu; PARTITION=gpuA100x4,gpuA100x8,gpuH200x8; ENV=rein
 SRC=/u/lucmon/rein
 DST=/u/lucmon/rein
 RUNS_TARGET=/work/nvme/bhby/lucmon/rein
 DATA_ROOT=/work/nvme/bhby/datasets
-DATASETS="newsroom chembl newsroom_fed chembl_fed newsroom_stats math_fed"
+DATASETS="newsroom chembl newsroom_fed chembl_fed newsroom_stats math_fed math_fed_ans"
 
-DRY=""; DATA=0
-for a in "$@"; do case $a in --dry-run) DRY="--dry-run";; --data) DATA=1;; esac; done
+DRY=""; DATA=0; NEXT=""
+for a in "$@"; do
+  if [ "$NEXT" = host ]; then
+    case $a in delta) ;; dtai) HOST=dtai-1; ACCOUNT=bhby-dtai-gh; PARTITION=ghx4; ENV=rein-gh;;
+      *) echo "unknown host $a"; exit 1;; esac
+    NEXT=""; continue
+  fi
+  case $a in --dry-run) DRY="--dry-run";; --data) DATA=1;; --host) NEXT=host;; esac
+done
 
 ssh -O check $HOST 2>/dev/null || { echo "no SSH master: run 'ssh -fN $HOST' first"; exit 1; }
 
@@ -46,7 +58,7 @@ fi
 
 [ -n "$DRY" ] && { echo "dry run: skipping remote setup"; exit 0; }
 
-# --- remote setup + sbatch rewrite (Delta copy only)
+# --- remote setup + sbatch rewrite (remote copy only)
 ssh $HOST bash -s <<EOF
 set -e
 cd $DST
@@ -56,20 +68,20 @@ if [ -e runs ] && [ ! -L runs ]; then echo "runs exists and is not a symlink; le
 # data/: link each dataset dir into the repo
 mkdir -p data
 for d in $DATASETS; do ln -sfn $DATA_ROOT/\$d data/\$d; done
-# sbatch headers: Delta account/partition/mem, env, HF cache
+# sbatch headers: account/partition/mem of the host, env, HF cache
 sed -i \
-  -e 's/^#SBATCH --account=lucmon-ic/#SBATCH --account=bhby-delta-gpu/' \
-  -e 's/^#SBATCH --partition=.*/#SBATCH --partition=gpuA100x4,gpuA100x8,gpuH200x8/' \
+  -e 's/^#SBATCH --account=lucmon-ic/#SBATCH --account=$ACCOUNT/' \
+  -e 's/^#SBATCH --partition=.*/#SBATCH --partition=$PARTITION/' \
   -e '/^#SBATCH --exclude=/d' \
   -e 's/^#SBATCH --gres=gpu:.*/#SBATCH --gpus-per-node=1/' \
   -e 's/^#SBATCH --ntasks-per-node=8/#SBATCH --ntasks-per-node=16\n#SBATCH --mem=64G/' \
   -e 's/^source ~\/.bashrc$/set +e  # Delta: \/etc\/bashrc returns non-zero on compute nodes, fatal under set -e\nsource ~\/.bashrc/' \
-  -e 's/^source activate steer$/source activate rein\nset -e/' \
+  -e 's/^source activate steer$/source activate $ENV\nset -e/' \
   -e 's#^export HF_HUB_OFFLINE=1#export HF_HOME=/work/nvme/bhby/lucmon/hf_home\nexport HF_HUB_OFFLINE=1#' \
   sbatch/*.sbatch
 # pilot scripts have no --account line (cc default account): make it explicit
 for f in \$(grep -L '^#SBATCH --account' sbatch/*.sbatch); do
-  sed -i '/^#SBATCH --partition/i #SBATCH --account=bhby-delta-gpu' \$f
+  sed -i '/^#SBATCH --partition/i #SBATCH --account=$ACCOUNT' \$f
 done
-echo "delta setup done"; ls -l runs; ls -l data
+echo "$HOST setup done"; ls -l runs; ls -l data
 EOF

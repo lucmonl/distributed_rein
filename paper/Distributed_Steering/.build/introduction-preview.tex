@@ -1,0 +1,76 @@
+\documentclass[11pt]{article}
+\usepackage[review]{acl}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\title{Introduction Draft: Personalized Federated Steering}
+\author{Anonymous submission}
+\begin{document}
+\maketitle
+\section{Introduction}
+\label{sec:introduction}
+
+The same input can call for different kinds of outputs as a user's needs change.
+An editor, for example, may want a summary that closely preserves an article's wording for one publishing format and a more extensively rewritten version for another.
+Both should convey the relevant information faithfully, and useful choices may lie between these endpoints.
+\emph{Controlled generation} aims to give users the ability to specify such output properties while maintaining task quality.
+Steering offers one approach: an intervention along a learned behavioral direction is applied with adjustable strength, allowing a model to support different settings without being retrained for each request \citep{rimsky-etal-2024-steering,fierro-roger-2026-weight}.
+The goal is a predictable relationship between the requested attribute level and the generated behavior.
+For organizations that adapt language models to their own data, this control must also operate alongside their particular writing and format conventions.
+
+Learning such control is difficult when an organization's examples cover only a limited portion of the desired behavioral range.
+A publication may have thousands of summaries yet relatively few examples at the degree of rewriting an editor now requires.
+Collecting more examples from the same distribution need not resolve that imbalance.
+Newsroom illustrates the diversity that can exist across publications: its summaries use different mixtures of extractive and abstractive strategies, reusing source words and phrases to varying degrees \citep{grusky-etal-2018-newsroom}.
+When organizations have complementary examples, their collective data offers supervision that an individual organization lacks.
+This motivates learning control collaboratively in a setting where each organization, or \emph{client}, keeps its training examples local.
+The opportunity arises from differences in behavioral coverage as well as differences in data quantity.
+
+Collaboration introduces a tension between local specialization and global coverage.
+Independent training can fit a client's generation conventions, but supervision for its control mechanism remains limited to its own examples.
+Training a single shared model draws on a broader distribution, yet requires the same adaptation to accommodate different clients' conventions.
+Personalized federated learning provides a way to combine shared knowledge with local specialization through shared and client-specific model components \citep{collins-etal-2021-fedrep,guo-etal-2025-fedsa}.
+For controlled generation, however, this division must do more than support each client's typical output: the shared component must enable deliberate variation within its personalized model.
+Prior personalized steering already studies behavioral intensity and transfer across models and adapters \citep{cao-etal-2024-bipo}.
+We investigate the complementary question of how clients with uneven behavioral coverage can \emph{jointly learn} a control mechanism that works with private adaptation and remains useful to clients outside the training federation.
+
+Three challenges arise in this setting.
+First, the shared direction must expand a client's behavioral range while remaining compatible with its private adaptation.
+That adaptation can learn the client's typical attribute level together with its writing conventions, making it difficult to change one while retaining the other.
+A direction learned independently of the personalized models need not interact with them as intended.
+Second, learning a direction does not determine how strongly to apply it for a requested attribute level.
+The generated behavior need not respond linearly to intervention strength, so a simple scaling rule may provide uneven control across the requested range.
+Third, success on participating clients may depend on the particular private adaptations encountered during training.
+For collaboration to provide reusable control, a new client should be able to benefit from the learned mechanism with limited local data, rather than having to learn its own direction from the beginning.
+
+We address these challenges through personalized federated training of a shared steering direction together with private client adaptation.
+Each client learns to generate its training examples with steering active at the examples' observed attribute levels.
+Clients periodically aggregate updates to the shared control mechanism while retaining their private adaptation locally.
+The direction is therefore optimized in the presence of the personalized models on which it must act, drawing on behavioral examples distributed across the federation.
+This joint training protocol is designed to make broader coverage available within each client's model while preserving the capacity to learn local generation characteristics.
+It also makes the interaction between shared control and private adaptation an explicit part of learning.
+
+Alongside the direction, we learn a shared monotone nonlinear scaling function that maps the requested attribute level to an intervention strength.
+The direction specifies a way to change behavior, while this function determines how strongly to apply that change at different requested levels.
+Its flexibility accommodates a potentially nonlinear response without prescribing a fixed proportional relationship between the request and intervention strength.
+Monotonicity orders the intervention strengths; whether the resulting outputs follow the requested levels remains an empirical question.
+The direction, scaling function, and private adaptations are learned jointly.
+After federation, the shared control mechanism can be frozen and reused while a new client learns its own private adaptation.
+
+% Evidence boundary: nonlinear scaling is a design choice; its advantage over
+% fixed-gain or learned-gain linear scaling awaits the ablation in evaluation RQ4.
+% Do not add a settled participant-superiority claim before the local gain-cap
+% check recorded in experiment-log entry "Results: C1 at 8B" is resolved.
+Our contributions are fourfold:
+\begin{itemize}
+    \item We formulate collaborative learning of continuous behavioral control under uneven client attribute coverage, with local specialization and usefulness beyond participating clients as explicit requirements.
+    \item We develop a personalized federated training protocol that jointly learns a shared steering direction and scaling function together with private client adaptation.
+    \item In the evaluated low-data settings on four held-out Newsroom clients, reusing the frozen control mechanism yields lower control error than learning a direction locally at the same local data and step budgets, supporting its usefulness beyond the training federation.
+    \item Through publication-partitioned summarization experiments, we characterize the trade-offs among behavioral coverage, control accuracy, generation quality, and client-specific characteristics. The measured publication characteristics remain close to those of locally trained models, while comparisons with shared adaptation expose a trade-off between specialization and out-of-support control.
+\end{itemize}
+
+
+\bibliography{custom}
+\end{document}

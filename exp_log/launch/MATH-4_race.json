@@ -1,0 +1,7 @@
+{"hosts": {"delta": "delta-login2", "dtai": "dtai-1"},
+ "races": [
+  {"name": "G0", "copies": {"delta": "22665955", "dtai": "3308444"}},
+  {"name": "G2", "copies": {"delta": "22665956", "dtai": "3308445"}, "dependents": {"delta": ["22665957"], "dtai": ["3308446"]}},
+  {"name": "E1fed", "group": "E1", "copies": {"delta": "22665958", "dtai": "3308447"}},
+  {"name": "E1local", "group": "E1", "copies": {"delta": "22665959", "dtai": "3308448"}}
+ ]}

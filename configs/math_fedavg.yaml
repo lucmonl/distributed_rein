@@ -16,7 +16,10 @@ chat_template_kwargs:
 max_prompt_tokens: 512
 max_target_tokens: 1024
 grad_checkpointing: true
-attn_implementation: sdpa
+# eager, not sdpa: SDPA's backward gave non-finite gradients on long (>1k-token) batches with
+# Qwen2.5-7B on DeltaAI (torch 2.13, GH200) -- every E1 / G0 / G2 run went NaN within 5 rounds
+# (log MATH-5); eager trained the same batches cleanly at ~10% more time per round.
+attn_implementation: eager
 lora:
   rank_private: 16
   rank_shared: 16

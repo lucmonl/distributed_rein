@@ -1,0 +1,60 @@
+\begin{thebibliography}{6}
+\providecommand{\natexlab}[1]{#1}
+
+\bibitem[{Cao et~al.(2024)Cao, Zhang, Cao, Yin, Lin, Ma, and
+  Chen}]{cao-etal-2024-bipo}
+Yuanpu Cao, Tianrong Zhang, Bochuan Cao, Ziyi Yin, Lu~Lin, Fenglong Ma, and
+  Jinghui Chen. 2024.
+\newblock \href
+  {https://proceedings.neurips.cc/paper_files/paper/2024/hash/58cbe393b4254da8966780a40d023c0b-Abstract-Conference.html}
+  {Personalized steering of large language models: Versatile steering vectors
+  through bi-directional preference optimization}.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~37.
+
+\bibitem[{Collins et~al.(2021)Collins, Hassani, Mokhtari, and
+  Shakkottai}]{collins-etal-2021-fedrep}
+Liam Collins, Hamed Hassani, Aryan Mokhtari, and Sanjay Shakkottai. 2021.
+\newblock \href {https://proceedings.mlr.press/v139/collins21a.html}
+  {Exploiting shared representations for personalized federated learning}.
+\newblock In \emph{Proceedings of the 38th International Conference on Machine
+  Learning}, volume 139 of \emph{Proceedings of Machine Learning Research},
+  pages 2089--2099. PMLR.
+
+\bibitem[{Fierro and Roger(2026)}]{fierro-roger-2026-weight}
+Constanza Fierro and Fabien Roger. 2026.
+\newblock \href
+  {https://proceedings.iclr.cc/paper_files/paper/2026/hash/df59090e951681e0f98d40f131c4b628-Abstract-Conference.html}
+  {Steering language models with weight arithmetic}.
+\newblock In \emph{International Conference on Learning Representations}.
+
+\bibitem[{Grusky et~al.(2018)Grusky, Naaman, and
+  Artzi}]{grusky-etal-2018-newsroom}
+Max Grusky, Mor Naaman, and Yoav Artzi. 2018.
+\newblock \href {https://doi.org/10.18653/v1/N18-1065} {{Newsroom}: A dataset
+  of 1.3 million summaries with diverse extractive strategies}.
+\newblock In \emph{Proceedings of the 2018 Conference of the North American
+  Chapter of the Association for Computational Linguistics: Human Language
+  Technologies, Volume 1 (Long Papers)}, pages 708--719. Association for
+  Computational Linguistics.
+
+\bibitem[{Guo et~al.(2025)Guo, Zeng, Wang, Fan, Wang, and
+  Qu}]{guo-etal-2025-fedsa}
+Pengxin Guo, Shuang Zeng, Yanran Wang, Huijie Fan, Feifei Wang, and Liangqiong
+  Qu. 2025.
+\newblock \href
+  {https://proceedings.iclr.cc/paper_files/paper/2025/hash/f53a37f820d5be5930415d964f4a0187-Abstract-Conference.html}
+  {Selective aggregation for low-rank adaptation in federated learning}.
+\newblock In \emph{International Conference on Learning Representations}.
+
+\bibitem[{Rimsky et~al.(2024)Rimsky, Gabrieli, Schulz, Tong, Hubinger, and
+  Turner}]{rimsky-etal-2024-steering}
+Nina Rimsky, Nick Gabrieli, Julian Schulz, Meg Tong, Evan Hubinger, and
+  Alexander Turner. 2024.
+\newblock \href {https://doi.org/10.18653/v1/2024.acl-long.828} {Steering
+  {Llama} 2 via contrastive activation addition}.
+\newblock In \emph{Proceedings of the 62nd Annual Meeting of the Association
+  for Computational Linguistics (Volume 1: Long Papers)}, pages 15504--15522.
+  Association for Computational Linguistics.
+
+\end{thebibliography}

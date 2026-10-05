@@ -1,0 +1,64 @@
+== Steering (test; mean over clients; worst client in brackets)
+run              round    pct_calib_err   pct_err_in_sup   pct_err_out_su       reach_rate         spearman  concord_nt  nearTie endNearTie
+Method             100    0.151 (0.199)    0.135 (0.219)    0.161 (0.188)    0.387            0.933 (0.910)       0.907    0.204      0.002
+Const              100    0.153 (0.217)    0.134 (0.224)    0.165 (0.207)    0.404            0.927 (0.865)       0.906    0.204      0.002
+Linear             100    0.153 (0.208)    0.136 (0.222)    0.164 (0.200)    0.390            0.931 (0.901)       0.906    0.215      0.001
+
+== Quality (test; mean over clients). gap = generated - real summaries at the same alpha
+run                    align_in      align_out   gap_align_in  gap_align_out     bert_f1_in    bert_f1_out      length_in     length_out  gap_length_in gap_length_out
+Method                    0.779          0.729         -0.026          0.046          0.900          0.889         32.059         36.476          1.970          2.329
+Const                     0.780          0.740         -0.024          0.056          0.900          0.890         32.282         37.209          2.193          3.062
+Linear                    0.783          0.729         -0.021          0.045          0.902          0.890         32.001         36.576          1.912          2.429
+
+== LLM judge (subsample; mean over clients)
+run                    faithful_in      faithful_out   gap_faithful_in  gap_faithful_out      relevance_in     relevance_out  gap_relevance_in gap_relevance_out      coherence_in     coherence_out
+Method                       0.815             0.791            -0.091             0.019             3.654             3.656             0.021             0.019             4.213             4.194
+Const                        0.830             0.804            -0.076             0.032             3.640             3.659             0.007             0.022             4.184             4.185
+Linear                       0.818             0.787            -0.088             0.016             3.637             3.645             0.003             0.008             4.188             4.182
+
+== Per-client percentile error (test)
+client                 support         Method          Const         Linear
+forbes.com        [0.03,0.99]          0.129          0.133          0.127
+theguardian.com   [0.04,0.55]          0.133          0.133          0.129
+people.com        [0.03,0.70]          0.152          0.144          0.156
+wsj.com           [0.04,0.89]          0.144          0.143          0.136
+aol.com           [0.06,0.82]          0.132          0.133          0.134
+cbc.ca            [0.11,0.95]          0.143          0.140          0.148
+reuters.com       [0.10,0.97]          0.199          0.217          0.208
+nypost.com        [0.51,0.95]          0.177          0.179          0.188
+
+== Const - Method: per-client paired bootstrap (negative = Const better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.004 [-0.002,+0.010]     +0.008 [-0.002,+0.017] 
+theguardian.com      -0.000 [-0.006,+0.006]     +0.003 [-0.005,+0.011] 
+people.com           -0.008 [-0.015,-0.001]*    -0.015 [-0.025,-0.004]*
+wsj.com              -0.001 [-0.007,+0.005]     +0.003 [-0.007,+0.014] 
+aol.com              +0.001 [-0.005,+0.008]     -0.022 [-0.033,-0.011]*
+cbc.ca               -0.003 [-0.008,+0.002]     +0.005 [-0.003,+0.013] 
+reuters.com          +0.018 [+0.010,+0.028]*    +0.039 [+0.023,+0.055]*
+nypost.com           +0.002 [-0.006,+0.009]     +0.007 [-0.001,+0.016] 
+Const significantly better on 1/8 clients, worse on 1/8
+
+== Linear - Method: per-client paired bootstrap (negative = Linear better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.002 [-0.008,+0.004]     +0.011 [+0.003,+0.019]*
+theguardian.com      -0.004 [-0.010,+0.001]     -0.001 [-0.009,+0.007] 
+people.com           +0.004 [-0.003,+0.011]     +0.002 [-0.008,+0.012] 
+wsj.com              -0.008 [-0.013,-0.003]*    -0.003 [-0.010,+0.005] 
+aol.com              +0.002 [-0.005,+0.009]     -0.023 [-0.035,-0.011]*
+cbc.ca               +0.005 [+0.000,+0.010]*    +0.001 [-0.006,+0.009] 
+reuters.com          +0.010 [+0.001,+0.019]*    +0.019 [+0.002,+0.036]*
+nypost.com           +0.011 [+0.004,+0.018]*    +0.014 [+0.005,+0.022]*
+Linear significantly better on 1/8 clients, worse on 3/8
+
+== Const - Linear: per-client paired bootstrap (negative = Const better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.006 [+0.000,+0.012]*    -0.004 [-0.012,+0.005] 
+theguardian.com      +0.004 [-0.002,+0.010]     +0.004 [-0.004,+0.012] 
+people.com           -0.012 [-0.019,-0.006]*    -0.016 [-0.026,-0.007]*
+wsj.com              +0.007 [+0.002,+0.012]*    +0.006 [-0.002,+0.015] 
+aol.com              -0.001 [-0.007,+0.005]     +0.001 [-0.008,+0.010] 
+cbc.ca               -0.008 [-0.013,-0.002]*    +0.003 [-0.004,+0.011] 
+reuters.com          +0.009 [-0.000,+0.018]     +0.020 [+0.004,+0.036]*
+nypost.com           -0.009 [-0.016,-0.002]*    -0.007 [-0.015,+0.002] 
+Const significantly better on 3/8 clients, worse on 2/8

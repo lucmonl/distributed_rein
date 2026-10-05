@@ -196,7 +196,10 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 | **B5** | **Pooled reference**: all clients' data centralized | Cost of decentralization | ⏳ |
 
 **Ablations:**
-- **A1:** gain fixed at 1 (`fed.fix_gain`) ⏳.
+- **A1 (calibration design, entries 38, 40, 41):** ✅ on 1B.
+  - **Learned vs. constant:** g(α) = α gives 0.153 vs. 0.151 for the method; it is worse only on reuters.com (+0.018) and the worst client (0.217 vs. 0.199). The learned warp stays near the identity, so the method effectively learns a shared scale (s = 1.93); the scale-only arm learns the same (0.153).
+  - **Shared vs. per-client (no offset):** shared 0.151 (worst 0.199) vs. per-client 0.168 (worst 0.320). Per-client gains are small for broad clients (−0.006 to −0.015) but fail for skewed ones (nypost.com +0.143, reuters.com +0.026), because a per-client calibration is fitted only on the client's own support.
+  - **Design kept:** shared calibration, no offset; warp optional.
 - **A2:** shared adapter (`fed.adapter: shared`): one global FedAvg model, nothing personalized; the **non-personalized FL baseline**. ✅ (entry 30) **A trade-off, not a loss:** overall 0.159 vs. 0.151 (worse in-support, 0.177 vs. 0.135), but better out-of-support on 6/8 clients (0.136 vs. 0.161), reach 0.50 vs. 0.39, best worst client (0.176). Private adapters give **no** dev-NLL benefit at their best round (1.081 vs. 1.078) and memorize after round ~50. ✅ **The private adapter is kept: it carries house style** (entry 31). Extractiveness-controlled publication attribution is 0.55 for the method (real summaries 0.59, A2 0.41) and the style-feature gap is 0.11 (A2 0.19). Flat across α, so orthogonal to the steered attribute. Federated ≈ local, so sharing D keeps the style. No adapter (`none`) is not planned: it confounds capacity with personalization.
 - **A3 (optional):** PFL-structured conditional SFT: shared and private LoRA with α as a *text control token* (FedDPA / FedSA-LoRA structure [8, 9]). ⏳ It would strengthen the answer to "isn't this just PFL?", but A2 (non-personalized FedAvg) and the positioning argument carry that answer without it.
 - **Calibration:** private vs. shared vs. **shared without offset** ✅ (entry 20; shared without offset is best). `none` (g = α) is not planned for now.
@@ -299,6 +302,8 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 | 10-01 | E2 / E3 implemented; `compare_runs.py` (paired bootstrap) | entries 20–21 |
 | 10-01 | **Baseline results:** G1 passes provisionally (prompting fails to steer); G3 passes (merge worse than local and federated); B4 steers partly with a quality cost and needs tuning | entry 22 |
 | 10-01 | A2 (shared adapter, non-personalized baseline) submitted | entry 25 |
+| 10-04 | **Calibration design:** learned gain ≈ constant on average (helps the worst client); shared ≫ per-client for skewed clients | entries 40, 41 |
+| 10-03 | Calibration-design ablation launched (constant / linear / private, 1B) | entry 38 |
 | 10-03 | **C1 replicates at 8B** (Qwen3-8B, 6/8 better); local gains hit the clamp, so a wider-range local rerun is needed | entry 37 |
 | 10-02 | **House-style metric:** private adapters carry publication style orthogonal to extractiveness; A2 loses it; private adapter kept | entry 31 |
 | 10-02 | **E2 curve complete** (frozen D with 16 pairs beats local D with 1024); **A2: precision–coverage trade-off**, private adapters bring no NLL benefit; Qwen3-8B runs follow the 1B pattern so far | entry 30 |

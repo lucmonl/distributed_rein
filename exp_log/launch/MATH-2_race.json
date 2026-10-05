@@ -1,0 +1,55 @@
+{
+ "hosts": {
+  "cc": null,
+  "dtai": "dtai-1",
+  "ccscav": null
+ },
+ "races": [
+  {
+   "name": "G0",
+   "copies": {
+    "cc": "11157615",
+    "dtai": "3308444",
+    "ccscav": "11157678"
+   }
+  },
+  {
+   "name": "G2",
+   "copies": {
+    "cc": "11157616",
+    "dtai": "3308445",
+    "ccscav": "11157682"
+   },
+   "dependents": {
+    "cc": [
+     "11157617"
+    ],
+    "dtai": [
+     "3308446"
+    ],
+    "ccscav": [
+     "11157683"
+    ]
+   }
+  },
+  {
+   "name": "E1fed",
+   "group": "E1",
+   "copies": {
+    "cc": "11157618",
+    "dtai": "3308447"
+   }
+  },
+  {
+   "name": "E1local",
+   "group": "E1",
+   "copies": {
+    "cc": "11157619",
+    "dtai": "3308448"
+   }
+  }
+ ],
+ "preemptible": [
+  "ccscav"
+ ]
+}

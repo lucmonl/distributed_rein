@@ -113,6 +113,7 @@ class FedSteerTrainer:
         self.model = model
         self.cfg = cfg
         self.reg = reg or RegConfig()
+        self.skipped_steps: dict[str, int] = {}   # NaN guard: steps skipped per client
         self.layers = [m for _, m in steer_layers(model)]
         self.out_dir = out_dir
         self.eval_fn = eval_fn
@@ -223,6 +224,19 @@ class FedSteerTrainer:
             return 0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * prog))
         return 1.0
 
+    def _report_nonfinite(self, cid: str, what: str, batch: dict, alpha: torch.Tensor) -> None:
+        """Print what is known about a step whose loss or gradient is non-finite (NaN guard)."""
+        lens = batch["attention_mask"].sum(dim=1).tolist()
+        n_tgt = (batch["labels"] != -100).sum(dim=1).tolist()
+        msg = (f"[nan-guard] round {self.round} client {cid} step {self.clients[cid]['steps']}: "
+               f"non-finite {what}; seq lens {lens}, target tokens {n_tgt}, alpha "
+               f"{[round(float(a), 3) for a in alpha]}")
+        if what == "grad":
+            bad = [n for n, p in self.model.named_parameters()
+                   if p.grad is not None and not torch.isfinite(p.grad).all()]
+            msg += f"; {len(bad)} params with non-finite grads, e.g. {bad[:4]}"
+        print(msg, flush=True)
+
     def _local_train(self, cid: str) -> dict:
         cfg, model, c = self.cfg, self.model, self.clients[cid]
         model.train()
@@ -244,11 +258,18 @@ class FedSteerTrainer:
             for g, lr in zip(self.opt.param_groups, self._base_lrs):
                 g["lr"] = lr * f
             step_loss = 0.0
+            bad_loss = False
             for _ in range(cfg.grad_accum):
                 batch = {k: v.to(self.device) for k, v in self.streams[cid].next_batch().items()}
-                with self.control.use_alpha(batch.pop("alpha")), \
+                alpha = batch.pop("alpha")
+                with self.control.use_alpha(alpha), \
                         torch.autocast(self.device.type, dtype=torch.bfloat16, enabled=cfg.bf16):
                     loss = model(**batch).loss / cfg.grad_accum
+                    if not torch.isfinite(loss):
+                        # non-finite forward: report the batch and skip this step entirely
+                        bad_loss = True
+                        self._report_nonfinite(cid, "loss", batch, alpha)
+                        break
                     total = loss
                     if warp_trainable and cfg.warp_reg > 0:
                         pen = self.control.warp.penalty()
@@ -263,12 +284,23 @@ class FedSteerTrainer:
                     total.backward()
                 step_loss += loss.item()
             params = [p for g in self.opt.param_groups for p in g["params"] if p.grad is not None]
-            torch.nn.utils.clip_grad_norm_(params, cfg.max_grad_norm)
+            gnorm = torch.nn.utils.clip_grad_norm_(params, cfg.max_grad_norm) if not bad_loss else None
+            if bad_loss or not torch.isfinite(gnorm):
+                # NaN guard: a non-finite loss or gradient would be written into the weights by the
+                # optimizer (clip_grad_norm_ turns an inf norm into NaN); skip the step instead
+                if not bad_loss:
+                    self._report_nonfinite(cid, "grad", batch, alpha)
+                self.opt.zero_grad(set_to_none=True)
+                c["steps"] += 1
+                self.skipped_steps[cid] = self.skipped_steps.get(cid, 0) + 1
+                continue
             self.opt.step()
             self.opt.zero_grad(set_to_none=True)
             c["steps"] += 1
             losses.append(step_loss)
-        out = {"loss": sum(losses) / len(losses), "gain": float(self.control.gain().item())}
+        out = {"loss": sum(losses) / len(losses) if losses else float("nan"),
+               "gain": float(self.control.gain().item()),
+               "skipped_steps": self.skipped_steps.get(cid, 0)}
         if self.control.o is not None:
             out["offset"] = float(self.control.offset().item())
         if self.warp_params:
