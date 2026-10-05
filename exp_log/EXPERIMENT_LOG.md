@@ -2442,3 +2442,73 @@ is newly built and could still fail early. Budget impact if Anvil wins: ~12 SU o
 - `--min_running_s` (here 1200): a copy wins only after RUNNING for 20 min (past model load and round 1), per the updated memory rule that a fresh setup can crash in its first minutes.
 - **Latent bug fixed:** a copy that FAILED early used to count as "started" and could have cancelled its healthy twin; now only RUNNING (past the minimum) or COMPLETED wins.
 - Watcher pid **3398675**, spec `exp_log/launch/MATH-5_race.json`, log **`sbatch/logs/race_MATH-5.log`**.
+
+## MOL-14. Skewed ChEMBL: fed still not better than local — but the comparison was confounded (2026-10-05)
+
+Both Anvil copies of the natural-skew pair finished (21068552 fed 3 h 50 m, 21068553 local 3 h 41 m;
+the cc duplicates 11156942/11156950 were cancelled once these were running and past startup).
+Dev-selected: fed round 80, local round 100. Evals copied to `runs/anvil/` on cc.
+
+**Test results (150 prompts/client, constant baseline 0.300):**
+
+| run | err | in-sup | out-sup | rho | reach | range | ties |
+|---|---|---|---|---|---|---|---|
+| FED (r80) | 0.198 | 0.169 | 0.224 | 0.870 | 0.303 | 0.545 | 0.370 |
+| LOCAL (r100) | **0.187** | **0.161** | **0.211** | 0.863 | **0.353** | **0.572** | 0.356 |
+
+Paired bootstrap: **federated significantly better on 0/8 clients, significantly worse on 2/8**
+(CHEMBL4078 +0.040*, CHEMBL2039 +0.014*); the other six are ties. So manufacturing coverage gaps
+did **not** flip MOL-9's negative result.
+
+**Two hypotheses tested and discarded.**
+- *"The direction is non-unique, so sharing is a pure constraint."* The 8 independently learned
+  local directions do end up nearly orthogonal (`client_direction_cos_mean` 0.599 -> 0.095), but
+  **Newsroom is worse on this measure** (0.740 -> 0.025, 0.570 -> 0.021 across runs) and federation
+  *helps* there. Discarded.
+- *"Client chemistry is too distinctive."* Per-client fed-minus-local error does not track
+  decoration-vocabulary distinctiveness: CHEMBL240 (40.8% unique types) is the one client where
+  federation wins, while CHEMBL2039 and CHEMBL228 (33% and 31.9%, the least distinctive) are among
+  the worst hit. Discarded.
+
+**⚠️ The actual cause is a confound in my own design.** The federated run used
+`fed.calibration=shared`, which pins **every client to gain 1.053**; the local run necessarily uses
+private calibration, and every client chose a **much higher gain, 1.251-1.670 (1.19-1.59x the
+shared value)**. A larger gain means a larger coefficient on the direction, hence more attribute
+swing — which is exactly the observed pattern (local reaches further, 0.353 vs 0.303, and spans a
+wider range, 0.572 vs 0.545). So the run compared *{shared direction + shared calibration}* against
+*{local direction + private calibration}*: two factors at once, and the calibration factor alone
+accounts for the result.
+
+| client | role | local gain | x shared | FED-LOC err | out-of-sup | n_train |
+|---|---|---|---|---|---|---|
+| CHEMBL2039 | low_moderate | 1.670 | 1.59 | +0.016* | +0.010 | 710 |
+| CHEMBL4078 | **middle_strong** | 1.592 | 1.51 | **+0.040*** | **+0.065** | 1,135 |
+| CHEMBL228 | high_specialist | 1.504 | 1.43 | +0.016 | +0.015 | 1,303 |
+| CHEMBL2835 | middle_moderate | 1.462 | 1.39 | +0.002 | +0016 | 1,495 |
+| CHEMBL204 | untouched | 1.392 | 1.32 | +0.003 | +0.009 | 3,278 |
+| CHEMBL240 | broad | 1.385 | 1.32 | **-0.004** | **-0.010** | 3,642 |
+| CHEMBL243 | low_specialist | 1.292 | 1.23 | +0.007 | +0.001 | 1,560 |
+| CHEMBL325 | high_moderate | 1.251 | 1.19 | +0.002 | -0.003 | 2,028 |
+
+- **Spearman(local gain, FED-LOC out-of-support error) = +0.76**; overall error +0.67. The clients
+  federation hurts are exactly those whose locally optimal gain is furthest above the shared one.
+- The worst-hit client is **CHEMBL4078, the middle-only client** — the one case where coverage
+  transfer should matter most, because it lacks *both* tails. It needs the steepest mapping to
+  reach [0,1] from training data spanning [0.28, 0.82], locally picks gain 1.592, and shared
+  calibration forces it to 1.053, so it under-reaches both ends. Mechanism and worst case agree.
+- Spearman(n_train, FED-LOC error) = **-0.81**, i.e. federation hurts the *smallest* clients most,
+  the opposite of the expected benefit — but n_train and the needed gain are strongly collinear
+  here (the heavily skewed clients are also the ones that lost the most data), so with 8 clients
+  these two explanations cannot be separated. The gain story covers both.
+
+**Consequence: MOL-9 and MOL-14 do not yet test C1.** They test shared-direction-plus-shared-
+calibration against local-direction-plus-private-calibration. Newsroom's entry 20 found shared
+calibration best *there*, but Newsroom clients have broad supports of similar width, whereas after
+skewing ChEMBL's support widths range 0.40-0.94, so clients genuinely need different gains. Working
+hypothesis: **shared calibration is safe when support widths are similar and harmful when they
+differ** — worth stating in the paper either way.
+
+**Launched MOL-15: the matched comparison**, `fed.calibration=private` with everything else
+unchanged, so only the direction varies: **Anvil 21092869** and **cc 11165980** (duplicates; cancel
+the loser once one is RUNNING). `fed.calibration=private` is the only legal matched setting, since
+`fed.py` rejects local+shared (nothing is aggregated in local mode), so a full 2x2 is unavailable.
