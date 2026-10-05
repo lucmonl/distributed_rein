@@ -18,7 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
 from fedsteer.data import ClientQuantiles, alpha_reference_from_json, client_support, read_jsonl
-from fedsteer.metrics import SCORERS, summarize, text_tie_metrics
+from fedsteer.metrics import (SCORERS, DECO_SENSITIVITY_METRICS,
+                              decoration_sensitivity_metrics, summarize, text_tie_metrics)
 
 
 def main():
@@ -27,6 +28,7 @@ def main():
     ap.add_argument("--eval", nargs="+", required=True)
     ap.add_argument("--scorer", required=True, choices=sorted(SCORERS))
     ap.add_argument("--data", default=None, help="default: the run's data_path")
+    ap.add_argument("--out_dir", default=None, help="write separate reports here instead of beside the eval")
     args = ap.parse_args()
 
     import yaml
@@ -55,22 +57,35 @@ def main():
                              for i in range(len(texts))], dtype=float)
             r = metrics_for_client(grid, alphas, refs[c], support=supports.get(c))
             r.update(text_tie_metrics(texts, grid, alphas))
+            if args.scorer == "clogp_residual_deco":
+                r.update(decoration_sensitivity_metrics(texts, [by_id[rid] for rid in ids],
+                                                       alphas, refs[c], supports.get(c)))
+            r["grid"] = grid.round(4).tolist()
+            r["record_ids"] = ids
             out[c] = r
         res_all = {"eval": os.path.basename(path), "scorer": args.scorer, "alphas": alphas,
-                   "clients": out, "summary": summarize(out)}
-        dst = os.path.join(os.path.dirname(path),
+                   "round": d.get("round"), "snapshot": d.get("snapshot"),
+                   "clients": out, "summary": summarize(out),
+                   "reference_policy": "saved_run_reference",
+                   "reference_run": args.run,
+                   "source_eval": path}
+        out_dir = args.out_dir or os.path.dirname(path)
+        os.makedirs(out_dir, exist_ok=True)
+        dst = os.path.join(out_dir,
                            f"rescored_{args.scorer}_{os.path.basename(path)}")
         json.dump(res_all, open(dst, "w"), indent=1)
 
         orig = d["summary"]
         print(f"\n=== {os.path.basename(path)}  scorer={args.scorer}")
-        print(f"{'metric':24s} {'original':>10s} {'rescored':>10s}")
-        for k in ("pct_calib_err", "pct_err_in_support", "pct_err_out_support", "spearman",
-                  "concordance", "unscorable_row_rate"):
+        print(f"{'metric':36s} {'original':>10s} {'rescored':>10s}")
+        keys = ("pct_calib_err", "pct_calib_err_penalized", "pct_err_in_support", "pct_err_out_support", "spearman",
+                "concordance", "unscorable_row_rate")
+        keys += tuple(f"{key}_{variant}" for variant in ("pruned", "strict") for key in DECO_SENSITIVITY_METRICS)
+        for k in keys:
             o = orig.get(k, {}).get("mean")
             n = res_all["summary"].get(k, {}).get("mean")
             if o is not None or n is not None:
-                print(f"{k:24s} {('%.4f' % o) if o is not None else '-':>10s} "
+                print(f"{k:36s} {('%.4f' % o) if o is not None else '-':>10s} "
                       f"{('%.4f' % n) if n is not None else '-':>10s}")
         print(f"wrote {dst}")
 

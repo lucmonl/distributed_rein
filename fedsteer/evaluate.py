@@ -17,7 +17,8 @@ import numpy as np
 import torch
 
 from .calibrate import fit_remap
-from .metrics import constant_output_pct_err, metrics_for_client, summarize, text_tie_metrics
+from .metrics import (SCORERS, constant_output_pct_err, decoration_sensitivity_metrics,
+                      metrics_for_client, summarize, text_tie_metrics)
 from .model import generate_at_alpha
 from .monitor import mean_loss
 
@@ -62,6 +63,8 @@ def evaluate_loaded_client(model, fmt, recs: list[dict], alphas: Sequence[float]
     grid, texts = score_grid(model, fmt, recs, gen_alphas, score, max_new_tokens, batch_size)
     res = metrics_for_client(grid, alphas, ref_q, support=support)   # scored against the *target* alphas
     res.update(text_tie_metrics(texts, grid, alphas))
+    if score is SCORERS["clogp_residual_deco"]:
+        res.update(decoration_sensitivity_metrics(texts, recs, alphas, ref_q, support))
     res.update(control_state(model))
     res["grid"] = grid.round(4).tolist()
     res["outputs"] = texts

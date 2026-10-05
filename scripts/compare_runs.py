@@ -23,7 +23,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fedsteer.data import ClientQuantiles, alpha_reference_from_json  # noqa: E402
-from fedsteer.metrics import text_tie_metrics  # noqa: E402
+from fedsteer.metrics import failure_penalized_pct_err, summarize, text_tie_metrics  # noqa: E402
 
 
 def load_run(path, eval_glob):
@@ -41,6 +41,13 @@ def load_run(path, eval_glob):
     if ref is None:
         lq = json.load(open(os.path.join(path, "client_quantiles.json")))
         ref = {c: ClientQuantiles(v) for c, v in lq.items()}
+    # Backfill the supplementary metric for older evals in memory only. Saved grids
+    # are rounded, so prefer the original full-precision metric when it is present.
+    for c, res in ev["clients"].items():
+        if "pct_calib_err_penalized" not in res:
+            qref = ref[c] if isinstance(ref, dict) else ref
+            res["pct_calib_err_penalized"] = failure_penalized_pct_err(res["grid"], ev["alphas"], qref)
+    ev["summary"].update(summarize(ev["clients"], keys=["pct_calib_err_penalized"]))
     return {"eval": ev, "eval_path": ev_path, "quality": json.load(open(q)) if os.path.exists(q) else None,
             "judge": json.load(open(j)) if os.path.exists(j) else None, "ref": ref}
 
@@ -86,8 +93,13 @@ def main():
                if all(c in r["eval"]["clients"] for r in runs.values())]
 
     print("== Steering (test; mean over clients; worst client in brackets)")
-    cols = ["pct_calib_err", "pct_err_in_support", "pct_err_out_support", "reach_rate", "spearman"]
-    print(f"{'run':16s} {'round':>5s} " + " ".join(f"{c[:14]:>16s}" for c in cols)
+    cols = ["pct_calib_err", "pct_calib_err_penalized", "pct_err_in_support", "pct_err_out_support", "reach_rate", "spearman"]
+    supplements = {"pct_calib_err_penalized_pruned": "prunedFail1",
+                   "pct_calib_err_penalized_strict": "strictFail1"}
+    cols += [k for k in supplements if any(k in r["eval"]["summary"] for r in runs.values())]
+    print("pctErrFail1 = all-cell percentile error with penalty 1 for each unscorable output (supplementary)")
+    labels = {"pct_calib_err_penalized": "pctErrFail1", **supplements}
+    print(f"{'run':16s} {'round':>5s} " + " ".join(f"{labels.get(c, c[:14]):>16s}" for c in cols)
           + f" {'concord_nt':>11s} {'nearTie':>8s} {'endNearTie':>10s}")
     for n, r in runs.items():
         s = r["eval"]["summary"]
@@ -97,6 +109,9 @@ def main():
         tie = lambda k: f"{np.mean([t[k] for t in ties]):.3f}" if ties else "n/a"
         cells = []
         for c in cols:
+            if c not in s:
+                cells.append("n/a")
+                continue
             worst = f"({s[c]['worst']:.3f})" if c != "reach_rate" else ""
             cells.append(f"{s[c]['mean']:.3f}{worst:>8s}")
         print(f"{n:16s} {r['eval']['round']:5d} " + " ".join(f"{x:>16s}" for x in cells)

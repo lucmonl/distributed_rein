@@ -1,0 +1,326 @@
+{
+  "version": 1,
+  "source_dir": "data/chembl_deco_skew",
+  "rdkit_version": "2025.09.6",
+  "source_sha256": {
+    "data.jsonl": "c6c082f7545400eba2555c8f66293a49fdb9073428e846f3681ac146ec88a03a",
+    "clients.json": "c8728427149ae438738be1209ee9f2580213abf36bbd040ab4b367077fc7e0b1"
+  },
+  "policy": "drop records with unlabelled components, invalid/mismatched attachments, or non-single-ligand assembly",
+  "splits": "all splits filtered identically; retained records keep their original split and prompt",
+  "reference_policy": "recomputed from retained training scores only; equal-weight participant CDF mixture",
+  "rotation": 0,
+  "participants": [
+    "CHEMBL243",
+    "CHEMBL204",
+    "CHEMBL325",
+    "CHEMBL2835",
+    "CHEMBL4078",
+    "CHEMBL2039",
+    "CHEMBL240",
+    "CHEMBL228"
+  ],
+  "before": 30114,
+  "kept": 28732,
+  "dropped": 1382,
+  "reasons": {
+    "unattached_fragments": 1382
+  },
+  "per_client_split": {
+    "CHEMBL205": {
+      "dev": {
+        "before": 44,
+        "kept": 38,
+        "rejected": {
+          "unattached_fragments": 6
+        }
+      },
+      "test": {
+        "before": 161,
+        "kept": 149,
+        "rejected": {
+          "unattached_fragments": 12
+        }
+      },
+      "train": {
+        "before": 4000,
+        "kept": 3772,
+        "rejected": {
+          "unattached_fragments": 228
+        }
+      }
+    },
+    "CHEMBL204": {
+      "dev": {
+        "before": 48,
+        "kept": 39,
+        "rejected": {
+          "unattached_fragments": 9
+        }
+      },
+      "test": {
+        "before": 184,
+        "kept": 160,
+        "rejected": {
+          "unattached_fragments": 24
+        }
+      },
+      "train": {
+        "before": 3278,
+        "kept": 2876,
+        "rejected": {
+          "unattached_fragments": 402
+        }
+      }
+    },
+    "CHEMBL243": {
+      "dev": {
+        "before": 50,
+        "kept": 50,
+        "rejected": {}
+      },
+      "test": {
+        "before": 194,
+        "kept": 192,
+        "rejected": {
+          "unattached_fragments": 2
+        }
+      },
+      "train": {
+        "before": 1560,
+        "kept": 1554,
+        "rejected": {
+          "unattached_fragments": 6
+        }
+      }
+    },
+    "CHEMBL236": {
+      "dev": {
+        "before": 47,
+        "kept": 42,
+        "rejected": {
+          "unattached_fragments": 5
+        }
+      },
+      "test": {
+        "before": 184,
+        "kept": 173,
+        "rejected": {
+          "unattached_fragments": 11
+        }
+      },
+      "train": {
+        "before": 2000,
+        "kept": 1810,
+        "rejected": {
+          "unattached_fragments": 190
+        }
+      }
+    },
+    "CHEMBL2835": {
+      "dev": {
+        "before": 45,
+        "kept": 44,
+        "rejected": {
+          "unattached_fragments": 1
+        }
+      },
+      "test": {
+        "before": 177,
+        "kept": 177,
+        "rejected": {}
+      },
+      "train": {
+        "before": 1495,
+        "kept": 1493,
+        "rejected": {
+          "unattached_fragments": 2
+        }
+      }
+    },
+    "CHEMBL325": {
+      "dev": {
+        "before": 42,
+        "kept": 42,
+        "rejected": {}
+      },
+      "test": {
+        "before": 156,
+        "kept": 154,
+        "rejected": {
+          "unattached_fragments": 2
+        }
+      },
+      "train": {
+        "before": 2028,
+        "kept": 2020,
+        "rejected": {
+          "unattached_fragments": 8
+        }
+      }
+    },
+    "CHEMBL4078": {
+      "dev": {
+        "before": 36,
+        "kept": 34,
+        "rejected": {
+          "unattached_fragments": 2
+        }
+      },
+      "test": {
+        "before": 156,
+        "kept": 138,
+        "rejected": {
+          "unattached_fragments": 18
+        }
+      },
+      "train": {
+        "before": 1135,
+        "kept": 1073,
+        "rejected": {
+          "unattached_fragments": 62
+        }
+      }
+    },
+    "CHEMBL4005": {
+      "dev": {
+        "before": 46,
+        "kept": 46,
+        "rejected": {}
+      },
+      "test": {
+        "before": 187,
+        "kept": 187,
+        "rejected": {}
+      },
+      "train": {
+        "before": 3962,
+        "kept": 3959,
+        "rejected": {
+          "unattached_fragments": 3
+        }
+      }
+    },
+    "CHEMBL2039": {
+      "dev": {
+        "before": 41,
+        "kept": 39,
+        "rejected": {
+          "unattached_fragments": 2
+        }
+      },
+      "test": {
+        "before": 142,
+        "kept": 136,
+        "rejected": {
+          "unattached_fragments": 6
+        }
+      },
+      "train": {
+        "before": 710,
+        "kept": 643,
+        "rejected": {
+          "unattached_fragments": 67
+        }
+      }
+    },
+    "CHEMBL4409": {
+      "dev": {
+        "before": 46,
+        "kept": 46,
+        "rejected": {}
+      },
+      "test": {
+        "before": 191,
+        "kept": 191,
+        "rejected": {}
+      },
+      "train": {
+        "before": 2344,
+        "kept": 2319,
+        "rejected": {
+          "unattached_fragments": 25
+        }
+      }
+    },
+    "CHEMBL240": {
+      "dev": {
+        "before": 48,
+        "kept": 48,
+        "rejected": {}
+      },
+      "test": {
+        "before": 185,
+        "kept": 183,
+        "rejected": {
+          "unattached_fragments": 2
+        }
+      },
+      "train": {
+        "before": 3642,
+        "kept": 3535,
+        "rejected": {
+          "unattached_fragments": 107
+        }
+      }
+    },
+    "CHEMBL228": {
+      "dev": {
+        "before": 49,
+        "kept": 45,
+        "rejected": {
+          "unattached_fragments": 4
+        }
+      },
+      "test": {
+        "before": 198,
+        "kept": 179,
+        "rejected": {
+          "unattached_fragments": 19
+        }
+      },
+      "train": {
+        "before": 1303,
+        "kept": 1146,
+        "rejected": {
+          "unattached_fragments": 157
+        }
+      }
+    }
+  },
+  "support_05_95": {
+    "CHEMBL243": [
+      0.009237290245260951,
+      0.4060184550168154
+    ],
+    "CHEMBL204": [
+      0.025414325564470083,
+      0.9156754613503617
+    ],
+    "CHEMBL325": [
+      0.17037175598880241,
+      0.9882775137916197
+    ],
+    "CHEMBL2835": [
+      0.13809711324672208,
+      0.884721919860088
+    ],
+    "CHEMBL4078": [
+      0.29996549116962334,
+      0.798184641517011
+    ],
+    "CHEMBL2039": [
+      0.12829059764475906,
+      0.9035876020769452
+    ],
+    "CHEMBL240": [
+      0.16451622576637856,
+      0.9603281897759449
+    ],
+    "CHEMBL228": [
+      0.45689468468134975,
+      0.9706560746257742
+    ]
+  },
+  "max_retained_score_change": 0.0816800000000022
+}

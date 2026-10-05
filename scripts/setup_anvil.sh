@@ -31,11 +31,11 @@ rsync -az --delete --itemize-changes -e "ssh -o BatchMode=yes -l $USER_A" \
   /u/lucmon/rein/ anvil.rcac.purdue.edu:$ROOT/rein/ | tail -5
 
 # --- datasets the molecule workstream needs (small: jsonl + parquet)
-for d in chembl_deco chembl_deco_skew; do
+for d in chembl_deco chembl_deco_skew chembl_deco_skew_pruned; do
   rsync -az --itemize-changes -e "ssh -o BatchMode=yes -l $USER_A" \
     /u/lucmon/rein/data/$d/ anvil.rcac.purdue.edu:$SCR/data/$d/ | tail -3
 done
-$SSH "cd $ROOT/rein && mkdir -p data && for d in chembl_deco chembl_deco_skew; do ln -sfn $SCR/data/\$d data/\$d; done; ln -sfn $SCR/runs runs; ln -sfn $SCR/hf_home hf_home"
+$SSH "cd $ROOT/rein && mkdir -p data && for d in chembl_deco chembl_deco_skew chembl_deco_skew_pruned; do ln -sfn $SCR/data/\$d data/\$d; done; ln -sfn $SCR/runs runs; ln -sfn $SCR/hf_home hf_home"
 [ "${1:-}" = "--code-only" ] && { echo "code+data synced; skipping env/model"; exit 0; }
 
 # --- conda env + model (slow: ~2.5 GB of wheels, 7.6 GB of weights)

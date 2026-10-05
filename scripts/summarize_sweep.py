@@ -53,7 +53,7 @@ def main():
             snap = os.path.join(args.run, "snapshots", f"round_{rnd:04d}.pt")
         rows.append({"round": rnd, "snapshot": snap,
                      **{k: s[k]["mean"] for k in ("loss", "spearman", "concordance", "endpoint_increase_rate",
-                                                  "adjacent_tie_rate", "pct_calib_err", "pct_range") if k in s},
+                                                  "adjacent_tie_rate", "pct_calib_err", "pct_range", args.select) if k in s},
                      # absent when no client could be scored at all (e.g. every generated
                      # molecule was unparseable) -- keep the row so the failure is visible
                      "spearman_worst": s.get("spearman", {}).get("worst"),
@@ -68,8 +68,11 @@ def main():
             ls = [v["loss"] for v in h["clients"].values()]
             train_loss[h["round"] + 1] = sum(ls) / len(ls)   # log round r = r+1 completed rounds
 
-    sign = 1 if args.select in LOWER else -1
-    best = min(rows, key=lambda r: sign * r[args.select])
+    sign = 1 if args.select in LOWER or args.select.startswith(("pct_calib_err", "pct_err_", "unscorable_")) else -1
+    eligible = [r for r in rows if r.get(args.select) is not None]
+    if not eligible:
+        sys.exit(f"no checkpoints have a value for {args.select}")
+    best = min(eligible, key=lambda r: sign * r[args.select])
     if args.print_best:
         print(best["snapshot"])
         return

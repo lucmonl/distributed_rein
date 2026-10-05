@@ -16,6 +16,7 @@ steering metrics on the valid outputs only.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from typing import Optional
 
 from rdkit import Chem, RDLogger
@@ -234,6 +235,70 @@ def clogp_residual_deco(text: str, rec: dict) -> float:
     if m is None:
         return NAN
     return float(Crippen.MolLogP(m) - core_clogp(rec["scaffold"]))
+
+
+def assemble_ligand(core_attached: str, decorations: str, *, prune_extras: bool = False):
+    """Return (single fully attached ligand, None), or (None, rejection reason).
+
+    Each positive dummy isotope must occur once on each side, with one bond to
+    its fragment. Unlabelled components are rejected, or removed when pruning.
+    Neither policy repairs missing/duplicate labels, valence errors or free dummies.
+    This explicit parent-ligand contract leaves legacy assembly/scoring unchanged.
+    """
+    core = Chem.MolFromSmiles(core_attached)
+    deco = Chem.MolFromSmiles(decorations)
+    if core is None or deco is None:
+        return None, "parse_failure"
+    if len(Chem.GetMolFrags(core)) != 1:
+        return None, "disconnected_core"
+
+    def labels(mol):
+        atoms = [a for a in mol.GetAtoms() if a.GetAtomicNum() == 0]
+        if any(a.GetIsotope() <= 0 or a.GetDegree() != 1 for a in atoms):
+            return None
+        return Counter(a.GetIsotope() for a in atoms)
+
+    expected, supplied = labels(core), labels(deco)
+    if not expected or expected != supplied or any(n != 1 for n in expected.values()):
+        return None, "attachment_labels"
+    pieces = Chem.GetMolFrags(deco, asMols=True)
+    attached = [p for p in pieces if any(a.GetAtomicNum() == 0 for a in p.GetAtoms())]
+    if len(attached) != len(pieces) and not prune_extras:
+        return None, "unattached_fragments"
+    decorations = ".".join(Chem.MolToSmiles(p) for p in attached)
+    mol = rejoin_decorations(core_attached, decorations)
+    if mol is None:
+        return None, "assembly_failure"
+    if any(a.GetAtomicNum() == 0 for a in mol.GetAtoms()):
+        return None, "unresolved_dummy"
+    if len(Chem.GetMolFrags(mol)) != 1:
+        return None, "disconnected_ligand"
+    return mol, None
+
+
+def _ligand_residual(text: str, rec: dict, *, prune_extras: bool) -> float:
+    deco = extract_decorations(text)
+    if not deco:
+        return NAN
+    mol, _ = assemble_ligand(rec["core_attached"], deco, prune_extras=prune_extras)
+    core = Chem.MolFromSmiles(rec["scaffold"])
+    if mol is None or core is None or not mol.HasSubstructMatch(core):
+        return NAN
+    return float(Crippen.MolLogP(mol) - core_clogp(rec["scaffold"]))
+
+
+def clogp_residual_deco_pruned(text: str, rec: dict) -> float:
+    """Score the attached parent ligand after removing unlabelled extra components.
+
+    Extras neither improve the descriptor nor incur a failure penalty. Other
+    malformed assemblies are unscorable. Pair with strict scoring to expose extras.
+    """
+    return _ligand_residual(text, rec, prune_extras=True)
+
+
+def clogp_residual_deco_strict(text: str, rec: dict) -> float:
+    """Parent-ligand residual, rejecting extras and incomplete attachment matching."""
+    return _ligand_residual(text, rec, prune_extras=False)
 
 
 def assembled_descriptors(text: str, rec: dict) -> dict:

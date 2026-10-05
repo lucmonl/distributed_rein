@@ -91,13 +91,17 @@ def math_level_instruction(alpha: float) -> str:
 
 
 def prompt_with_level_math(rec: dict, alpha: float, shots: Sequence[dict]) -> str:
+    # the record's own closing instruction (the prompt is "problem\n\ninstruction"), so the
+    # answer-in-prompt variant (data/math_fed_ans) keeps its "The final answer is $X$ ..." line
+    instruction = (rec["prompt"][len(rec["problem"]):].strip() if rec["prompt"].startswith(rec["problem"])
+                   else "Please reason step by step, and put your final answer within \\boxed{}.")
     parts = [rec["problem"], math_level_instruction(alpha)]
     if shots:
         parts.append("Here are example solutions at about this length:")
         for s in shots:
             parts.append(f"Problem: {s['problem']}\nSolution: {s['target']}")
         parts.append("Now solve the problem above at the target length.")
-    parts.append("Please reason step by step, and put your final answer within \\boxed{}.")
+    parts.append(instruction)
     return "\n\n".join(parts)
 
 

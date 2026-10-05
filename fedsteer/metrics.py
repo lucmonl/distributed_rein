@@ -14,7 +14,8 @@ from .data import ClientQuantiles
 from .extractive import fragment_stats, tokenize
 from .mathcot import cot_tokens
 from .molecules import (clogp_residual, clogp_residual_deco, clogp_residual_self,
-                        clogp_residual_strict)
+                        clogp_residual_strict, clogp_residual_deco_pruned,
+                        clogp_residual_deco_strict)
 
 # scorer(generated_text, source_record) -> attribute value on the same scale as the
 # training ``score`` field
@@ -32,22 +33,51 @@ SCORERS = {
     # decoration format: the model emits only the decorations and they are zipped onto
     # the core from the prompt, so the core cannot be rewritten (entry 34)
     "clogp_residual_deco": clogp_residual_deco,
+    "clogp_residual_deco_pruned": clogp_residual_deco_pruned,
+    "clogp_residual_deco_strict": clogp_residual_deco_strict,
     # math CoT: solution length in tokens of a fixed ruler tokenizer (fedsteer/mathcot.py)
     "cot_tokens": cot_tokens,
 }
 
 LOWER_IS_BETTER = {"calib_mae_iqr", "pct_calib_err", "pct_err_in_support", "pct_err_out_support",
+                   "pct_calib_err_penalized",
                    "unscorable_row_rate",
                    "no_effect_rate", "adjacent_tie_rate", "adjacent_decrease_rate",
                    "text_tie_rate", "near_tie_rate", "near_no_effect_rate", "endpoint_near_tie_rate"}
 SUMMARY_KEYS = ["pct_err_in_support", "pct_err_out_support", "reach_rate", "concordance", "spearman",
                 "endpoint_increase_rate", "adjacent_increase_rate", "adjacent_tie_rate", "adjacent_decrease_rate",
-                "no_effect_rate", "pct_calib_err", "pct_range", "order_rate", "norm_range", "calib_mae_iqr",
+                "no_effect_rate", "pct_calib_err", "pct_calib_err_penalized", "pct_range", "order_rate", "norm_range", "calib_mae_iqr",
                 "text_tie_rate", "near_tie_rate", "near_no_effect_rate", "endpoint_near_tie_rate",
                 "adjacent_increase_rate_nt", "concordance_nt",
                 # share of prompts the scorer could not score at every alpha (ChEMBL:
                 # unparseable output, or a lost core under the strict scorer)
                 "unscorable_row_rate"]
+
+DECO_SENSITIVITY_METRICS = ("pct_calib_err", "pct_calib_err_penalized",
+                            "pct_err_out_support", "unscorable_row_rate")
+for _variant in ("pruned", "strict"):
+    for _metric in DECO_SENSITIVITY_METRICS:
+        SUMMARY_KEYS.append(f"{_metric}_{_variant}")
+        LOWER_IS_BETTER.add(f"{_metric}_{_variant}")
+
+
+def failure_penalized_pct_err(scores: np.ndarray, alphas: list[float],
+                              q: ClientQuantiles) -> Optional[float]:
+    """Mean over every prompt/alpha cell: |F(score) - alpha| if finite, else 1.
+
+    Supplementary sensitivity check, not a replacement for validity or calibration
+    on scorable outputs. One is the global maximum percentile error; at a fixed
+    alpha the maximum valid error is only max(alpha, 1-alpha). Never send non-finite
+    scores through the CDF. An empty grid has no score; an all-failed grid scores 1.
+    """
+    scores = np.asarray(scores, dtype=float)
+    if not scores.size:
+        return None
+    finite = np.isfinite(scores)
+    errors = np.ones_like(scores)
+    targets = np.broadcast_to(np.asarray(alphas), scores.shape)
+    errors[finite] = np.abs(np.vectorize(q.cdf, otypes=[float])(scores[finite]) - targets[finite])
+    return float(errors.mean())
 
 
 def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantiles,
@@ -62,6 +92,8 @@ def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantil
     reach through the shared direction.
     """
     scores = np.asarray(scores, dtype=float)
+    # Compute before complete-sweep filtering: valid cells in incomplete rows count too.
+    penalized = {"pct_calib_err_penalized": failure_penalized_pct_err(scores, alphas, q)}
     # A scorer returns nan when it cannot score the output at all (an unparseable
     # molecule, say).  Row-wise metrics -- ordering, concordance, Spearman, range --
     # need a complete alpha sweep, so drop prompts with any unscorable output and
@@ -71,9 +103,9 @@ def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantil
     keep = np.all(np.isfinite(scores), axis=1)
     if not keep.all():
         scores = scores[keep]
-    unscorable = {"n_prompts": int(n_all), "unscorable_row_rate": float(1.0 - keep.mean())}
+    unscorable = {"n_prompts": int(n_all), "unscorable_row_rate": float(1.0 - keep.mean()) if n_all else None}
     if len(scores) == 0:
-        return {**unscorable, "concordance": None, "pct_calib_err": None, "spearman": None}
+        return {**unscorable, **penalized, "concordance": None, "pct_calib_err": None, "spearman": None}
     order = np.all(np.diff(scores, axis=1) > 0, axis=1).mean()
     # pairwise concordance: fraction of (alpha_i < alpha_j) pairs with score_i < score_j (ties = 1/2)
     i, j = np.triu_indices(len(alphas), 1)
@@ -106,6 +138,7 @@ def metrics_for_client(scores: np.ndarray, alphas: list[float], q: ClientQuantil
         out["reach_rate"] = float(np.concatenate([h.ravel() for h in hits]).mean()) if hits else None
     return {
         **unscorable,
+        **penalized,
         **out,
         "concordance": float(concord),
         "pct_calib_err": float(pct_err.mean()),
@@ -137,6 +170,23 @@ def summarize(results: dict[str, dict], keys=SUMMARY_KEYS) -> dict:
         if vals:
             worst = max(vals) if k in LOWER_IS_BETTER else min(vals)
             out[k] = {"mean": float(np.mean(vals)), "worst": float(worst)}
+    return out
+
+
+def decoration_sensitivity_metrics(outputs, records, alphas, ref, support=None):
+    """Supplement legacy decoration evals using the same outputs and reference CDF.
+
+    Pruned removes extras; strict rejects them. Their penalty-1 metrics count every
+    cell, so malformed outputs cannot disappear through complete-sweep filtering.
+    Historical runs keep their saved CDF; cleaned-data training builds a new CDF.
+    """
+    out = {}
+    for variant, scorer in (("pruned", clogp_residual_deco_pruned),
+                            ("strict", clogp_residual_deco_strict)):
+        grid = np.asarray([[scorer(text, rec) for text in row]
+                           for row, rec in zip(outputs, records)], dtype=float).reshape(len(records), len(alphas))
+        metrics = metrics_for_client(grid, alphas, ref, support=support)
+        out.update({f"{key}_{variant}": metrics.get(key) for key in DECO_SENSITIVITY_METRICS})
     return out
 
 

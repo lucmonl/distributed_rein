@@ -2512,3 +2512,214 @@ differ** — worth stating in the paper either way.
 unchanged, so only the direction varies: **Anvil 21092869** and **cc 11165980** (duplicates; cancel
 the loser once one is RUNNING). `fed.calibration=private` is the only legal matched setting, since
 `fed.py` rejects local+shared (nothing is aggregated in local mode), so a full 2x2 is unavailable.
+
+### MOL-14 supplementary check: failure-penalized percentile error (2026-10-05)
+
+Added **a failure-penalized score using penalty 1 as a supplementary sensitivity check**:
+`pct_calib_err_penalized`. For every generated prompt × alpha cell, the error is
+`abs(F(score) - alpha)` if the attribute score is finite, and **1** otherwise
+(NaN or either infinity). Average over **all cells** within each client, then
+take an equal-weight mean over clients. Valid cells in otherwise incomplete sweeps
+are retained. An entirely unscorable grid scores 1; an empty grid has no score.
+
+One is the global maximum of absolute percentile error, since both the percentile
+and alpha lie in [0, 1]. At a fixed alpha, the largest valid error is only
+`max(alpha, 1-alpha)`, so penalty 1 deliberately makes invalidity more costly than
+any valid calibration error at interior alphas. It is a scoring convention, not
+an inferred percentile for an invalid molecule. Validity and the existing
+complete-sweep calibration metrics remain separate; checkpoint selection is unchanged.
+
+Sensitivity results for the same dev-selected test checkpoints, computed from the
+saved score grids and each run's saved alpha reference (grids are rounded to four
+decimal places, so recomputed metrics are approximate):
+
+| metric | FED 21068552 (r80) | LOCAL 21068553 (r100) |
+|---|---:|---:|
+| Original percentile error, complete scorable sweeps | 0.197640 | 0.187377 |
+| Unscorable sweep rate | 0.017594 | 0.041901 |
+| **Failure-penalized percentile error, all cells** | **0.200779** | **0.194735** |
+
+Local remains better on this supplementary score, but its absolute advantage
+narrows from 0.010263 to 0.006044. This check does not resolve the calibration-sharing
+confound or establish its cause.
+
+Implementation: `fedsteer/metrics.py` adds the metric to per-client results and
+mean/worst summaries, including when no complete sweep is scorable. New evaluations
+and rescoring use it automatically. `scripts/compare_runs.py` reports `pctErrFail1`
+and backfills older evaluations in memory from saved grids; original artifacts are
+not rewritten. Reproduce this comparison with:
+
+```bash
+python scripts/compare_runs.py \
+  --run FED=runs/anvil/exp43_skew_fed_anvil_20261004-231441_j21068552 \
+  --run LOCAL=runs/anvil/exp43_skew_local_anvil_20261004-231949_j21068553
+```
+
+Validation: the failure-penalty, metric-edge-case, support-split, and near-tie tests
+passed in the `steer` environment. The comparison command above completed successfully.
+
+## MOL-16. Parent-ligand metrics and pruned skew dataset (2026-10-05)
+
+Per the user's documentation preference, substantial ChEMBL changes are now recorded in
+[`chembl-experiment-plan.md`, §11](../chembl-experiment-plan.md#11-dated-implementation-and-experiment-changes).
+That entry contains the scoring contract, output-audit findings, dataset provenance, validation,
+and reproduction commands.
+
+Added `clogp_residual_deco_pruned` (remove unlabelled disconnected extras before scoring) and
+`clogp_residual_deco_strict` (reject extras), with explicit attachment matching and a connected
+parent-ligand requirement. Legacy decoration evaluations supplement their existing metrics with
+both variants, including the all-cell penalty-1 score. Historical run artifacts remain unchanged.
+
+Full-precision rescoring of the same Exp43 selected outputs and original reference CDFs:
+
+| All-cell error with failure penalty 1 | FED r80 | LOCAL r100 |
+|---|---:|---:|
+| Legacy | 0.200600 | **0.194659** |
+| Pruned | 0.204054 | **0.200185** |
+| Strict | **0.215583** | 0.229812 |
+
+Only the strict failure-sensitive comparison favors federated here; pruning alone does not.
+The earlier approximate scores used rounded grids; these recompute descriptors from saved texts.
+This is a post-hoc sensitivity analysis, not a cleaned-data training result.
+
+Built `data/chembl_deco_skew_pruned/`: **28,732 / 30,114** records retained across all clients and
+splits; **1,382** dropped for unattached components. Retained records keep their prompts, targets,
+IDs and split assignments, with scores and train-only CDFs recomputed. Original data is preserved.
+Source hashes, per-client counts and rejected IDs are recorded with the dataset; a manifest copy
+is in `exp_log/reports/chembl_deco_skew_pruned_manifest.json`.
+
+Prepared `configs/chembl_deco_skew_pruned.yaml` for a matched federated/local pair with private
+calibration and strict monitoring. No training jobs were submitted by this change.
+
+## MOL-17. Pruned-dataset matched pair launched; MOL-15 race resolved to cc (2026-10-05)
+
+Full rationale, scoring contract and reproduction commands are in
+[`chembl-experiment-plan.md`, §11](../chembl-experiment-plan.md#11-dated-implementation-and-experiment-changes)
+per the documentation preference recorded in MOL-16. This entry records the submissions.
+
+**MOL-15 race resolved.** The cc copy `11165980` (`exp44_fed_privcal_cc`, the matched
+`fed.calibration=private` run on `data/chembl_deco_skew`) has been RUNNING on ccc0388 for 5 h 53 m,
+so it is well past startup. Its Anvil duplicate **`21092869` was cancelled** under the failover
+rule (cancel the loser only once the winner is RUNNING and past startup, never to resubmit). It had
+never started, so it cost ~0 SU, and cancelling it freed the single-partition `ai` allocation for
+the jobs below. Anvil balance: 492.5 of 500 SU remaining.
+
+**MOL-17 launched: federated vs local on `data/chembl_deco_skew_pruned`, 100 rounds, rotation 0.**
+This is the matched training run for MOL-16's strict-contract finding, which until now was only a
+post-hoc rescoring of Exp43's old generations. Both arms use `fed.calibration=private`, so **only
+the direction varies** -- MOL-14's confound is not repeated. The strict single-parent-ligand
+contract is applied at every stage, not just at the end:
+
+| stage | setting |
+|---|---|
+| in-training dev monitor | `monitor.scorer=clogp_residual_deco_strict` (config) |
+| checkpoint selection | `SELECT=pct_calib_err_penalized` (unscorable cells cost 1, not dropped) |
+| test evaluation | `SCORER=clogp_residual_deco_strict`, 150 prompts/client |
+| same-generation robustness | `RESCORE=clogp_residual_deco` (legacy score, no regeneration) |
+
+Duplicated across cc and Anvil per the cluster rule (molecule workstream: cc + Anvil only):
+
+| job | cc (`lucmon-ic`, dali/IC/scavenger, 24 h) | Anvil (`cis260796-ai`, `-p ai`, 20 h) |
+|---|---|---|
+| federated, private calibration | **11169098** | **21102995** |
+| local, private calibration | **11169100** | **21102996** |
+
+All four PENDING at submission (cc: Resources / ReqNodeNotAvail; Anvil: Priority). Launch script
+`exp_log/launch/exp45_pruned_pair.sh`. Cancellation policy as in MOL-13: cancel a copy only once
+its counterpart is RUNNING *and* past startup (model loaded, round 1 in the log).
+
+**Two small infrastructure changes this needed.**
+- `sbatch/train_eval_chembl.sbatch` and `sbatch/train_eval_chembl_anvil.sbatch` gained a `SELECT`
+  variable passed to both `summarize_sweep.py` calls. Its default is `pct_calib_err`, which is
+  `summarize_sweep.py`'s own default, **so every existing experiment's behaviour is unchanged**;
+  only these runs select on the failure-penalized metric. Without it the job would have selected on
+  the complete-sweep metric, which ignores exactly the failures the strict contract creates.
+- `scripts/setup_anvil.sh` now syncs `chembl_deco_skew_pruned` alongside the other two datasets,
+  and `--code-only` pushed both the new dataset and the new scorer code to Anvil.
+
+**Pre-submission validation (login nodes, free).** On both hosts the config loads, all three
+decoration scorers are registered, the dataset reads 28,732 records (26,200 train / 513 dev /
+2,019 test, matching the MOL-16 manifest), and `clogp_residual_deco_strict` reproduces the stored
+label of the first 200 records to within 1e-6 -- i.e. the strict scorer agrees with the dataset it
+will be trained against.
+
+⚠️ **Version caveat for the eventual results table.** cc has rdkit 2025.09.6, Anvil 2026.03.6
+(torch 2.5.1 on both, cu118 vs cu124). Both reproduce every checked stored label exactly, so the
+attribute definition does not depend on which host wins the race, but record the host beside any
+number before putting cc and Anvil runs in the same row.
+
+**What to read first when they finish.** Whether the strict-score advantage MOL-16 saw post-hoc
+(FED 0.2156 vs LOCAL 0.2298) survives matched training on cleaned data, and specifically: the
+unscorable-sweep rate per arm (the strict contract's failure mode), then per-client error split by
+support, then the paired bootstrap over test inputs via `scripts/compare_runs.py`. A federated win
+here would be the first on this task, so the alternative explanations MOL-14 discarded (gain
+mismatch, chemistry distinctiveness) must be re-checked against the new gains before claiming C1.
+
+## MATH-6. Qwen2.5-7B gates: G0 PASSES (accuracy loss fixed), G2 steers but misses calibration (0.263); race resolved by hand after a cc-login1 reboot (2026-10-05) [dtai]
+
+**Infra.** cc-login1 rebooted on 10-05 at 03:08, killing both SSH masters and `race_watch.py` (pid 3398675). It had run 00:15–03:08 with no copy yet past 20 minutes, so it cancelled nothing. The user re-opened both masters at about 16:45.
+- State then: dtai G0 3311353 COMPLETED (12:08–15:02, gh065); G2 3311354 COMPLETED (12:27–15:17, gh057); E1-fed 3311356 RUNNING 4 h 13 min (gh134); G1 3311355 and E1-local 3311357 PENDING. All 5 Delta copies PENDING, so **no duplicate ran**.
+- Resolved by hand under the failover rule: Delta 22671278–82 cancelled, each confirmed PENDING. G1 and E1-local stay queued on dtai, keeping the E1 pair on one host. Noted in `sbatch/logs/race_MATH-5.log`.
+- ⚠️ The watcher does not survive a login-node reboot. Surviving one would need cron / systemd on cc-login1 (not set up; needs the user's go-ahead).
+
+**NaN fix confirmed:** 0 nan-guard events (`skipped_steps` 0) in G0, G2 and E1-fed so far. Eager attention resolved MATH-5's failure without dropping any batch.
+
+**Gate report** (`scripts/math_gate_report.py`; base = the backbone screen's Qwen2.5-7B run at a 4,096 cap, 50 shared `math` test problems; G0 / G2 test = 100 problems at a 1,280 cap):
+
+| model | acc (50 shared) | boxed | trunc | median tokens |
+|---|---|---|---|---|
+| base Qwen2.5-7B | 0.72 | 1.00 | 0.00 | 570 |
+| G0, plain SFT (round 80 selected) | 0.68 | 1.00 | 0.00 | 412 |
+| G2 α = 0 / 0.25 / 0.5 / 0.75 / 1 | 0.62 / 0.60 / 0.54 / 0.52 / 0.50 | ≥ 0.98 | ≤ 0.02 | 284 / 380 / 430 / 481 / 523 |
+
+- **G0: PASS** (format; accuracy reported, not gated). SFT vs. base, paired: 4 / 6, i.e. noise. The Qwen3-4B accuracy loss (0.98 → 0.79, entry 38) is gone with the familiar backbone.
+- **G2 (test, round 100): pct err 0.263** (gate < 0.20: FAIL; constant output 0.30); in-support 0.239, out-of-support 0.299; **Spearman 0.712** (gate ≥ 0.7: pass); concordance 0.809; adjacent-decrease rate 0.282.
+
+| α | target tokens | generated median (IQR) | pct err | acc |
+|---|---|---|---|---|
+| 0 | 77 | 279 (233–362) | 0.289 | 0.59 |
+| 0.25 | 292 | 375 (284–497) | 0.282 | 0.59 |
+| 0.5 | 403 | 430 (360–547) | 0.213 | 0.54 |
+| 0.75 | 530 | 470 (372–576) | 0.221 | 0.52 |
+| 1 | 1,024 | 511 (429–635) | 0.309 | 0.51 |
+
+- **The range is compressed exactly as with Qwen3-4B** (279 → 511 here vs. 248 → 502 there), against targets 77 → 1,024. Being backbone-independent points at the method or data setup, not the model.
+- **Accuracy falls with α** (0.62 → 0.50; paired against SFT at α = 1: +2 / −11): longer generated solutions are less accurate. Reported, not gated.
+
+**Training dynamics (G2):**
+- Dev pct err 0.350 / 0.288 / 0.255 / 0.266 / 0.254 at rounds 20 / 40 / 60 / 80 / 100 (Spearman 0.40 / 0.74 / 0.81 / 0.73 / 0.75): **plateau from round 60**.
+- Memorization: train loss 0.31 (round 20) → 0.07 (round 99); dev loss 0.298 → 0.432 (G0 the same: 0.299 → 0.446). 100 rounds = 4 epochs over 4k pairs.
+- Gain 1.00 → 0.65 (round 20) → 3.84 (round 60) → 3.44 (round 99), **close to the clamp `gain_max = 4`**, while `direction_norm` keeps growing (40 → 51). D growing to compensate (the D → cD, s → s/c symmetry) suggests the clamp binds softly; cf. the gain-clamp caveat in the Newsroom / ChEMBL entries.
+- Warp learned h(0.1) ≈ 0.20–0.26, h(0.9) ≈ 0.95, i.e. it lifts the low end.
+
+**E1-fed (dtai, running):** round 20 dev pct err 0.339, Spearman 0.503 (8 clients, 20 problems each); about 4–4.5 min per round, so about 7 h of training.
+
+## MATH-7. Answer-in-prompt suite launched; MATH-5 E1-fed kept as the reference, its not-started jobs cancelled (2026-10-05) [dtai+delta]
+
+**User decision (10-05).** The MATH-5 / MATH-6 runs used the original prompts (problem only; the model has to solve it). The answer-in-prompt data (`data/math_fed_ans`, built 10-04) had not been used, and the user had assumed it was. Decision:
+1. keep the running experiments as the reference;
+2. kill the not-started ones;
+3. launch the whole suite with the answer in the prompt, so the study is about CoT length only.
+
+**Changes to MATH-5:**
+- **Kept:** E1-fed dtai **3311356** (original prompts, RUNNING since 12:31).
+- **Cancelled, both confirmed PENDING:** G1 3311355 and E1-local 3311357.
+- ⚠️ So the reference E1-fed has **no local-only partner**; rerun it if the C1 comparison on the original prompts is wanted.
+
+**Code:** `fedsteer/baselines.py` `prompt_with_level_math` (B1) now ends with the record's own closing instruction (`prompt[len(problem):]`) instead of a hard-coded one. Otherwise the B1 prompt would have dropped the answer in this setting. Checked on both datasets.
+
+**Setup:**
+- Identical to MATH-5 (eager attention, NaN guard, 100 rounds, the same evals and caps) except `data_path` / `clients_file` → `data/math_fed_ans/…` and `DATA=data/math_fed_ans/data.jsonl` for scoring.
+- `max_prompt_tokens=576`: 7 of 49,800 answer-in-prompt prompts exceed 512 chat-formatted tokens (max 549), and the formatter would cut the start of the problem.
+- Run prefixes `runs/math7_ans_*`. Launch `exp_log/launch/MATH-7_qwen25_7b_answer_in_prompt.sh`.
+
+| race | dtai | Delta (`gpuA100x8,gpuH200x8`) |
+|---|---|---|
+| G0 | 3316647 | 22685329 |
+| G2 | 3316648 | 22685330 |
+| G1 (afterok G2, same host) | 3316649 | 22685331 |
+| E1 federated (2-day limit) | 3316650 | 22685332 |
+| E1 local (2-day limit) | 3316651 | 22685333 |
+| base reference: Qwen2.5-7B with the answer in the prompt, `math` client, 100 test problems, 4,096 cap | 3316652 | (dtai only) |
+
+**Watcher:** pid **3621148**, spec `exp_log/launch/MATH-7_race.json`, log **`sbatch/logs/race_MATH-7.log`**, `--min_running_s 1200`. It still does not survive a cc-login1 reboot (MATH-6); after one, resolve by hand.

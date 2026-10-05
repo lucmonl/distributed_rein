@@ -1,10 +1,12 @@
 # Federated steering on ChEMBL: scaffold decoration with a lipophilicity knob
 
-Experiment plan · drafted 2 October 2026 · proposal, nothing run yet.
+Experiment plan · drafted 2 October 2026 · original proposal; implemented changes and results are recorded in §11.
 Companion to `federated-steering-plan.md` (method, metrics and baselines are reused unchanged unless stated).
 Dataset scouting that led here: `dataset-candidates.md`. Measured statistics: `data/chembl/` + §3 below.
 
 Status markers: ✅ measured / done · ⏳ planned · ⚠️ known risk.
+
+Maintenance: record substantial ChEMBL code, dataset, metric, and experiment changes in this file’s dated change log (§11), as requested on 2026-10-05. Historical proposal sections remain context; dated entries specify implemented changes.
 
 ---
 
@@ -272,3 +274,198 @@ Run in order; each one can stop the task cheaply.
 5. ⏳ 12-client smoke run (3 rounds), then the 30-round method + local pair.
 
 Steps 3 and 4 together are under half a day of GPU time and settle whether this task is viable, before anything long is launched.
+
+
+---
+
+## 11. Dated implementation and experiment changes
+
+### 2026-10-05 — Parent-ligand metrics and a separately pruned dataset
+
+**Status: implemented and dataset built; no new training jobs launched by this change.**
+This entry records the output audit, the supplementary failure-penalty metric, and the new
+parent-ligand scoring/data contract. It supersedes the proposal's assumption that successful
+RDKit parsing/assembly alone establishes valid scaffold decoration. Legacy scores remain available.
+
+**Finding.** Exp43 outputs can change cLogP without changing the attached ligand by adding
+unattached `Cl` or `[Br-]` components. These patterns also occur in training targets; they are
+parseable multicomponent records, not necessarily invalid under the original data representation.
+The mismatch is with the intended *single parent ligand* attribute. See
+[the concrete output audit](exp_log/reports/exp43_output_audit.md). This does not prove a model
+intentionally exploits the scorer or that shared calibration alone explains the run difference.
+
+**Definitions, applied identically to federated and local outputs:**
+
+- `clogp_residual_deco`: existing whole-assembly scorer, retained for historical comparisons.
+- `clogp_residual_deco_pruned`: remove unlabelled extra components, then score only the attached
+  parent ligand relative to the requested scaffold. Extras cannot change the descriptor and
+  do not themselves incur a failure penalty. Missing/duplicate/invalid attachment labels and
+  malformed final ligands remain unscorable.
+- `clogp_residual_deco_strict`: reject extras rather than remove them. Every positive attachment
+  label must occur exactly once on each side and be bonded to its fragment; assembly must leave
+  one connected ligand and no dummy atoms, retaining the requested scaffold. Charged parents
+  remain allowed; this is not charge neutralization or a full chemical standardization pipeline.
+- `pct_calib_err_penalized`: average every generated prompt × alpha cell, using ordinary absolute
+  percentile error for a finite score and **1** for an unscorable cell. One is the global maximum
+  error, although the maximum valid error at fixed alpha is `max(alpha, 1-alpha)`. This is a
+  supplementary failure-cost convention; report validity and conditional metrics alongside it.
+
+Full evaluations with the legacy decoration scorer now also save `pct_calib_err_pruned`,
+`pct_calib_err_strict`, `pct_calib_err_penalized_pruned`, `pct_calib_err_penalized_strict`,
+plus each variant's out-of-support error and unscorable-sweep rate. All are summarized across
+clients with lower-is-better worst-client handling. The pruned and strict scorers can also be
+selected explicitly in `eval_direction.py` and `scripts/rescore_eval.py`. Checkpoint selection
+supports the new error metrics with `--select`; its default is unchanged.
+
+**Post-hoc Exp43 sensitivity result.** Same dev-selected checkpoints (FED r80, LOCAL r100),
+identical saved generations and original saved run CDFs. Scores are recomputed from the texts
+at full precision. Previous four-decimal-grid audits differ slightly because the empirical CDF
+has jumps. No checkpoints or prompts were reselected for these comparisons.
+
+| All-cell error, penalty 1 (lower is better) | FED 21068552 | LOCAL 21068553 |
+|---|---:|---:|
+| Legacy whole assembly | 0.200600 | **0.194659** |
+| **Pruned parent ligand** | 0.204054 | **0.200185** |
+| **Strict parent-ligand contract** | **0.215583** | 0.229812 |
+
+Pruning alone does **not** reverse the ranking; strict rejection plus the failure penalty does.
+This is a task-definition sensitivity analysis, not evidence that the cleaned-data experiment
+has succeeded. Both definitions are reported rather than choosing only the favorable one.
+Machine-readable per-client results: [Exp43 ligand scoring reports](exp_log/reports/exp43_ligand_scoring/).
+Historical rescoring uses the original CDF to keep the requested alpha scale fixed; cleaned-data
+training uses a new CDF. Scores across those different references are not directly comparable.
+
+**New dataset: `data/chembl_deco_skew_pruned/`.** Built from `data/chembl_deco_skew/` by
+`scripts/prune_chembl.py`. The rule uses record structure only, not model performance or alpha.
+Apply the same filtering to **all 12 clients and every split**; drop affected records rather than
+silently rewriting their targets. Retained prompts, targets, record IDs, client assignments and
+split assignments are preserved. Scores are recomputed from the accepted assembly. The builder
+checks per-client scaffold disjointness and refuses to overwrite an existing output directory.
+
+- Total retained: **28,732 / 30,114**; dropped: **1,382**, all for unattached fragments.
+- Train: **26,200 / 27,457**; dev: **513 / 542**; test: **2,019 / 2,115**.
+- Fresh local quantiles and the rotation-0 equal-client global CDF use **retained train records
+  only**. Training independently rebuilds the reference for its configured participants.
+- Recomputing scores changes 8 retained labels by more than `1e-8` (maximum absolute change
+  0.08168); this is recorded separately from dropping samples, rather than assuming all stored
+  source labels exactly equal the current assembly scorer. All eight are CHEMBL4005 training
+  records (a held-out client in rotation 0). The current legacy and strict scorers agree on their
+  recomputed values, so these discrepancies predate the new strict/pruned distinction.
+- Original source data is preserved. Dataset artifacts include `rejected.jsonl` (IDs and reasons),
+  `pruning_manifest.json` (source hashes, RDKit version, counts, support ranges and score changes),
+  and `source_clients.json` (the original metadata). Old skew/median statistics are not reused as
+  statistics of the new dataset.
+
+| Participating client | Original train | Pruned train |
+|---|---:|---:|
+| CHEMBL243 | 1560 | 1554 |
+| CHEMBL204 | 3278 | 2876 |
+| CHEMBL325 | 2028 | 2020 |
+| CHEMBL2835 | 1495 | 1493 |
+| CHEMBL4078 | 1135 | 1073 |
+| CHEMBL2039 | 710 | 643 |
+| CHEMBL240 | 3642 | 3535 |
+| CHEMBL228 | 1303 | 1146 |
+
+The tracked [manifest copy](exp_log/reports/chembl_deco_skew_pruned_manifest.json) records all clients
+and splits; the actual dataset lives under the repository's ignored `data/` directory.
+
+**Ready-to-run configuration:** `configs/chembl_deco_skew_pruned.yaml`, 100 rounds, private
+calibration in both modes, strict scorer for full monitoring, and the same 20-round checkpoint
+cadence / 25 dev prompts / 96 generation tokens used for the prior skew pair. The local run changes
+only `fed.mode` and its output prefix. This config was prepared, not submitted.
+
+```bash
+# Build a new directory; the builder will not overwrite an existing dataset.
+python scripts/prune_chembl.py --source_dir data/chembl_deco_skew \
+  --out_dir data/chembl_deco_skew_pruned
+
+python train_fed.py --config configs/chembl_deco_skew_pruned.yaml
+python train_fed.py --config configs/chembl_deco_skew_pruned.yaml \
+  --set fed.mode=local out_dir=runs/chembl_deco_skew_pruned_local
+
+# For the new strict-scorer experiment, select on dev with the all-cell failure penalty.
+python scripts/summarize_sweep.py --run runs/NEW_RUN --select pct_calib_err_penalized
+# Evaluate its chosen snapshot with --scorer clogp_residual_deco_strict.
+```
+
+To reproduce the historical sensitivity scores without regeneration (repeat for LOCAL):
+
+```bash
+python scripts/rescore_eval.py \
+  --run runs/anvil/exp43_skew_fed_anvil_20261004-231441_j21068552 \
+  --eval runs/anvil/exp43_skew_fed_anvil_20261004-231441_j21068552/evals/eval_round_0080__20261004-231441_j21068552.json \
+  --scorer clogp_residual_deco --out_dir exp_log/reports/exp43_ligand_scoring
+```
+
+**Limits.** This removes the identified disconnected-component shortcut; it does not establish
+biological activity, remove all possible descriptor shortcuts (e.g. excessively long attached
+chains), or convert soft skew into genuinely absent alpha regions. The old alpha supports were
+5th–95th percentiles, not min–max training ranges. More favorable strict-score results do not
+establish a federated advantage on the new dataset; that requires matched training and evaluation.
+
+**Validation (completed).** Eight focused CPU regression tests passed in the `steer` environment:
+fragment-pruning invariance, strict rejection, attachment failures, valid multi-attachment
+decoration, dataset filtering/reference isolation, scorer registration, supplemental full-eval
+integration, and checkpoint selection minimizing the new error. The existing failure-penalty,
+metric-edge-case, support-split and near-tie tests also passed. The exported dataset CDF exactly
+matches the reference independently rebuilt by the training pipeline. Both selected Exp43 test
+files were rescored successfully, and the comparison report displays both new penalty-1 metrics.
+`git diff --check` passed.
+
+### 2026-10-05 — Matched federated/local pair launched on the pruned dataset
+
+**Status: submitted.** This supersedes the previous entry's closing note that
+`configs/chembl_deco_skew_pruned.yaml` was prepared but not submitted. Experiment log: `MOL-17`.
+
+**What this run is for.** The previous entry's strict-contract result (FED 0.2156 vs LOCAL 0.2298
+on the all-cell penalty-1 score) was a *post-hoc rescoring of Exp43's existing generations*, under
+a task definition those runs were not trained for, and it is the only one of the three scoring
+variants that favoured federated. It therefore establishes nothing about C1 on its own. This pair
+trains, selects and evaluates entirely under the single-parent-ligand contract on the pruned data,
+which is what the earlier result would need in order to mean anything.
+
+**Design: only the direction varies.** Both arms use `fed.calibration=private`. MOL-14's confound
+was that the federated arm had shared calibration (every client pinned to gain 1.053) while the
+local arm necessarily had private calibration (gains 1.251–1.670), so direction-sharing and
+calibration-sharing moved together; the correlation between a client's locally chosen gain and how
+much federation hurt it was +0.76. Holding calibration private in both arms removes that factor.
+`fed.py` rejects `local` + `shared`, so private-in-both is the only legal matched setting and a
+full 2×2 remains unavailable.
+
+**The strict contract is applied at every stage**, which is the part that distinguishes this from a
+rescoring: in-training dev monitoring (`monitor.scorer=clogp_residual_deco_strict`), checkpoint
+selection (`pct_calib_err_penalized`, so a checkpoint that produces unscorable molecules is
+penalised rather than having those cells dropped from its mean), and the test evaluation
+(`--scorer clogp_residual_deco_strict`, 150 prompts per client). The legacy score is then computed
+on the *same* generations (`RESCORE=clogp_residual_deco`), so the strict-vs-legacy gap is measured
+on identical text instead of being inferred across runs.
+
+| job | cc | Anvil |
+|---|---|---|
+| federated, private calibration, 100 rounds | 11169098 | 21102995 |
+| local, private calibration, 100 rounds | 11169100 | 21102996 |
+
+Duplicated across both clusters the molecule workstream is allowed to use; the loser of each pair
+is cancelled once its counterpart is running and past startup. Launch script
+`exp_log/launch/exp45_pruned_pair.sh`.
+
+**Code changes required, both minimal.** `sbatch/train_eval_chembl.sbatch` and
+`sbatch/train_eval_chembl_anvil.sbatch` take a `SELECT` variable, forwarded to both
+`summarize_sweep.py` invocations; its default equals that script's own default (`pct_calib_err`),
+so no previously launched experiment changes behaviour. `scripts/setup_anvil.sh` also syncs
+`chembl_deco_skew_pruned`.
+
+**Validation before submission.** On cc and on Anvil independently: the config loads, the three
+decoration scorers are registered, the dataset reads 28,732 records split 26,200 / 513 / 2,019 in
+agreement with the pruning manifest, and `clogp_residual_deco_strict` reproduces the stored label
+of the first 200 records to within 1e-6. RDKit differs between the hosts (cc 2025.09.6, Anvil
+2026.03.6; torch 2.5.1 on both), and both reproduce the stored labels, but results should carry
+the host that produced them.
+
+**What the outcomes mean.** A federated win under matched training would be the first on this task
+and the first evidence for C1 outside Newsroom; before claiming it, the explanations discarded in
+MOL-14 must be re-checked against the new per-client gains, and the unscorable-sweep rate compared
+across arms, since under a penalised metric an arm can win by failing less rather than by
+calibrating better. No win would mean the shortcut removal does not change the conclusion, and
+ChEMBL's role reduces to C2/portability with C1 tested on Newsroom — the §3.3 reading.

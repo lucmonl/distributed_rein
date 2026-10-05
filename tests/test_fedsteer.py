@@ -852,6 +852,35 @@ def test_metrics_edge_cases():
     assert abs(flat["pct_calib_err"] - constant_output_pct_err(alphas)) < 0.02
 
 
+def test_failure_penalized_calibration():
+    from fedsteer.metrics import metrics_for_client, summarize
+    q = ClientQuantiles.fit([0, 1])  # CDF(0) = .25, CDF(1) = .75
+    alphas = [0.25, 0.75]
+    valid = metrics_for_client([[0, 1]], alphas, q)
+    assert valid["pct_calib_err_penalized"] == valid["pct_calib_err"] == 0
+
+    # Keep the valid cell of an incomplete sweep. The old metric still drops that
+    # sweep entirely; the new one averages errors [0, 0, .5, 1] across all cells.
+    mixed = metrics_for_client([[0, 1], [1, float("nan")]], alphas, q)
+    assert mixed["pct_calib_err"] == 0
+    assert mixed["unscorable_row_rate"] == 0.5
+    assert mixed["pct_calib_err_penalized"] == 0.375
+
+    # Even with no complete sweep, finite cells contribute and the score exists.
+    partial = metrics_for_client([[0, float("inf")], [float("-inf"), 1]], alphas, q)
+    assert partial["pct_calib_err"] is None
+    assert partial["pct_calib_err_penalized"] == 0.5
+    failed = metrics_for_client([[float("nan"), float("inf")]], alphas, q)
+    assert failed["pct_calib_err_penalized"] == 1
+    empty = metrics_for_client(np.empty((0, 2)), alphas, q)
+    assert empty["pct_calib_err_penalized"] is None
+
+    # Summary weights clients equally, not by their numbers of generated cells;
+    # an all-failed client must count, with the largest error marked worst.
+    summary = summarize({"valid": valid, "mixed": mixed, "failed": failed, "empty": empty})
+    assert summary["pct_calib_err_penalized"] == {"mean": 1.375 / 3, "worst": 1.0}
+
+
 def test_monitor_logs_heldout_loss_and_steering():
     from fedsteer.monitor import MonitorConfig, make_monitor
     recs = toy_records()
