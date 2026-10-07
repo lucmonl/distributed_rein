@@ -88,6 +88,8 @@ Defaults: E = 20 steps × batch 8, 8 clients per round (full participation), ran
 
 ### 2.1 Planned augmentation: coverage-aware local nonlinear calibration (2026-10-05) 🔄
 
+**Per-layer warps (NR-54, 2026-10-06).** h_i was one function shared by all adapted matrices of client i; with `lora.warp_scope: module` each matrix l has its own h_{i,l}, and coverage keeps one server table per layer. The suite below is being rerun in that protocol.
+
 **Status (NR-46, 2026-10-05).** Implemented as `fed.calibration: coverage` (`fedsteer/coverage.py`, `fedsteer/fed.py`; 7 CPU tests). Running on Newsroom (Llama-3.2-1B, rotation 0, 4k per client, 100 rounds): arms A (shared warp; the primary comparison), B (private warps), and C with λ_max ∈ {0.01, 0.1, 1, 10} (NR-49), all with gain 1, no offset and `warp_reg=0`; K = 11, b = 0.2, τ_local = τ_peer = 100. Matched local-only and held-out-client (E2) protocols are not yet run. **Result (NR-52, test):** borrowing repairs B's failure (nypost.com 0.265 → 0.188 at λ_max = 0.1; mean 0.167 → 0.155) but only *matches* A (0.154; C0.1 ties A on 8/8 clients). Private warps give no in-support gain over A (B in-support 0.136 = A). Count-weighted pooling at small λ propagates nypost/reuters' collapsed high-α warps into the table. Gain = 1 costs reuters.com vs. the old learned gain (0.214 vs. 0.199).
 
 **Decision and scope.** Fix **s_i = 1** and **o_i = 0** for the augmentation and its matched new baselines. Keep the existing nonlinear warp family; do not introduce splines in this first implementation. Each client retains its own warp parameters across rounds. The server aggregates **function values on a common grid**, not warp parameters. This section specifies future implementation; historical configs, checkpoints, and results retain their original meaning.
@@ -382,6 +384,8 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 |---|---|---|
 | 10-05 | **Planned calibration augmentation (§2.1):** s_i=1, no offset, existing private nonlinear warps; aggregate grid values by local evidence and regularize toward the shared table where peer coverage is useful | User design discussion; specification only, not implemented or evaluated |
 | 10-05 | **§2.1 implemented** (`fed.calibration: coverage`); arms A / B / C (λ_max 1, 10) launched on Newsroom, 1B | NR-46 |
+| 10-06 | **Per-layer calibration:** until now one warp per client was shared by all adapted layers; `lora.warp_scope` (model/block/module) added and the §2.1 suite rerun with one warp per adapted matrix | NR-54 |
+| 10-06 | **Consensus calibration** (user design): private per-layer warps tied to ḡ only where the client has data; ḡ pooled with saturating weights on a 21-point grid; ḡ used at inference by every client. λ_max ∈ {0.1, 1} launched | NR-56 |
 | 10-06 | **§2.1 result:** borrowing (λ_max ≥ 0.1) repairs private warps but only matches the shared warp; no in-support benefit from private shapes | NR-52 |
 | 09-29 | Plan created (local-percentile α, private gain, 2k pairs) | — |
 | 09-29 | Gate G0 passed; Newsroom data built (12 clients, 3 rotations, temporal drift split) | entries 2–3 |

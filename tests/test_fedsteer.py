@@ -36,14 +36,14 @@ def tokenizer():
     return _TOK
 
 
-def tiny_model(seed=0, lora_seed=1234, rank=4, warp="none", offset=False):
+def tiny_model(seed=0, lora_seed=1234, rank=4, warp="none", offset=False, warp_scope="model"):
     torch.manual_seed(seed)
     cfg = LlamaConfig(vocab_size=len(tokenizer()), hidden_size=32, intermediate_size=64, num_hidden_layers=2,
                       num_attention_heads=4, num_key_value_heads=2, max_position_embeddings=512,
                       tie_word_embeddings=True)
     model = LlamaForCausalLM(cfg)
     inject_steer_lora(model, SteerLoraConfig(rank_private=rank, rank_shared=rank, shared_seed=lora_seed,
-                                             warp=warp, offset=offset))
+                                             warp=warp, offset=offset, warp_scope=warp_scope))
     return model
 
 
@@ -779,7 +779,8 @@ def test_fragment_stats_known_cases():
 # --------------------------------------------------------------------- federation
 
 def _trainer(mode, out_dir, **kw):
-    model = tiny_model(warp=kw.pop("warp", "none"), offset=kw.pop("offset", False))
+    model = tiny_model(warp=kw.pop("warp", "none"), offset=kw.pop("offset", False),
+                       warp_scope=kw.pop("warp_scope", "model"))
     ex, _ = build_clients(toy_records(), ["c0", "c1"])
     cfg = FedConfig(mode=mode, rounds=kw.pop("rounds", 3), local_steps=3, batch_size=4, bf16=False,
                     warmup_steps=1, gain_warmup_rounds=1, save_every=1, lr_private=5e-3, lr_shared=5e-3, **kw)
@@ -961,11 +962,12 @@ class _raises:
         return True
 
 def _cov_trainer(out_dir, rounds=3, **kw):
-    model = tiny_model(warp=kw.pop("warp", "kumaraswamy_mix"), offset=kw.pop("offset", False))
+    model = tiny_model(warp=kw.pop("warp", "kumaraswamy_mix"), offset=kw.pop("offset", False),
+                       warp_scope=kw.pop("warp_scope", "model"))
     ex, _ = build_clients(toy_records(), ["c0", "c1"], alpha_mode="global")
     cfg = FedConfig(mode=kw.pop("mode", "fedavg"), rounds=rounds, local_steps=3, batch_size=4, bf16=False,
                     warmup_steps=1, gain_warmup_rounds=1, save_every=1, lr_private=5e-3, lr_shared=5e-3,
-                    calibration="coverage", fix_gain=kw.pop("fix_gain", True), warp_reg=0.0,
+                    calibration=kw.pop("calibration", "coverage"), fix_gain=kw.pop("fix_gain", True), warp_reg=0.0,
                     warp_warmup_rounds=kw.pop("warp_warmup_rounds", 1), lr_warp=0.2,
                     cov_grid=5, cov_bandwidth=0.5, cov_lambda_max=kw.pop("cov_lambda_max", 5.0),
                     cov_tau_local=2.0, cov_tau_peer=2.0, **kw)
@@ -1026,7 +1028,7 @@ def test_coverage_borrow_gradient_reaches_only_the_warp():
     with tempfile.TemporaryDirectory() as d:
         tr = _cov_trainer(d)
         tr.cov["ready"] = True
-        tr.cov["z"] = [0, 0.6, 0.8, 0.9, 1]
+        tr.cov["z"] = [[0, 0.6, 0.8, 0.9, 1]]
         tr.load_client("c0")
         tr.model.zero_grad(set_to_none=True)
         lam = torch.tensor(tr.cov["lambda"]["c0"]).clamp_min(1.0)
@@ -1052,7 +1054,7 @@ def test_coverage_training_keeps_gain_one_and_private_warps():
         assert "z" not in h[0] and not h[0]["borrow_active"]       # round 0: warps frozen, no target
         assert "z" in h[1] and not h[1]["borrow_active"]           # first trained values -> table
         assert h[2]["borrow_active"] and "borrow_loss" in tr.history[2]["clients"]["c0"]
-        z = tr.cov["z"]
+        z = tr.cov["z"][0]
         assert z[0] == 0 and z[-1] == 1 and all(b >= a for a, b in zip(z, z[1:]))
         assert tr.cov["updates"] == 2 and tr.cov["ready"]
 
@@ -1083,6 +1085,176 @@ def test_coverage_save_resume_and_eval_round_trip():
             _cov_trainer(d2, rounds=1).fit()
             with _raises(ValueError, match="lambda_max"):
                 _cov_trainer(d2, rounds=2, cov_lambda_max=1.0).maybe_resume()
+
+
+
+# ------------------------------------------------------------ per-layer warps (warp_scope)
+
+def test_warp_scope_builds_one_warp_per_layer():
+    from fedsteer.warp import WarpBank
+    n_mod = len(list(steer_layers(tiny_model())))
+    m = tiny_model(warp="kumaraswamy_mix")                       # model scope: names unchanged
+    assert not isinstance(m.steer_control.warp, WarpBank)
+    assert {n for n, _ in m.named_parameters() if n.startswith("steer_control.warp.")} == {
+        "steer_control.warp.log_p", "steer_control.warp.log_q", "steer_control.warp.w_logit"}
+    m = tiny_model(warp="kumaraswamy_mix", warp_scope="module")
+    assert len(m.steer_control.warp) == n_mod
+    assert sorted({mod.warp_idx for _, mod in steer_layers(m)}) == list(range(n_mod))
+    m = tiny_model(warp="kumaraswamy_mix", warp_scope="block")   # tiny model: 2 blocks
+    assert len(m.steer_control.warp) == 2
+    for name, mod in steer_layers(m):
+        assert mod.warp_idx == int(name.split(".layers.")[1].split(".")[0])
+    m = tiny_model(warp="none", warp_scope="module")             # no warp: scope is ignored
+    assert not isinstance(m.steer_control.warp, WarpBank)
+    with _raises(ValueError, match="warp_scope"):
+        tiny_model(warp="kumaraswamy_mix", warp_scope="layerz")
+
+
+def test_per_layer_warps_identity_at_init_and_independent():
+    a = tiny_model(warp="kumaraswamy_mix")
+    b = tiny_model(warp="kumaraswamy_mix", warp_scope="module")
+    randomize_lora(a), randomize_lora(b)
+    ids = torch.tensor([[1, 5, 9, 2]])
+    for al in (0.0, 0.3, 1.0):                                    # identical at init
+        assert torch.allclose(logits(a, ids, al), logits(b, ids, al), atol=1e-5)
+    ctl = b.steer_control
+    _randomize_warp(ctl.warp.bank[3], 7)                          # change ONE layer's warp
+    y = torch.zeros(1, 4)
+    with ctl.use_alpha(0.4):
+        c3, c0 = ctl.coef_for(y, 3), ctl.coef_for(y, 0)
+    assert abs(float(c0) - 0.4) < 1e-6 and abs(float(c3) - 0.4) > 1e-3
+    with ctl.use_alpha(1.0):                                      # endpoints stay fixed per layer
+        assert abs(float(ctl.coef_for(y, 3)) - 1.0) < 1e-5
+    assert not torch.allclose(logits(a, ids, 0.4), logits(b, ids, 0.4), atol=1e-6)
+    with ctl.use_alpha(0.4), _raises(ValueError, match="warp index"):
+        ctl.coef_for(y)
+
+
+def test_per_layer_warps_get_their_own_gradients():
+    m = tiny_model(warp="kumaraswamy_mix", warp_scope="module")
+    randomize_lora(m)
+    with m.steer_control.use_alpha(torch.tensor([0.3, 0.7])):
+        m(input_ids=torch.tensor([[1, 5, 9, 2], [3, 4, 6, 8]]), labels=torch.tensor([[1, 5, 9, 2], [3, 4, 6, 8]])).loss.backward()
+    g = torch.stack([w.log_p.grad for w in m.steer_control.warp.bank])
+    assert torch.isfinite(g).all() and (g != 0).sum() > len(g) // 2
+    assert len(set(round(float(x), 8) for x in g)) > 1            # layers are not tied
+
+
+def test_per_layer_warps_in_federated_modes():
+    for calib in ("private", "shared"):
+        with tempfile.TemporaryDirectory() as d:
+            tr = _trainer("fedavg", d, warp="kumaraswamy_mix", warp_scope="module", rounds=2,
+                          warp_warmup_rounds=1, lr_warp=0.2, calibration=calib)
+            tr.fit()
+            n = len(tr.model.steer_control.warp)
+            if calib == "private":
+                st = tr.clients["c0"]["gain"]
+                assert sum(k.startswith("steer_control.warp.bank.") for k in st) == 3 * n
+                lp = torch.stack([st[f"steer_control.warp.bank.{l}.log_p"] for l in range(n)])
+                assert len(set(lp.tolist())) > 1                  # per-layer warps differ
+                assert not any(k.startswith("steer_control") for k in tr.server)
+            else:
+                assert sum(k.startswith("steer_control.warp.bank.") for k in tr.server) == 3 * n
+            desc = tr.history[-1]["clients"]["c0"]["warp"]
+            assert desc["scope"] == "module" and desc["n_warps"] == n and "curve_min" in desc
+            snap = torch.load(os.path.join(d, "snapshots", "round_0002.pt"), weights_only=False)
+            m = tiny_model(warp="kumaraswamy_mix", warp_scope="module")
+            load_snapshot_into(m, snap, "c1")
+            src = snap["server"] if calib == "shared" else snap["clients"]["c1"]["gain"]
+            k = "steer_control.warp.bank.5.log_q"
+            assert torch.equal(dict(m.named_parameters())[k].detach().cpu(), src[k])
+
+
+def test_per_layer_warps_with_coverage_borrowing():
+    with tempfile.TemporaryDirectory() as d:
+        tr = _cov_trainer(d, rounds=3, warp_scope="module")
+        n = len(tr.model.steer_control.warp)
+        assert tr.cov["n_warps"] == n and np.asarray(tr.cov["z"]).shape == (n, 5)
+        tr.fit()
+        z = np.asarray(tr.cov["z"])
+        assert z.shape == (n, 5) and np.all(z[:, 0] == 0) and np.all(z[:, -1] == 1)
+        assert np.all(np.diff(z, axis=1) >= 0)
+        assert len({tuple(np.round(r, 8)) for r in z}) > 1       # one table per layer, not tied
+        last = tr.history[-1]
+        assert "z_min" in last["coverage"] and "values_max" in last["coverage"]
+        assert "borrow_loss" in last["clients"]["c0"]
+        tr2 = _cov_trainer(d, rounds=4, warp_scope="module")
+        assert tr2.maybe_resume() and np.allclose(tr2.cov["z"], z)
+        with _raises(ValueError, match="warp_scope"):
+            _cov_trainer(d, rounds=4).maybe_resume()               # model scope vs saved bank
+
+
+
+# --------------------------------------------- consensus calibration (NR-56: tie in support)
+
+def test_consensus_weights_tie_only_where_data_and_saturate():
+    from fedsteer.coverage import saturating_weights
+    w = saturating_weights({"a": np.array([0.0, 100.0, 10000.0])}, tau=100.0, scale=2.0)
+    assert np.allclose(w["a"], [0.0, 1.0, 2.0 * 10000 / 10100])
+    with tempfile.TemporaryDirectory() as d:
+        tr = _cov_trainer(d, calibration="consensus")
+        for c in ("c0", "c1"):
+            cnt, lam = np.asarray(tr.cov["counts"][c]), np.asarray(tr.cov["lambda"][c])
+            assert np.all(lam[cnt == 0] == 0) and np.all(lam[cnt > 0] > 0)      # no tie off support
+            assert np.all(np.asarray(tr.cov["pool_weights"][c]) < 1.0)            # saturating pool
+        assert tr.cov["mode"] == "consensus" and tr.cov["pool"] == "saturating"
+
+
+def test_table_map_interpolates_per_layer():
+    m = tiny_model(warp="kumaraswamy_mix", warp_scope="block")
+    ctl = m.steer_control
+    grid = [0.0, 0.5, 1.0]
+    ctl.set_table(grid, [[0.0, 0.2, 1.0], [0.0, 0.8, 1.0]])
+    y = torch.zeros(3, 4)
+    with ctl.use_alpha(torch.tensor([0.25, 0.5, 0.75])):
+        assert torch.allclose(ctl.coef_for(y, 0).reshape(-1), torch.tensor([0.1, 0.2, 0.6]))
+        assert torch.allclose(ctl.coef_for(y, 1).reshape(-1), torch.tensor([0.4, 0.8, 0.9]))
+    with ctl.use_alpha(1.0):
+        assert abs(float(ctl.coef_for(y, 1)) - 1.0) < 1e-6
+    with _raises(ValueError, match="increasing"):
+        ctl.set_table(grid, [[0.0, 0.6, 1.0], [0.0, 0.5, 0.9]])
+    with _raises(ValueError, match="shape"):
+        ctl.set_table(grid, [[0.0, 0.5, 1.0]])
+    ctl.set_table(None)
+    with ctl.use_alpha(0.3):                                    # back to the (identity) warps
+        assert abs(float(ctl.coef_for(y, 0)) - 0.3) < 1e-6
+
+
+def test_consensus_trains_local_warps_and_infers_with_table():
+    with tempfile.TemporaryDirectory() as d:
+        tr = _cov_trainer(d, rounds=3, calibration="consensus", warp_scope="module")
+        tr.fit()
+        n = tr.control.n_warps()
+        z = np.asarray(tr.cov["z"])
+        assert z.shape == (n, 5) and np.all(np.diff(z, axis=1) >= 0)
+        assert "tie_loss" in tr.history[2]["clients"]["c0"] and "borrow_loss" not in tr.history[2]["clients"]["c0"]
+        assert set(tr.history[2]["coverage"]["support_gap"]) == {"c0", "c1"}
+        tr.load_client("c0", inference=False)                 # training: own warps
+        assert tr.control._table is None
+        tr.load_client("c0")                                  # monitor / evaluation: g-bar
+        assert tr.control._table is not None
+        y = torch.zeros(1, 4)
+        with tr.control.use_alpha(0.5):
+            got = float(tr.control.coef_for(y, 7))
+        assert abs(got - z[7, 2]) < 1e-5                      # grid point 0.5 of layer 7's table
+        snap = torch.load(os.path.join(d, "snapshots", "round_0003.pt"), weights_only=False)
+        m = tiny_model(warp="kumaraswamy_mix", warp_scope="module")
+        load_snapshot_into(m, snap, "c1")
+        with m.steer_control.use_alpha(0.5):
+            assert abs(float(m.steer_control.coef_for(y, 7)) - z[7, 2]) < 1e-5
+        load_snapshot_into(m, snap, "c1", use_table=False)    # diagnostic: client's own warps
+        assert m.steer_control._table is None
+        with m.steer_control.use_alpha(0.5):
+            own = float(m.steer_control.coef_for(y, 7))
+        assert abs(own - float(m.steer_control.warp.bank[7](torch.tensor(0.5)))) < 1e-6
+    with tempfile.TemporaryDirectory() as d:                  # a non-consensus snapshot clears the table
+        tr = _trainer("fedavg", d, warp="kumaraswamy_mix", rounds=1)
+        tr.fit()
+        snap = torch.load(os.path.join(d, "snapshots", "round_0001.pt"), weights_only=False)
+        m = tiny_model(warp="kumaraswamy_mix")
+        m.steer_control.set_table([0.0, 1.0], [[0.0, 1.0]])
+        load_snapshot_into(m, snap, "c0")
+        assert m.steer_control._table is None
 
 
 if __name__ == "__main__":

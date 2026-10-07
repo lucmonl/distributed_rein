@@ -97,3 +97,17 @@ def pooled_target(values: dict[str, np.ndarray], counts: dict[str, np.ndarray],
         "uncovered": [int(k) for k in np.flatnonzero(~covered)],
     }
     return m, z, diag
+
+
+# --------------------------------------------------------------------------- consensus mode
+# ``fed.calibration: consensus`` (NR-56): the reverse of borrowing.  Each client is tied to the
+# server table only WHERE IT HAS DATA, nothing outside its support; inference uses the table
+# (g-bar) for every client, so a client's out-of-support warp values are never used.
+
+def saturating_weights(counts: dict[str, np.ndarray], tau: float, scale: float = 1.0
+                       ) -> dict[str, np.ndarray]:
+    """scale * c / (tau + c): ~1 wherever a client has much nearby data, 0 where it has none,
+    so one dense client cannot dominate a pooled value (equal-client spirit)."""
+    if tau <= 0:
+        raise ValueError("tau must be positive")
+    return {c: scale * v / (tau + v) for c, v in counts.items()}

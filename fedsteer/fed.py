@@ -29,6 +29,10 @@ keeps everything about the attribute shared and only house style private (P_i).
 nonlinear warp per client, plus a borrowing term that pulls each warp toward a server table
 of count-weighted, monotone-projected warp values on a common grid, wherever the client has
 little nearby data and its peers have much.  Warp parameters are never averaged.
+``consensus`` (NR-56) is the reverse: each private warp is tied to the server table only
+where the client HAS data (weight lambda_max * c/(tau + c), none outside its support); the
+table g-bar is pooled from the clients' in-support values with saturating weights c/(tau + c);
+at inference every client uses g-bar (linear interpolation of the table), never its own warp.
 
 Ablation (orthogonal to mode): ``fix_gain`` (A1: s_i = 1).
 """
@@ -85,11 +89,15 @@ class FedConfig:
     warp_reg: float = 1e-2           # weight of mean (h(a) - a)^2 penalty toward the identity
     adapter: str = "private"         # private | shared (A2) | none
     calibration: str = "private"     # private | shared | coverage (plan 2.1: private warps + borrowing)
+                                     # | consensus (NR-56: tie in support, g-bar at inference)
     cov_grid: int = 11               # coverage: K common grid points a_k, including 0 and 1
     cov_bandwidth: float = 0.2       # coverage: triangular-kernel half-width b of the counts c_ik
     cov_lambda_max: float = 1.0      # coverage: maximum weight of the borrowing term
     cov_tau_local: float = 100.0     # coverage: local-need factor is 1/2 at c_ik = tau_local
     cov_tau_peer: float = 100.0      # coverage: peer-evidence factor is 1/2 at R_ik = tau_peer
+    cov_pool: str = "auto"           # server pooling weights: count | saturating (c/(tau_pool+c));
+                                     # auto = count for coverage, saturating for consensus
+    cov_tau_pool: float = 100.0      # saturating pooling: weight 1/2 at c_ik = tau_pool
     share_private: bool = False      # deprecated alias for adapter: shared
     aggregation: str = "uniform"     # uniform | size
     server_lr: float = 1.0           # new = old + server_lr * (avg - old)
@@ -139,7 +147,7 @@ class FedSteerTrainer:
         if self.adapter not in ("private", "shared", "none"):
             raise ValueError(f"unknown adapter mode {cfg.adapter}")
         self.calibration = cfg.calibration
-        if self.calibration not in ("private", "shared", "coverage"):
+        if self.calibration not in ("private", "shared", "coverage", "consensus"):
             raise ValueError(f"unknown calibration mode {cfg.calibration}")
         if self.calibration == "shared" and cfg.mode == "local":
             raise ValueError("calibration=shared is undefined in local mode (nothing is aggregated); "
@@ -183,7 +191,7 @@ class FedSteerTrainer:
         self.round = 0
         self.history: list[dict] = []
         self.cov: Optional[dict] = None
-        if self.calibration == "coverage":
+        if self.calibration in ("coverage", "consensus"):
             self._check_coverage_config()
             self.cov = self._init_coverage(client_examples)
             with open(os.path.join(out_dir, "coverage.json"), "w") as f:
@@ -205,8 +213,10 @@ class FedSteerTrainer:
             problems.append("full participation only (clients_per_round = 0)")
         if float(self.control.u.detach()) != 0.0:
             problems.append("gain parameter u must be 0 (s = 1) at initialization")
+        if self.cfg.cov_pool not in ("auto", "count", "saturating"):
+            problems.append(f"unknown cov_pool {self.cfg.cov_pool!r}")
         if problems:
-            raise ValueError("calibration=coverage: " + "; ".join(problems))
+            raise ValueError(f"calibration={self.calibration}: " + "; ".join(problems))
 
     def _init_coverage(self, client_examples: dict[str, list[dict]]) -> dict:
         """Grid, evidence counts c_ik from each client's actual training subset (once), the
@@ -215,10 +225,18 @@ class FedSteerTrainer:
         grid = cov.make_grid(cfg.cov_grid)
         counts = {c: cov.evidence_counts([e["alpha"] for e in client_examples[c]], grid, cfg.cov_bandwidth)
                   for c in self.client_ids}
-        lam = cov.borrow_weights(counts, cfg.cov_lambda_max, cfg.cov_tau_local, cfg.cov_tau_peer)
+        if self.calibration == "consensus":       # tie only where the client has data
+            lam = cov.saturating_weights(counts, cfg.cov_tau_local, cfg.cov_lambda_max)
+        else:                                     # borrow where local data is thin, peers' rich
+            lam = cov.borrow_weights(counts, cfg.cov_lambda_max, cfg.cov_tau_local, cfg.cov_tau_peer)
+        pool = cfg.cov_pool if cfg.cov_pool != "auto" else ("saturating" if self.calibration == "consensus"
+                                                           else "count")
+        pool_w = counts if pool == "count" else cov.saturating_weights(counts, cfg.cov_tau_pool)
         n_warps = int(self.control.warp_on(torch.tensor(grid, dtype=torch.float32,
                                                         device=self.control.warp._device())).shape[0])
         return {
+            "mode": self.calibration, "pool": pool, "tau_pool": cfg.cov_tau_pool,
+            "pool_weights": {c: v.tolist() for c, v in pool_w.items()},
             "grid": grid.tolist(), "bandwidth": cfg.cov_bandwidth, "lambda_max": cfg.cov_lambda_max,
             "tau_local": cfg.cov_tau_local, "tau_peer": cfg.cov_tau_peer,
             "counts": {c: v.tolist() for c, v in counts.items()},
@@ -243,9 +261,15 @@ class FedSteerTrainer:
             st.update(get_gain_state(self.model))      # gain u, offset o, warp parameters
         return st
 
-    def load_client(self, cid: str, shared: Optional[dict] = None) -> None:
-        """Put client ``cid`` into the model (for training or evaluation)."""
+    def load_client(self, cid: str, shared: Optional[dict] = None, inference: bool = True) -> None:
+        """Put client ``cid`` into the model (for training or evaluation).  With
+        calibration=consensus, ``inference`` (the default: monitor, evaluation) applies the
+        server table g-bar; training passes inference=False to use the client's own warps."""
         c = self.clients[cid]
+        if self.calibration == "consensus" and inference:
+            self.control.set_table(self.cov["grid"], self.cov["z"])
+        else:
+            self.control.set_table(None)
         if self.adapter == "private":
             load_state(self.model, c["private"])
         if self.calibration != "shared":
@@ -349,7 +373,7 @@ class FedSteerTrainer:
                         # / grad_accum so it counts once per optimizer step
                         borrow = (lam * (self._warp_on_grid() - z_target) ** 2).mean()
                         total = total + borrow / cfg.grad_accum
-                        borrows.append(borrow.item())
+                        borrows.append(borrow.item())   # consensus: the in-support tie term
                     if self.reg.any_penalty():
                         terms = penalty_terms(self.reg, self.layers, self.control, anchors,
                                               gain_trainable, offset_active)
@@ -383,7 +407,8 @@ class FedSteerTrainer:
             if penalties:
                 out["warp_penalty"] = sum(penalties) / len(penalties)
         if borrows:
-            out["borrow_loss"] = sum(borrows) / len(borrows)          # weighted term, as optimized
+            key = "tie_loss" if self.calibration == "consensus" else "borrow_loss"
+            out[key] = sum(borrows) / len(borrows)                    # weighted term, as optimized
         if reg_vals:
             out["reg"] = {k: sum(v) / len(v) for k, v in reg_vals.items()}   # unweighted term values
         return out
@@ -401,7 +426,7 @@ class FedSteerTrainer:
         uploads, weights, stats, deltas = [], [], {}, []
         curves: dict[str, np.ndarray] = {}
         for cid in selected:
-            self.load_client(cid)
+            self.load_client(cid, inference=False)
             before = self._server_state_from_model()   # server state, or own direction in local mode
             self._load_opt(cid)
             stats[cid] = self._local_train(cid)
@@ -459,7 +484,7 @@ class FedSteerTrainer:
             out["values_max"] = {c: rnd(v.max(0)) for c, v in curves.items()}
         if self.round < self.cfg.warp_warmup_rounds:
             return out                                  # warps were frozen: no trained teacher yet
-        counts = {c: np.asarray(self.cov["counts"][c]) for c in curves}
+        counts = {c: np.asarray(self.cov.get("pool_weights", self.cov["counts"])[c]) for c in curves}
         prev = np.asarray(self.cov["z"])
         ms, zs, adj_max, adj_sq = [], [], 0.0, []
         for l in range(prev.shape[0]):                  # each layer's warp is pooled on its own
@@ -469,6 +494,13 @@ class FedSteerTrainer:
             adj_max = max(adj_max, diag["proj_adjust_max"])
             adj_sq.append(diag["proj_adjust_wrms"] ** 2)
         self.cov["z"] = [z.tolist() for z in zs]
+        # how far each client's warps are from the new table where it has data (saturating
+        # weights; mean over layers): the train/inference mismatch of consensus
+        zt = np.asarray(self.cov["z"])
+        sat = {c: np.asarray(v) / (self.cfg.cov_tau_pool + np.asarray(v))
+               for c, v in self.cov["counts"].items()}
+        out["support_gap"] = {c: round(float((np.abs(v - zt) * sat[c]).sum(1).mean() / sat[c].sum()), 5)
+                              for c, v in curves.items()}
         self.cov["ready"] = True
         self.cov["updates"] += 1
         out.update(**summary("raw", ms), **summary("z", zs), proj_adjust_max=adj_max,
@@ -564,11 +596,14 @@ class FedSteerTrainer:
         self.cov = saved
 
 
-def load_snapshot_into(model, snapshot: dict, client: str, shared: Optional[dict] = None) -> None:
+def load_snapshot_into(model, snapshot: dict, client: str, shared: Optional[dict] = None,
+                       use_table: bool = True) -> None:
     """Configure ``model`` as client ``client`` of a saved run (evaluation helper).
 
     ``shared`` overrides the direction, e.g. a merged direction or a direction from
     another run attached to this client's private model (portability tests).
+    For calibration=consensus runs the alpha map is the server table g-bar (the method's
+    inference rule); ``use_table=False`` uses the client's own warps instead (diagnostic).
     """
     cs = snapshot["clients"][client]
     fc = snapshot["fed_config"]
@@ -586,6 +621,11 @@ def load_snapshot_into(model, snapshot: dict, client: str, shared: Optional[dict
         load_state(model, {k: v for k, v in snapshot["server"].items() if k.startswith("steer_control.")})
     else:
         load_state(model, cs["gain"])
+    cov_state = snapshot.get("coverage")
+    if fc.get("calibration") == "consensus" and use_table:
+        model.steer_control.set_table(cov_state["grid"], cov_state["z"])
+    else:
+        model.steer_control.set_table(None)
     if shared is None:
         shared = cs["shared_local"] if fc["mode"] == "local" else snapshot["server"]
         shared = {k: v for k, v in shared.items() if k.endswith("lora_B_d")}

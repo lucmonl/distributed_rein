@@ -1,0 +1,64 @@
+{
+ "hosts": {
+  "cc": null,
+  "anvil": "x-zchen17@anvil.rcac.purdue.edu"
+ },
+ "races": [
+  {
+   "name": "nr54_layer_shared",
+   "group": "NR54",
+   "copies": {
+    "cc": "11190971",
+    "anvil": "21156782"
+   }
+  },
+  {
+   "name": "nr54_layer_private",
+   "group": "NR54",
+   "copies": {
+    "cc": "11190972",
+    "anvil": "21156783"
+   }
+  },
+  {
+   "name": "nr54_layer_cov_l0p01",
+   "group": "NR54",
+   "copies": {
+    "cc": "11190973",
+    "anvil": "21156784"
+   }
+  },
+  {
+   "name": "nr54_layer_cov_l0p1",
+   "group": "NR54",
+   "copies": {
+    "cc": "11190974",
+    "anvil": "21156785"
+   }
+  },
+  {
+   "name": "nr54_layer_cov_l1",
+   "group": "NR54",
+   "copies": {
+    "cc": "11190975",
+    "anvil": "21156786"
+   }
+  },
+  {
+   "name": "nr56_consensus_l0p1",
+   "group": "NR54",
+   "copies": {
+    "cc": "11191900",
+    "anvil": "21157477"
+   }
+  },
+  {
+   "name": "nr56_consensus_l1",
+   "group": "NR54",
+   "copies": {
+    "cc": "11191901",
+    "anvil": "21157510"
+   }
+  }
+ ]
+}

@@ -3176,3 +3176,125 @@ Analysis only; no code or jobs. Inputs: the round-100 test evals of A, B and C0.
 - (iv) Use a local, piecewise-linear warp on the grid, so that in-support and out-of-support are actually decoupled.
 - (v) Weight pooling by agreement or identifiability, not by raw count.
 - (vi) Evaluate in a setting with real gaps: α windows, rotation 2, or the E2 coverage protocol.
+
+## NR-54. Per-layer calibration functions (`lora.warp_scope`) implemented; NR-46/49 suite rerun with one warp per adapted matrix (2026-10-06)
+
+**Finding (user question).** In every run so far, all adapted matrices of a client shared **one** calibration function. `SteerControl` held a single `warp`, and every `SteerLinear` computed its coefficient from it, so g_{i,l} = g_i for all 112 layers of Llama-3.2-1B. This includes NR-46/49 and every earlier private/shared warp run.
+
+**Change.** New `SteerLoraConfig.warp_scope`:
+- `model` is the default and the original: one warp per client. Parameter names and checkpoints are unchanged.
+- `block`: one warp per transformer block.
+- `module`: one warp per adapted matrix.
+- Implementation:
+  - `fedsteer/warp.py`: `WarpBank`, a ModuleList of ordinary warps of the same kind, identity at init, parameters `steer_control.warp.bank.<l>.*`. `describe()` returns the mean curve over layers plus its min/max.
+  - `fedsteer/lora.py`: `warp_indices()`; each `SteerLinear` stores `warp_idx` and calls `coef_for(y, warp_idx)`; `SteerControl.warp_on(x)` returns [n_warps, len(x)].
+  - The warp parameters keep the `steer_control.warp.` prefix, so their optimizer group, privacy, and averaging (shared mode) are unchanged.
+- **Coverage mode with a bank:**
+  - The server keeps **one table per layer** (`cov["z"]` is [n_warps][K]) and pools/projects each layer separately.
+  - Counts c_ik and λ_ik stay per grid point, because they depend only on the data.
+  - The borrowing loss is the mean over layers and grid points, so its scale matches the single-warp case.
+  - Logs show the mean table/curves over layers plus min/max (`z_min`, `values_max`, …). The full per-layer tables are in snapshots and `state.pt`.
+  - Resume converts old 1-D tables and rejects a changed `warp_scope`.
+- **Tests:** 5 new ones (`test_warp_scope_*`, `test_per_layer_warps_*`), covering bank sizes per scope, identity at init, independence (changing one layer's warp moves only that layer's coefficient), separate gradients, private/shared federated modes, the snapshot/eval round trip, and coverage with per-layer tables plus resume checks. The existing coverage tests were adapted to the 2-D table. **65/65 pass.** `fedsteer/evaluate.control_state` checked with a bank.
+- Files: `fedsteer/warp.py`, `fedsteer/lora.py`, `fedsteer/fed.py`, `tests/test_fedsteer.py`.
+
+**Jobs.** The NR-46/49 suite is rerun with `lora.warp_scope=module`; everything else is identical (Llama-3.2-1B, rotation 0, 4k per client, 100 rounds, gain 1, no offset, warp_reg 0). Launch [NR-54_per_layer_calibration.sh](launch/NR-54_per_layer_calibration.sh). Each client now has 112 warps (336 warp parameters). Adam normalizes per parameter, so each layer's warp moves at the old single-warp speed.
+
+| Arm | cc | Anvil | Run dir prefix |
+|---|---|---|---|
+| A shared (each layer's warp averaged) | 11190971 | 21156782 | `runs/nr54_layer_shared` |
+| B private | 11190972 | 21156783 | `runs/nr54_layer_private` |
+| C λ_max = 0.01 | 11190973 | 21156784 | `runs/nr54_layer_cov_l0p01` |
+| C λ_max = 0.1 | 11190974 | 21156785 | `runs/nr54_layer_cov_l0p1` |
+| C λ_max = 1 | 11190975 | 21156786 | `runs/nr54_layer_cov_l1` |
+| C λ_max = 10 | 11190976 | 21156787 | `runs/nr54_layer_cov_l10` |
+
+- Race watcher pid **418266** on cc-login1, running the fixed `race_watch.py` (NR-52). Spec `exp_log/launch/NR-54_race.json`, log `sbatch/logs/race_NR-54.log`, `--min_running_s 1200`. All six arms are one group.
+- cc copies exclude the Turing and V100 scavenger nodes (NR-50).
+- **Analysis plan:** compare each per-layer arm with its single-warp counterpart (NR-46/49) and with A. The questions are whether per-layer shapes give the in-support gain that a single private warp did not (NR-52/53), and whether B's nypost.com collapse changes when layers can bend differently.
+- **Other job states:**
+  - NR-50 C10 replacement: both copies COMPLETED (cc 11179850, Anvil 21140719); not yet analysed.
+  - The old C10 11174461 (Turing) is still RUNNING; cancelling it is the user's call.
+
+## NR-55. Cancellations (user, 2026-10-06)
+
+- **11174461** (NR-46 C10, single warp, on the Turing node ccc0234; NR-50) was cancelled while RUNNING at 13 h 24 m, around round 30. Its dev evaluations up to that point stay in `runs/nr46_cal_coverage_l10_20261006-090112_j11174461`. The λ_max = 10 single-warp result comes from the completed replacement (cc 11179850 / Anvil 21140719).
+- **NR-54 λ_max = 10 arm dropped:** cc 11190976 and Anvil 21156787 were cancelled while PENDING. NR-54 continues with five arms: A, B, and C λ_max ∈ {0.01, 0.1, 1}. The race watcher (pid 418266) treats the cancelled pair as decided.
+
+## NR-56. Consensus calibration (`fed.calibration: consensus`): tie in support, ḡ at inference; two arms launched (2026-10-06)
+
+**Design (user, after NR-53).** The reverse of §2.1's borrowing:
+- **Training:** each client keeps its own warps g_{i,l} (per layer) in the forward pass. They are tied to the server table ḡ **only where the client has data**, with λ_ik = λ_max · c_ik/(τ_local + c_ik), and there is no penalty outside the support. Out-of-support values of g_i are used neither in training (no data) nor at inference.
+- **Server:** ḡ is pooled per layer from the clients' grid values with **saturating** weights c_ik/(τ_pool + c_ik) instead of raw counts, so one dense client cannot dominate (cf. NR-52's contaminated high-α table). It is then projected to be monotone, with endpoints 0/1.
+- **Inference:** every client (and a future new client) uses ḡ, read by linear interpolation of the table. This applies to the in-training monitor (so dev selection follows the inference rule) and to `load_snapshot_into` (test evaluation).
+- **What it is:** a shared calibration with coverage-aware, function-space aggregation. It differs from A, which averages warp *parameters* uniformly and resets each client's copy every round.
+- **What it cannot change:** fixed endpoints (43% of the error, NR-53) and out-of-support response differences.
+
+**Implementation.**
+- `fedsteer/coverage.py`: `saturating_weights`.
+- `fedsteer/lora.py`: `SteerControl.set_table(grid, z)` / `_table_map`. The table is not a parameter; it is validated as increasing with endpoints 0/1, and has one row per warp.
+- `fedsteer/fed.py`:
+  - The `consensus` mode shares the coverage checks (gain 1, no offset, nonlinear warp, fedavg, full participation).
+  - New `cov_pool` (auto | count | saturating; auto = count for coverage, unchanged, and saturating for consensus) and `cov_tau_pool`.
+  - `load_client(..., inference=True)` applies ḡ; the training loop passes `inference=False`.
+  - Logs: `tie_loss` per client, and `coverage.support_gap` per client (saturating-weighted mean |g_i − ḡ| over its data, mean over layers), which is the train/inference mismatch.
+  - `load_snapshot_into(..., use_table=True)` sets ḡ for consensus snapshots and clears it for all others.
+- `eval_direction.py --local_warp` evaluates a consensus run with the clients' own warps instead (diagnostic; output tag `_localwarp`).
+- `e2_heldout.py` and `e3_drift.py --refit_k` refuse consensus runs.
+- **Tests:** 3 new (weights tie only where there is data and saturate; table interpolation per layer plus validation; consensus trains with own warps, infers with ḡ, snapshot round trip, `use_table=False`, non-consensus snapshots clear the table). Coverage helper extended. One existing test needed `getattr(args, "local_warp", False)` in `eval_direction.evaluate_snapshot`. **68/68 pass.**
+
+**Jobs.** Same as NR-54 (Llama-3.2-1B, rotation 0, 4k per client, 100 rounds, gain 1, no offset, warp_reg 0, `lora.warp_scope=module`), plus `fed.calibration=consensus fed.cov_grid=21 fed.cov_pool=saturating`, b = 0.2, τ_local = τ_pool = 100. Launch [NR-56_consensus_calibration.sh](launch/NR-56_consensus_calibration.sh).
+
+| Arm | cc | Anvil | Run dir prefix |
+|---|---|---|---|
+| consensus, λ_max = 0.1 | 11191900 | 21157477 | `runs/nr56_consensus_l0p1` |
+| consensus, λ_max = 1 | 11191901 | 21157510 | `runs/nr56_consensus_l1` |
+
+- **Race:** the NR-54 watcher (pid 418266) was stopped by hand while every NR-54 copy was still PENDING. It was replaced by pid **528716** with spec `exp_log/launch/NR-54-56_race.json`: the five live NR-54 arms plus the two NR-56 arms in **one group**, so all per-layer runs land on one host. The log is still `sbatch/logs/race_NR-54.log`.
+- Code was synced to Anvil before submission. The still-pending NR-54 jobs will snapshot this code at start; other modes are unchanged by it, since the table is cleared for non-consensus runs.
+- **Compare against:** NR-54 per-layer A (shared) and B (private) on test, per client, in- and out-of-support. Also report `support_gap` at the end of training, and a dev eval with `--local_warp` to measure what using g_i instead of ḡ would change.
+
+## MATH-12. Results: answer-in-prompt G0/G2 (Delta, 40 GB A100s) and the original-prompts reference E1-fed (dtai) (2026-10-06, 23:15) [delta+dtai]
+
+**Race (MATH-11):**
+- Delta won G0 and G2. They started 18:21 / 18:22, and the watcher cancelled the dtai twins and dtai's G1 at 18:43, after 20 minutes of running.
+- Delta G1 22705844 is PENDING (G2 done). The E1 pairs (dtai 3316650/51, Delta 22703349/50) and the dtai base reference 3316652 are still PENDING.
+- **The 40 GB fix holds on real hardware:** G0 22703346 ran on gpua079 and G2 22703347 on gpua087, both `A100-SXM4-40GB`. Peaks: train 22.07 / 24.18 GiB, test eval 21.72 / 22.05–22.76 GiB (allocated / reserved). 0 nan-guard events.
+
+**Answer-in-prompt G0 / G2** (`math` client; `scripts/math_gate_report.py --data data/math_fed_ans/data.jsonl`; runs `runs/math7_ans_g0_sft_qwen25_7b_*_j22703346`, `runs/math7_ans_g2_single_qwen25_7b_*_j22703347`):
+- **G0: PASS** (format). Accuracy 1.00 on the 50 shared problems. That is expected with the answer given; the only base number to hand (0.72) comes from a run *without* the answer and is not comparable (the answer-in-prompt base, dtai 3316652, is still queued).
+- **G2, test (round 60 selected): pct err 0.253** (gate < 0.20: FAIL); in-support 0.263, out-of-support 0.237; **Spearman 0.797** (original prompts: 0.712); concordance 0.855; adjacent-decrease rate 0.223. **gain = 4.0, pinned at the clamp `gain_max`.**
+
+| α | target tokens | generated median (IQR) | pct err | acc |
+|---|---|---|---|---|
+| 0 | 77 | 254 (208–330) | 0.224 | 0.98 |
+| 0.25 | 292 | 380 (307–513) | 0.283 | 0.98 |
+| 0.5 | 403 | 480 (343–610) | 0.261 | 0.99 |
+| 0.75 | 530 | 494 (345–694) | 0.244 | 0.98 |
+| 1 | 1,024 | 590 (435–734) | 0.251 | 0.98 |
+
+- **Accuracy is now flat across α** (0.96–1.00, vs. 0.62 → 0.50 on the original prompts), so the answer-in-prompt setting removed the solve-the-problem confound.
+- **The range is still compressed** (254 → 590 vs. 77 → 1,024), slightly wider at the top than on the original prompts (279 → 511).
+- Dev pct err 0.365 / 0.278 / 0.255 / 0.258 / 0.267 at rounds 20–100: a plateau from round 60. Dev loss rises after round 20 (0.296 → 0.42).
+- The gain pinned at 4 is the clearest sign yet that the clamp limits the range (MATH-6 had it at ≈ 3.4–3.8).
+
+**Reference E1-fed, original prompts** (dtai 3311356, COMPLETED after 23 h 07 min; run `runs/math5_e1_fed_qwen25_7b_20261005-123130_j3311356`; round 80 selected; 0 nan-guard events):
+- Dev pct err 0.339 / 0.301 / 0.278 / 0.263 / 0.268 at rounds 20–100 (Spearman 0.50 → 0.82 → 0.77).
+- **Test: pct err 0.263** (worst client 0.334); **in-support 0.159** (worst 0.192); **out-of-support 0.326** (worst 0.402); Spearman 0.788 (worst 0.604); **reach rate 0.164**; shared gain 2.88 (not pinned). Accuracy 0.511; boxed 0.984; truncated 0.006.
+
+| client | pct err | in | out | Spearman | reach |
+|---|---|---|---|---|---|
+| cn_k12 / Logic | 0.210 | 0.142 | 0.255 | 0.911 | 0.267 |
+| gsm8k | 0.265 | 0.134 | 0.353 | 0.841 | 0.143 |
+| orca_math / Algebra | 0.315 | 0.186 | 0.402 | 0.604 | 0.070 |
+| cn_k12 / Inequalities | 0.195 | 0.153 | 0.258 | 0.880 | 0.110 |
+| cn_k12 / Geometry | 0.219 | 0.190 | 0.262 | 0.842 | 0.170 |
+| math | 0.252 | 0.192 | 0.342 | 0.811 | 0.180 |
+| olympiads | 0.334 | 0.134 | 0.384 | 0.675 | 0.160 |
+| aops_forum | 0.312 | 0.141 | 0.355 | 0.743 | 0.215 |
+
+- **Inside each client's own support the federated knob is well calibrated (0.159). Outside it, it is no better than a constant output (0.326 vs. 0.30)**, and only 16% of out-of-support outputs leave the client's own range.
+- That is the C1 question, and it cannot be judged without the local partner, which was cancelled at the user's request in MATH-7 (not started).
+- Caveat: for broad clients, out-of-support α are mostly the endpoints 0 and 1, whose targets are the dataset's extremes (77 / 1,024 tokens), the same compression as in G2.
+
+**Synthesis.** Three runs on two backbones and both prompt settings show the same compressed output range (≈ 250 → 510–590 tokens). Calibration is good inside each client's data range and fails at the extremes and out of support. The next test is the gain clamp (`lora.gain_max=16`), on the answer-in-prompt single-client G2 where the gain is pinned at 4. A G2 run takes ≈ 4 h on a Delta A100.

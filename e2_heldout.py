@@ -89,7 +89,7 @@ def main():
     settings = split_list(args.settings)
     assert set(settings) <= set(SETTINGS), settings
     shared_cal = fc.get("calibration", "private") == "shared"
-    if fc.get("calibration") == "coverage":
+    if fc.get("calibration") in ("coverage", "consensus"):
         # plan 2.1: the server table is not a new client's warp, and the private-calibration path
         # here would also train the gain, which coverage fixes at 1
         raise SystemExit("calibration=coverage runs need their own held-out-client protocol (plan 2.1)")

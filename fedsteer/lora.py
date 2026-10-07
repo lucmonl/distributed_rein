@@ -90,6 +90,35 @@ class SteerControl(nn.Module):
         self.log_max = math.log(gain_max)
         self.warp = warp if warp is not None else AlphaWarp()
         self._alpha: Optional[torch.Tensor] = None
+        # inference map of fed.calibration=consensus: a monotone table (grid [K], z [n_warps, K])
+        # read by linear interpolation in place of the client's own warp(s); not a parameter
+        self._table: Optional[tuple[torch.Tensor, torch.Tensor]] = None
+
+    def n_warps(self) -> int:
+        return len(self.warp) if isinstance(self.warp, WarpBank) else 1
+
+    def set_table(self, grid=None, z=None) -> None:
+        """Use the table g-bar (one row per warp) as the alpha -> h map; ``None`` clears it."""
+        if grid is None:
+            self._table = None
+            return
+        g = torch.as_tensor(grid, dtype=torch.float32, device=self.u.device)
+        t = torch.as_tensor(z, dtype=torch.float32, device=self.u.device)
+        t = t.unsqueeze(0) if t.dim() == 1 else t
+        if t.shape != (self.n_warps(), len(g)):
+            raise ValueError(f"table shape {tuple(t.shape)} does not match {self.n_warps()} warps x {len(g)} grid points")
+        if not (torch.all(t[:, 0] == 0) and torch.all(t[:, -1] == 1) and torch.all(t.diff(dim=1) >= 0)):
+            raise ValueError("table must be increasing with h(0) = 0 and h(1) = 1")
+        self._table = (g, t)
+
+    def _table_map(self, a: torch.Tensor, warp_idx: Optional[int]) -> torch.Tensor:
+        g, t = self._table
+        row = t[0 if warp_idx is None else warp_idx].to(a.device)
+        g = g.to(a.device)
+        x = a.float().clamp(0.0, 1.0)
+        k = torch.searchsorted(g, x.contiguous(), right=True).clamp(1, len(g) - 1)
+        x0, x1, y0, y1 = g[k - 1], g[k], row[k - 1], row[k]
+        return y0 + (x - x0) / (x1 - x0) * (y1 - y0)
 
     def gain(self) -> torch.Tensor:
         return torch.exp(torch.clamp(self.u, self.log_min, self.log_max))
@@ -127,7 +156,9 @@ class SteerControl(nn.Module):
         if self._alpha is None:
             raise RuntimeError("alpha is not set; wrap the forward in `control.use_alpha(...)`")
         a = self._alpha.to(device=y.device)
-        if warped:
+        if warped and self._table is not None:
+            a = self._table_map(a, warp_idx)
+        elif warped:
             if isinstance(self.warp, WarpBank):
                 if warp_idx is None:
                     raise ValueError("a per-layer warp bank needs the calling layer's warp index")

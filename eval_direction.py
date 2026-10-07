@@ -53,7 +53,7 @@ def evaluate_snapshot(model, fmt, snap_path, shared, by_client, clients, quantil
     snap = torch.load(snap_path, map_location="cpu", weights_only=False)
     results = {}
     for c in clients:
-        load_snapshot_into(model, snap, c, shared=shared)
+        load_snapshot_into(model, snap, c, shared=shared, use_table=not getattr(args, "local_warp", False))
         remap_recs = remap_by_client[c][: args.remap_prompts] if remap_by_client is not None else None
         results[c] = evaluate_loaded_client(
             model, fmt, by_client[c][: args.max_prompts], alphas, score, quantiles[c],
@@ -81,6 +81,9 @@ def main():
     ap.add_argument("--remap_split", default="dev")
     ap.add_argument("--remap_grid", type=int, default=11, help="alphas probed on the calibration split")
     ap.add_argument("--remap_prompts", type=int, default=50)
+    ap.add_argument("--local_warp", action="store_true",
+                    help="calibration=consensus runs: use each client's own warps instead of the server "
+                         "table g-bar (diagnostic of the train/inference mismatch)")
     ap.add_argument("--suffix", default="", help="appended to output file names, e.g. test200")
     ap.add_argument("--out", default=None, help="output file (single snapshot only)")
     args = ap.parse_args()
@@ -136,6 +139,7 @@ def main():
         tag += f"_{os.path.basename(args.shared).removesuffix('.pt')}" if args.shared else ""
         tag += "" if args.split == "test" else f"_{args.split}"
         tag += "_remap" if args.posthoc_remap else ""
+        tag += "_localwarp" if args.local_warp else ""
         tag += f"_{args.suffix}" if args.suffix else ""
         out = args.out or os.path.join(args.run, "evals", f"eval_{tag}__{stamp}.json")
         if os.path.exists(out):
