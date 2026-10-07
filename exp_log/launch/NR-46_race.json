@@ -1,0 +1,7 @@
+{"hosts": {"cc": null, "anvil": "x-zchen17@anvil.rcac.purdue.edu"},
+ "races": [
+  {"name": "A_shared",     "group": "NR46", "copies": {"cc": "11174458", "anvil": "21122589"}},
+  {"name": "B_private",    "group": "NR46", "copies": {"cc": "11174459", "anvil": "21122590"}},
+  {"name": "C1_coverage",  "group": "NR46", "copies": {"cc": "11174460", "anvil": "21122591"}},
+  {"name": "C10_coverage", "group": "NR46", "copies": {"cc": "11174461", "anvil": "21122592"}}
+ ]}

@@ -4,11 +4,13 @@
 # race with dtai (exp_log/launch/exp40_math_qwen25_7b.sh). Same overrides. 7B -> 80 GB+ GPUs only
 # (gpuA100x8, gpuH200x8; gpuA100x4 is 40 GB, about the 7B's ~40 GB peak measured on dtai).
 # Sync first: scripts/sync_to_delta.sh   Run on cc-login1 (SSH master to delta-login2).
+# 10-06 (MATH-10): gpuA100x8 is A100-SXM4-40GB, not 80 GB as assumed; the 7B OOMs there, so Delta
+# copies use --partition=gpuH200x8 only.
 set -e
 MODEL="model_name=Qwen/Qwen2.5-7B-Instruct"
 ONE="$MODEL clients=[math] fed.rounds=100 fed.save_every=10 monitor.full_every=20 monitor.full_prompts=50 monitor.full_batch_size=64"
 E1="$MODEL fed.rounds=100 fed.save_every=10 monitor.full_every=20 monitor.full_prompts=20 monitor.full_batch_size=64"
-P="--partition=gpuA100x8,gpuH200x8"
+P="--partition=gpuH200x8"
 timeout 300 ssh -o BatchMode=yes delta-login2 "cd /u/lucmon/rein && \
 G0=\$(sbatch --parsable --job-name=math4_g0_sft_delta $P \
   --export=ALL,CONFIG=configs/math_fedavg.yaml,GPU_LOG=1,EVAL_BATCH=64,OVERRIDES=\"$ONE fed.lr_shared=0 out_dir=runs/exp40_g0_sft_qwen25_7b\" \

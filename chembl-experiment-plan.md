@@ -469,3 +469,234 @@ MOL-14 must be re-checked against the new per-client gains, and the unscorable-s
 across arms, since under a penalised metric an arm can win by failing less rather than by
 calibrating better. No win would mean the shortcut removal does not change the conclusion, and
 ChEMBL's role reduces to C2/portability with C1 tested on Newsroom — the §3.3 reading.
+
+
+### 2026-10-06 — Exp45 pruned pair completed: local still leads, sharing benefit unproven
+
+**Runs:** Anvil FED **21102995**, LOCAL **21102996**. Both logs show
+`configs/chembl_deco_skew_pruned.yaml`, the same client sample counts and strict scorer;
+local changes `fed.mode=local`. The configuration uses private calibration in both arms,
+100 rounds and seed 0. Dev selection uses `pct_calib_err_penalized`; the selected checkpoints
+are FED r100 and LOCAL r80. No additional training or algorithm changes were made for this analysis.
+
+This supersedes the preceding submission-status entry. **The matched, cleaned-data comparison
+has not established a federated advantage.** The earlier calibration-sharing confound and the
+post-hoc strict-score win on Exp43 are insufficient explanations of the new result. Cleaning
+was necessary for a well-defined parent-ligand task; it did not make the shared-direction
+method outperform local in this run.
+
+| Selected test metric | FED | LOCAL |
+|---|---:|---:|
+| Percentile error, complete scorable sweeps | 0.207377 | **0.197065** |
+| In-support error, complete scorable sweeps | 0.170150 | **0.164085** |
+| Out-of-support error, complete scorable sweeps | 0.244470 | **0.227660** |
+| All-cell percentile error, failure penalty 1 (selection metric) | 0.210637 | **0.207778** |
+| Unscorable sweep rate | **0.019556** | 0.046407 |
+| Spearman | 0.825169 | **0.842031** |
+| Achieved percentile range | 0.498166 | **0.535229** |
+| Adjacent tie rate | 0.430609 | **0.385090** |
+
+The all-cell gap is **0.002859** (~1.36% of FED's error), smaller than the complete-sweep
+calibration gap **0.010312** (~4.97%). Local trades more failures for better calibration on
+scorable sweeps. The in/out-support figures above are conditional metrics and must not be
+called failure-penalized in/out-support errors. Local wins on 7/8 clients' conditional overall
+errors (CHEMBL243 is effectively tied), 6/8 all-cell errors, 6/8 in-support errors and 5/8
+out-of-support errors. No significance claim is made from these single-seed logs.
+
+| Client | FED all-cell error | LOCAL all-cell error | FED conditional OOS | LOCAL conditional OOS |
+|---|---:|---:|---:|---:|
+| CHEMBL243 | 0.2813 | 0.3075 | 0.2821 | 0.2844 |
+| CHEMBL204 | 0.2218 | 0.2061 | 0.2307 | 0.1890 |
+| CHEMBL325 | 0.1994 | 0.1701 | 0.2196 | 0.1782 |
+| CHEMBL2835 | 0.2213 | 0.2154 | 0.2609 | 0.2696 |
+| CHEMBL4078 | 0.1944 | 0.1748 | 0.2332 | 0.2194 |
+| CHEMBL2039 | 0.1575 | 0.1492 | 0.2428 | 0.2032 |
+| CHEMBL240 | 0.1696 | 0.2067 | 0.1931 | 0.1995 |
+| CHEMBL228 | 0.2398 | 0.2323 | 0.2934 | 0.2780 |
+
+**Behavioral finding: the federated response is narrower, mainly on the high side.** From the
+logged complete-sweep mean percentile curves, the equal-client mean response at alpha 0 is
+approximately 0.287 FED / 0.285 LOCAL; at alpha 1 it is 0.785 FED / 0.820 LOCAL. FED has more
+adjacent ties. These aggregate curves are conditional on different complete-sweep subsets;
+they support an under-reaching/saturation diagnosis, not a causal decomposition of it.
+For example, CHEMBL204's achieved means at requested `[0, .25, .5, .75, 1]` are:
+
+- FED: `[.171, .292, .462, .602, .710]`.
+- LOCAL: `[.192, .353, .533, .696, .814]`.
+
+The effect is not confined to CHEMBL4078. CHEMBL325 has all-cell error .1994 FED / .1701 LOCAL;
+CHEMBL2039 has .1575 / .1492. Conversely, FED's all-cell error is substantially better on
+CHEMBL243 (.2813 / .3075) and CHEMBL240 (.1696 / .2067). Local's missing-side performance
+is not uniformly better either: using the logged rounded endpoint means to remove the
+opposite endpoint from OOS error gives CHEMBL243 high-side error approximately .3095 FED /
+.3108 LOCAL and CHEMBL228 low-side error .3921 / .3720. These are derived conditional means,
+not common-valid-prompt comparisons or bootstrap results.
+
+**Checkpoint selection is not the sole explanation.** At the same completed rounds 20/40/60/80/100,
+FED dev conditional error is .246/.222/.209/.207/.205 and LOCAL is
+.216/.211/.196/.190/.197. At round 100 their training losses are .0625/.0641 and dev losses
+are .4519/.4366. Both fit their training data strongly; FED did not simply receive less training.
+
+**What remains plausible, not established:** forcing all private client models to share one
+weight direction can lose useful client-specific adaptations. Token-prediction training does
+not isolate a purely attribute-only direction, and private calibration fitted on local data
+does not by itself impose correct response curves in locally sparse regions. Sharing the
+matrix therefore provides a possible transfer mechanism, not guaranteed coverage transfer.
+Near-zero update cosines are a diagnostic, not proof of destructive interference. Gains are
+.606–.956 FED vs 1.191–1.544 LOCAL, but the effective product is gain × direction; comparing
+gains without direction norms cannot establish the cause of the narrower output range.
+
+**The cleaned dataset still has soft support.** On its stored global reference, CHEMBL4078's
+1,073 train examples span alpha approximately [.0970, .9975], with 27 below .25 and 89 above
+.75, despite its reported central-90% support [.3000, .7982]. CHEMBL243 retains 17 examples
+above .75; CHEMBL228 retains 12 below .25. Pruning removes disconnected-fragment shortcuts,
+not tail examples. These results therefore test sparse-region generalization, not exclusively
+transfer into truly unseen recipient regions.
+
+**Next discriminating checks:** (1) establish uncertainty using multiple matched seeds and
+paired per-prompt all-cell errors; (2) separate optimization from the sharing constraint—the
+trainer's `reset_shared_opt_state=True` resets direction Adam state in fedavg mode but not in
+local mode, so a matched optimizer-state ablation is informative; (3) evaluate interior alpha
+regions absent from a recipient but demonstrably covered by donors, with the reference fixed
+before constructing the split. A coverage-aware calibration variant, if tested, is a new
+hypothesis and must be evaluated prospectively against local, not assumed to explain away
+this result. Do not change the scoring definition to recover a federated win.
+
+**Evidence/limits:** analysis uses the two supplied Anvil logs and the pruned dataset reference.
+Their raw Anvil generation grids/snapshots were not found in the local workspace, so this entry
+does not claim a new molecule-by-molecule audit or a paired confidence interval. Locally present
+cc duplicate artifacts belong to different executions and were not substituted for these jobs.
+Machine-readable extracted results: [Exp45 comparison](exp_log/reports/exp45_pruned_comparison.json).
+
+### 2026-10-06 — Exp45 per-client pattern: coverage, endpoint response and failures
+
+Expanded the same Anvil pair into a [per-client analysis](exp_log/reports/exp45_per_client_analysis.md),
+with [structured results](exp_log/reports/exp45_per_client_analysis.json) and
+[response curves](exp_log/reports/exp45_per_client_curves.png). Checked extracted client metrics
+against both source logs, training score lists against the stored CDFs, and reconstructed
+central-90% support against logged values. No training or scoring changes.
+
+- Local's strongest conditional overall wins are CHEMBL325, CHEMBL204, CHEMBL4078 and
+  CHEMBL2039. These clients show fewer adjacent response ties and higher achieved percentiles
+  at requested alpha 1. FED wins the penalty-1 metric on CHEMBL243 and CHEMBL240, chiefly
+  through fewer unscorable sweeps (2.0% vs 14.7%, and 1.3% vs 11.3%, respectively).
+- CHEMBL204, CHEMBL325 and CHEMBL2039 contribute **91.2% of the net macro OOS advantage**
+  for local. All have broad training coverage, with actual alpha minima near zero and maxima
+  near one. Thus the main OOS advantage is not evidence of extrapolation from a hard narrow
+  training interval.
+- For **five clients** (204, 325, 2835, 2039, 240), the only OOS test alphas are `{0,1}`.
+  Their conditional OOS error is exactly `(1 - pct_range) / 2`, where `pct_range` is the mean
+  achieved endpoint difference. Verified numerically for both runs. Response span and OOS
+  performance on these clients are therefore the same evidence, not independent findings.
+- CHEMBL243 has 1,274/1,554 training examples below .25 and only 17 above .75. At requested
+  alpha 1, achieved means are .638 FED / .614 LOCAL: neither reaches the high target well.
+  CHEMBL228 has 700/1,146 above .75 and only 12 below .25. At requested alpha 0, achieved
+  means are .495 / .475: local's small improvement still leaves poor low-side performance.
+  CHEMBL4078 is concentrated in the middle (957/1,073 in [.25,.75)), but retains 27 low-tail
+  and 89 high-tail examples; local's win there is under sparse tails, not absent tails.
+- No simple sample-size explanation: local wins on the smallest client (2039, 643 records)
+  and also on 204 (2,876), while FED wins on the largest (240, 3,535). CHEMBL2835 improves
+  in-support but worsens OOS under local; 2039 and 228 show the opposite tradeoff.
+
+**Interpretation:** local often fits a broader client-specific response, while FED improves
+reliability on two clients. The strongest one-sided recipients remain difficult for both.
+These observations are consistent with restricted response under a shared direction but do
+not establish its cause; the optimizer-state difference remains an ablation to test. A fixed-CDF
+recipient interior-alpha holdout with donor coverage would more directly test sharing benefits.
+All curves/errors except penalty-1 scores condition on each model's own complete scorable
+sweeps. This is one seed and dev-selected checkpoints differ; no paired significance test or
+new individual-molecule audit is claimed.
+
+### 2026-10-06 — What coverage calibration can diagnose or repair
+
+Reviewed `federated-steering-plan.md` §2.1 against `fedsteer/warp.py` and the coverage
+loss in `fedsteer/fed.py`. The augmentation is a plausible **joint-training regularizer**,
+not an established remedy for Exp45 and not a post-hoc endpoint correction.
+
+- With frozen P_i/D, gain 1 and no offset, W_i(0)=W_0+P_i and
+  W_i(1)=W_0+P_i+D for every admissible warp. Changing the warp cannot change either
+  endpoint or the continuous set of coefficient values available in [0,1]. In the historical
+  learned-gain runs the high endpoint is W_0+P_i+s_i D; gain is an additional unresolved
+  factor. Exp45 endpoint differences exclude a pure warp-shape-only explanation at frozen
+  parameters, but cannot distinguish direction orientation, effective magnitude, or adapter
+  co-adaptation. Five clients' OOS metric tests only these endpoints.
+- During training, calibration changes the coefficients at which supervised examples train
+  P_i and D. The coverage loss directly updates only warp parameters, but subsequent NLL
+  updates of P_i/D change. It can therefore improve endpoints indirectly. Conversely, a
+  donor's useful coefficient need not be useful on a recipient's different adapter/prompts;
+  matching warp values is not matching generated attributes.
+- NR-48 in `exp_log/EXPERIMENT_LOG.md` reports suggestive evidence for this coupling on
+  Newsroom: at round 20, nypost's alpha-0 mean percentile is .55 with private warps versus
+  .36 with coverage borrowing. Since h(0)=0, the endpoint change reflects a different
+  trained private adapter. The proposed division of attribute signal between P_i and D is
+  a mechanism hypothesis, not established by those aggregate outputs. This is single-seed
+  interim Newsroom evidence, not a ChEMBL result or proof of superiority to shared calibration.
+
+**Discriminating diagnostics, not yet executed:** freeze each selected P_i/D (and historical
+gain), sweep the coefficient directly, and fit a client-level monotone remapping on dev,
+evaluating error and strict validity on held-out prompts. Improvement within the original
+coefficient interval measures available calibration headroom. A separately labelled wider
+coefficient sweep tests magnitude/offset limitations; improved reach must retain validity.
+Failure to find useful responses leaves a P_i/D response-path limitation, not proof that D
+alone is poor. Then compare matched gain-1, no-offset joint-training arms with/without
+coverage borrowing and local-only, controlling shared-optimizer-state resets. Frozen
+calibration cannot test the training-mediated benefit; naive cross-run D/P swaps disrupt
+co-adaptation and do not isolate intrinsic direction quality.
+
+### 2026-10-06 — Coverage-borrowing arms launched (with/without borrowing, local-only, optimizer control)
+
+**Status: submitted, 8 jobs (4 arms × 2 clusters).** Experiment log: `MOL-18`. This runs the
+comparison the preceding entry ends with — "matched gain-1, no-offset joint-training arms
+with/without coverage borrowing and local-only, controlling shared-optimizer-state resets" — and
+runs it **prospectively against local**, which that entry requires. The scoring definition is
+unchanged; NR-48's Newsroom repair is a reason to test the mechanism here, not evidence about it.
+
+All four arms differ in one line only, and follow `federated-steering-plan.md` §2.1 as NR-46 did:
+gain fixed at 1 (`fed.fix_gain=true` ⇒ u = 0, s = exp(0) = 1), no offset, `kumaraswamy_mix` warp,
+identity penalty off (`fed.warp_reg=0`), full participation, `data/chembl_deco_skew_pruned`,
+100 rounds, rotation 0, seed 0, strict scorer at every stage, dev selection on
+`pct_calib_err_penalized`.
+
+| arm | what it isolates | cc | Anvil |
+|---|---|---|---|
+| COV — `calibration=coverage`, λ_max = 1 | borrowing present | 11180420 | 21142036 |
+| PRIV — `calibration=private` | borrowing absent | 11180421 | 21142037 |
+| LOCAL — `mode=local` | the bar the plan sets | 11180422 | 21142038 |
+| NORESET — `reset_shared_opt_state=false` | the Adam-state reset | 11180423 | 21142039 |
+
+COV − PRIV is the borrowing effect; PRIV − NORESET is the optimizer-reset effect that has been
+confounded with sharing in every fed-vs-local comparison so far, because
+`reset_shared_opt_state=True` acts only in fedavg mode (`fed.py:270`). Local mode cannot be made to
+reset without a code change, so the control is a fedavg arm that *keeps* the state. The four arms
+form one race group, so they cannot split across hosts with different RDKit versions.
+
+**These arms are not comparable with Exp45's numbers**, which used a learned gain (.606–.956 FED,
+1.191–1.544 LOCAL). Here gain is 1 in all four. They are comparable with each other.
+
+**Pre-flight measurement that justifies running it.** Borrowing is in an active regime on this
+dataset, and λ_ik lands on the designed gaps rather than spreading uniformly: CHEMBL243 (low
+specialist) borrows at .84–.89 above α 0.8 and ≈.1 below 0.2; CHEMBL228 (high specialist) borrows
+at .82–.93 below 0.2; the middle-only CHEMBL4078 borrows at **both** ends (.92/.83 low, .59/.76
+high); the broad donors CHEMBL240 and CHEMBL204 stay ≤ .34. λ mean .354, and no grid point has zero
+total evidence, so the keep-prior rule is unexercised here as on Newsroom. λ_max = 1 is NR-48's
+value and is untuned for ChEMBL; NR-49's λ sweep informs any follow-up.
+
+This addresses the preceding entry's *training-mediated* question only. The frozen-P_i/D coefficient
+sweep and the fitted monotone remapping it also lists remain unexecuted, and frozen calibration
+cannot test the training-mediated route in any case.
+
+**Reading order when they finish.** COV vs PRIV restricted to each client's borrowed region
+(CHEMBL243 above .75, CHEMBL228 below .25, CHEMBL4078 both ends), since that is where λ is large;
+then COV vs LOCAL, which is the actual bar; then PRIV vs NORESET; then the unscorable-sweep rate per
+arm, because a penalty-1 metric can be won by failing less rather than calibrating better; then the
+logged warps and server table z, to confirm borrowing moved the warps at all. One seed, dev-selected
+checkpoints, so no significance claim — multiple matched seeds remain the preceding entry's item (1).
+
+**Infrastructure defect fixed in passing.** NR-50 found that Quadro RTX 6000 (Turing) nodes run
+these jobs several times slower and closed by noting `sbatch/train_eval_chembl.sbatch` had not been
+fixed. It had not: the cc arms were submitted able to land there, and a Turing copy running 20
+minutes would have satisfied the race watcher and cancelled the Anvil copies in favour of a job that
+cannot finish. `ccc0232–0236` are now excluded in the pending cc jobs and in that sbatch file;
+`ccc0496–0499` are Blackwell, not Turing, and stay available. Measured on this task: Exp45's cc
+duplicate on ccc0235 runs 855 s/round against ~180 s/round on an A100, so 100 rounds exceeds the
+24 h limit and times out before its test evaluation.

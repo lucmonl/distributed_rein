@@ -89,6 +89,10 @@ def main():
     settings = split_list(args.settings)
     assert set(settings) <= set(SETTINGS), settings
     shared_cal = fc.get("calibration", "private") == "shared"
+    if fc.get("calibration") == "coverage":
+        # plan 2.1: the server table is not a new client's warp, and the private-calibration path
+        # here would also train the gain, which coverage fixes at 1
+        raise SystemExit("calibration=coverage runs need their own held-out-client protocol (plan 2.1)")
     bs = fc["batch_size"]
     max_steps = args.max_steps or fc["rounds"] * fc["local_steps"]
     lrs = {"private": fc["lr_private"], "shared": fc["lr_shared"], "gain": fc.get("lr_gain", 1e-2),

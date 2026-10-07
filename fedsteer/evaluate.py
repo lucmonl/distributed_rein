@@ -49,7 +49,7 @@ def control_state(model) -> dict:
 def evaluate_loaded_client(model, fmt, recs: list[dict], alphas: Sequence[float], score: Callable,
                            ref_q, support=None, max_new_tokens: int = 128, batch_size: int = 32,
                            dev_loss: bool = False, remap_recs: Optional[list[dict]] = None,
-                           remap_grid: int = 11) -> dict:
+                           remap_grid: int = 11, loss_batch_size: Optional[int] = None) -> dict:
     """Evaluate the client currently loaded in ``model``.  ``ref_q`` is the CDF that defines
     alpha; ``support`` is (lo, hi) in global mode; ``remap_recs`` enables option F."""
     alphas = list(alphas)
@@ -74,7 +74,9 @@ def evaluate_loaded_client(model, fmt, recs: list[dict], alphas: Sequence[float]
         res["generated_at"] = gen_alphas
     if dev_loss:
         labeled = [dict(r, alpha=ref_q.cdf(r["score"])) for r in recs]
-        res["loss"] = mean_loss(model, fmt, labeled, batch_size=min(batch_size, 16))
+        # the loss materializes full-vocabulary fp32 logits, so it gets its own (smaller) batch:
+        # 16 x ~1.6k tokens x 152k vocab OOMs a 40 GB GPU with a 7B model (math log MATH-11)
+        res["loss"] = mean_loss(model, fmt, labeled, batch_size=loss_batch_size or min(batch_size, 16))
     return res
 
 

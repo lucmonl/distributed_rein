@@ -27,6 +27,7 @@ are appended to --log. Exits when no race has more than one live copy, or after 
 import argparse, json, subprocess, time
 from datetime import datetime
 
+LIVE = {"PENDING", "RUNNING", "COMPLETING", "REQUEUED", None}   # None = host did not answer
 STARTED = {"RUNNING", "COMPLETING", "COMPLETED", "FAILED", "TIMEOUT", "OUT_OF_MEMORY", "NODE_FAIL", "PREEMPTED"}
 
 
@@ -111,8 +112,11 @@ def main():
                     if won:
                         winner = winner or h
             if winner is None:
+                # undecided while a race still has >1 copy that could run: a copy that is RUNNING
+                # but not yet past --min_running_s has not won, so its PENDING twins stay watched
+                # (bug fixed 2026-10-06, NR-52: the watcher used to exit here and both copies ran)
                 live_races += sum(1 for r in members
-                                  if sum(st[(h, j)] in ("PENDING", None) for h, j in r["copies"].items()) > 1)
+                                  if sum(st[(h, j)] in LIVE for h, j in r["copies"].items()) > 1)
                 continue
             for r in members:
                 for h, j in r["copies"].items():
@@ -120,8 +124,9 @@ def main():
                         cancel(h, j, f"{r['name']}: group {g} started on {winner}")
                         for dep in r.get("dependents", {}).get(h, []):
                             cancel(h, dep, f"dependent of cancelled {r['name']} copy")
-        if live_races == 0 and all(
-                sum(st[(h, j)] in ("PENDING", None) for h, j in r["copies"].items()) <= 1 for r in races):
+                    if h != winner and st[(h, j)] in ("PENDING", None) and (h, j) not in cancelled:
+                        live_races += 1          # loser not cancelled yet (host silent / raced): retry
+        if live_races == 0:
             log(args.log, "all races decided; exiting")
             return
         time.sleep(args.interval)

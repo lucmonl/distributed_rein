@@ -5,6 +5,8 @@
 # gradient and counts it). Raced on dtai (ghx4) and Delta (gpuA100x8,gpuH200x8) -- math-CoT is Delta/dtai
 # only -- losers cancelled by scripts/race_watch.py once a copy RUNS (spec MATH-5_race.json).
 # Sync first: scripts/sync_to_delta.sh && scripts/sync_to_delta.sh --host dtai.  Run on cc-login1.
+# 10-06 (MATH-10): gpuA100x8 is A100-SXM4-40GB, not 80 GB as assumed; the 7B OOMs there, so Delta
+# copies use --partition=gpuH200x8 only.
 set -e
 MODEL="model_name=Qwen/Qwen2.5-7B-Instruct"
 ONE="$MODEL clients=[math] fed.rounds=100 fed.save_every=10 monitor.full_every=20 monitor.full_prompts=50 monitor.full_batch_size=64"
@@ -28,7 +30,7 @@ L=\$(sbatch --parsable --job-name=math5_e1_local_$2 $3 --time=2-00:00:00 \
 echo \$G0 \$G2 \$G1 \$F \$L" </dev/null 2>&1 | grep -v OpenSSL
 }
 read T0 T2 T1 TF TL < <(submit dtai-1 dtai "")
-read D0 D2 D1 DF DL < <(submit delta-login2 delta "--partition=gpuA100x8,gpuH200x8")
+read D0 D2 D1 DF DL < <(submit delta-login2 delta "--partition=gpuH200x8")
 echo "dtai:  $T0 $T2 $T1 $TF $TL"; echo "delta: $D0 $D2 $D1 $DF $DL"
 cat > exp_log/launch/MATH-5_race.json <<JSON
 {"hosts": {"delta": "delta-login2", "dtai": "dtai-1"},

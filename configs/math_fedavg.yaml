@@ -43,8 +43,11 @@ fed:
   calibration: shared
   rounds: 30
   local_steps: 20
-  batch_size: 8
-  grad_accum: 1
+  # 4 micro-batches of 2 = the same 8 examples per optimizer step as batch 8 (same stream order), but
+  # full-vocabulary fp32 logits for 2 sequences at a time: batch 8 does not fit a 40 GB A100 with a 7B
+  # model (math log MATH-11)
+  batch_size: 2
+  grad_accum: 4
   lr_private: 0.0002
   lr_shared: 0.0002
   lr_gain: 0.01
@@ -84,4 +87,6 @@ monitor:
   - 0.9
   scorer: cot_tokens
   max_new_tokens: 1280
-  batch_size: 16
+  # per-round dev loss and the dev-loss part of the full eval (min(full_batch_size, 16, batch_size)):
+  # loss batches materialize full-vocabulary fp32 logits, so keep them small for 40 GB GPUs
+  batch_size: 4

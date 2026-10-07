@@ -1,0 +1,7 @@
+{"hosts": {"cc": null, "anvil": "x-zchen17@anvil.rcac.purdue.edu"},
+ "races": [
+  {"name": "COV_borrow_l1",   "group": "EXP46", "copies": {"cc": "11180420", "anvil": "21142036"}},
+  {"name": "PRIV_no_borrow",  "group": "EXP46", "copies": {"cc": "11180421", "anvil": "21142037"}},
+  {"name": "LOCAL_only",      "group": "EXP46", "copies": {"cc": "11180422", "anvil": "21142038"}},
+  {"name": "PRIV_noreset",    "group": "EXP46", "copies": {"cc": "11180423", "anvil": "21142039"}}
+ ]}

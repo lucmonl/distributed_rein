@@ -1,6 +1,6 @@
 # Federated Learning of Steering Directions
 
-Research plan · created 29 September 2026 · **updated 1 October 2026, evening** (after exp-log entries 19–23; see the changelog at the end and `exp_log/EXPERIMENT_LOG.md` for evidence). Supersedes the task and baseline sections of `shared-steering-research-plan.md`.
+Research plan · created 29 September 2026 · **updated 5 October 2026** (coverage-aware calibration augmentation specified in §2.1; see the changelog and `exp_log/EXPERIMENT_LOG.md` for experimental evidence). Supersedes the task and baseline sections of `shared-steering-research-plan.md`.
 
 Status markers: ✅ done · 🔄 running / partial · ⏳ planned, not started · ⚠️ result currently against the claim.
 Sizes, thresholds and schedules are working settings, not results.
@@ -29,6 +29,8 @@ Sizes, thresholds and schedules are working settings, not results.
 
 ## 2. Model: one loss, no phases ✅
 
+**Existing implementation and experimental reference.** This section records the gain-based method used in the reported runs. **The next augmentation is specified in §2.1: gain fixed at 1, no offset, private nonlinear warps, and coverage-weighted sharing of function values.** That augmentation is implemented as `fed.calibration: coverage` (NR-46); its first matched runs are in progress, so it is not yet validated.
+
 Each client i shares the frozen base W_0 and has a private adapter P_i. The server holds the shared direction D. For every adapted weight matrix:
 
 \[
@@ -40,11 +42,11 @@ h \mapsto W_0h + B_i^{P}A_i^{P}h + g(\alpha)\,B^{D}A^{D}h,\qquad g(\alpha)=o+s\,
   - gain s;
   - optional offset o (`lora.offset`);
   - warp h: an increasing map with h(0) = 0, h(1) = 1, starting as the identity. Options (`lora.warp`): `none` | `kumaraswamy` | **`kumaraswamy_mix`** (h = (1−w)α + w[1 − (1 − α^p)^q]) | `step`.
-- **Calibration mode** (`fed.calibration`): `private` (one g per client, fitted on its own data) or **`shared`** (one g for all clients, averaged by the server every round like D). Under the global α scale (below) there is no principled reason for per-client mappings, and the offset's original job (starting a client partway along D) is done by the scale itself. Shared calibration also lets a new client steer without fitting anything but its adapter.
+- **Calibration mode** (`fed.calibration`): `private` (one g per client, fitted on its own data) or **`shared`** (one g for all clients, averaged by the server every round like D). A global α scale motivates shared calibration, but does not imply identical coefficient-to-behavior responses: private adapters and prompt distributions can differ. Shared calibration also lets a new client steer without fitting anything but its adapter.
   - ✅ **Result (exp17, entry 20): shared calibration without offset is the best federated design.** It is best on mean error (0.151 vs. 0.155 private), worst client (0.199 vs. 0.229), out-of-support error, Spearman and near-ties.
     - Shared calibration fixes nypost.com (−0.042).
     - Dropping the offset helps people.com, reuters.com and nypost.com and hurts nobody.
-  - **Proposed default for the method: `calibration: shared`, `offset: false`** (the config default is still private + offset so that earlier runs stay reproducible; to switch once confirmed).
+  - **Experimental reference: `calibration: shared`, `offset: false`** (the config default is still private + offset so that earlier runs stay reproducible). The proposed augmentation in §2.1 will be compared against this reference.
 - **Adapter mode** (`fed.adapter`): `private` (default) | `shared` | `none`.
 - Warm-up: the gain and offset train from round 2, the warp from round 5 (with a penalty toward the identity).
 - **Per-component regularizers** (`reg:` section, all off by default): private-adapter weight decay (low-rank penalty), LoRA dropout, decorrelation of Pᵢ from D, FedProx on D, weight decay on D, priors on the gain and offset.
@@ -83,6 +85,102 @@ h \mapsto W_0h + B_i^{P}A_i^{P}h + g(\alpha)\,B^{D}A^{D}h,\qquad g(\alpha)=o+s\,
 Defaults: E = 20 steps × batch 8, 8 clients per round (full participation), rank 16 for Pᵢ and D, adapters on all attention and MLP projections.
 
 **Scale remark.** D → cD, s → s/c leaves the model unchanged. Normalize ‖B^D A^D‖_F per layer before comparing directions. A client seen at a single α cannot identify D.
+
+### 2.1 Planned augmentation: coverage-aware local nonlinear calibration (2026-10-05) 🔄
+
+**Status (NR-46, 2026-10-05).** Implemented as `fed.calibration: coverage` (`fedsteer/coverage.py`, `fedsteer/fed.py`; 7 CPU tests). Running on Newsroom (Llama-3.2-1B, rotation 0, 4k per client, 100 rounds): arms A (shared warp; the primary comparison), B (private warps), and C with λ_max ∈ {0.01, 0.1, 1, 10} (NR-49), all with gain 1, no offset and `warp_reg=0`; K = 11, b = 0.2, τ_local = τ_peer = 100. Matched local-only and held-out-client (E2) protocols are not yet run. **Result (NR-52, test):** borrowing repairs B's failure (nypost.com 0.265 → 0.188 at λ_max = 0.1; mean 0.167 → 0.155) but only *matches* A (0.154; C0.1 ties A on 8/8 clients). Private warps give no in-support gain over A (B in-support 0.136 = A). Count-weighted pooling at small λ propagates nypost/reuters' collapsed high-α warps into the table. Gain = 1 costs reuters.com vs. the old learned gain (0.214 vs. 0.199).
+
+**Decision and scope.** Fix **s_i = 1** and **o_i = 0** for the augmentation and its matched new baselines. Keep the existing nonlinear warp family; do not introduce splines in this first implementation. Each client retains its own warp parameters across rounds. The server aggregates **function values on a common grid**, not warp parameters. This section specifies future implementation; historical configs, checkpoints, and results retain their original meaning.
+
+**Model.** For each adapted matrix, with existing LoRA scaling factors understood:
+
+\[
+W_i(\alpha)=W_0+P_i+h_i(\alpha;\theta_i)D,
+\qquad D=B^DA^D,\qquad g_i=h_i.
+\]
+
+Use the existing `kumaraswamy_mix` form initially:
+
+\[
+h_i(\alpha)=(1-w_i)\alpha+w_i\left[1-(1-\alpha^{p_i})^{q_i}\right],
+\qquad p_i,q_i>0,\quad w_i\in(0,1).
+\]
+
+Retain its existing parameter transforms, bounds, and identity initialization. Thus h_i is monotone with h_i(0)=0 and h_i(1)=1. The shared D learns steering magnitude; h_i learns the local shape. Equal coefficient endpoints do not guarantee equal generated behavior across clients.
+
+A shared gain can be absorbed exactly into D, and a local-only baseline's gain can be absorbed into its own D_i. Removing these gains loses no representational capacity, although optimizer dynamics and regularization change. Unequal private gains with one shared D cannot all be absorbed; removing them is a restriction relative to that separate design. For checkpoint conversion, a shared gain can multiply every B^D (and local-only gains their respective B_i^D); do not simply discard a non-unit gain while freezing D. New matched runs should start with gain fixed at 1.
+
+**Common evaluation grid.** Define K fixed points a_k=(k-1)/(K-1), k=1,...,K, including 0 and 1. These are evaluation points for the existing nonlinear function, not trainable spline knots and not sampled local labels. A working starting setting is K=11 and bandwidth b=0.2 (two grid spacings); tune on dev data, never test data.
+
+**Local evidence c_ik.** Using only client i's actual training subset after data-budget restrictions, on the common global α scale:
+
+\[
+c_{ik}=\sum_{j=1}^{n_i}\max\left(0,1-\frac{|\alpha_{ij}-a_k|}{b}\right).
+\]
+
+This is a smoothed example count: nearby examples contribute more, and examples at distance b or greater contribute zero. It distinguishes sparse regions and interior gaps that a 5th–95th percentile interval misses. Compute once for a fixed dataset/reference; recompute if either changes. Do not count repeated epochs as new evidence. The count is a proxy for confidence, not an uncertainty estimate or a guarantee that the warp is identifiable. In particular, little variation in α provides weak evidence about shape.
+
+**Server target in function space.** For the first implementation use full participation, matching current defaults. Let v_ik^(t+1)=h_i(a_k;θ_i^(t+1)) be client i's detached values after local training in round t. With C_k=Σ_i c_ik, form
+
+\[
+m_k^{(t+1)}=\frac{\sum_i c_{ik}v_{ik}^{(t+1)}}{C_k}
+\qquad\text{when }C_k>0.
+\]
+
+Clients contribute only where they have nearby data. These count weights apply only to calibration; retain uniform FedAvg for D. Counts deliberately give more calibration weight to more local evidence, unlike the direction's equal-client objective.
+
+Because the contributing clients change across α, the raw weighted mean need not be monotone. Obtain the broadcast table z^(t+1) by weighted isotonic projection:
+
+\[
+\min_z\sum_{k:C_k>0}C_k(z_k-m_k^{(t+1)})^2,
+\quad 0=z_1\le z_2\le\cdots\le z_K=1,
+\quad z_k=z_k^{(t)}\ \text{if }C_k=0.
+\]
+
+Initialize z_k^(0)=a_k. At an uncovered grid point, retain the previous prior; do not fabricate evidence. Keeping uncovered entries fixed can constrain neighboring projected values, so log the projection adjustment. The table need not belong to the Kumaraswamy family: it supplies targets, while each client's inference function remains its nonlinear h_i. No server refit to warp parameters is required.
+
+**Borrowing strength.** Let R_ik=Σ_(ℓ≠i)c_ℓk denote evidence from other clients. Use
+
+\[
+\lambda_{ik}=\lambda_{\max}
+\underbrace{\frac{\tau_{\mathrm{local}}}{\tau_{\mathrm{local}}+c_{ik}}}_{\text{local need}}
+\underbrace{\frac{R_{ik}}{\tau_{\mathrm{peer}}+R_{ik}}}_{\text{peer evidence}},
+\qquad \tau_{\mathrm{local}},\tau_{\mathrm{peer}}>0.
+\]
+
+The peer-evidence factor refines the initial λ_max τ/(τ+c_ik) proposal: borrowing is strong only when local evidence is weak and other clients have evidence. If nobody else covers a point, this term is zero; the retained server value there is only a prior. Both thresholds are smoothed-count scales: the corresponding factor is 1/2 when the evidence equals its threshold. Choose them and λ_max on dev data; they are fixed hyperparameters, not learned warp parameters. For the first round, and while warps remain frozen during warm-up, disable the borrowing term; enable it once a completed round has produced trained warp values. Counts alone do not imply a trained teacher.
+
+**Local training objective.** For round t, keep the broadcast z^(t) fixed and detached throughout the client's local steps:
+
+\[
+\mathcal L_i^{(t)}=
+\frac{1}{n_i}\sum_{j=1}^{n_i}
+\ell\!\left(x_{ij},y_{ij};W_0+P_i+h_i(\alpha_{ij};\theta_i)D\right)
++\frac{1}{K}\sum_{k=1}^{K}
+\lambda_{ik}\left[h_i(a_k;\theta_i)-\operatorname{stopgrad}(z_k^{(t)})\right]^2.
+\]
+
+The first term denotes the existing supervised NLL, estimated with local minibatches using their actual α labels and the current token reduction. The second evaluates the scalar warp on **all common grid points**, including those outside local support; it needs no examples or generated text at those points. Gradients from the second term update only θ_i. Divide by K so changing grid resolution does not arbitrarily multiply the penalty; respect gradient accumulation so it contributes once per optimizer step. At α=0 and 1 the penalty is identically zero because all warps and server targets share the fixed endpoints.
+
+For the initial augmentation comparison, set the existing identity penalty `fed.warp_reg=0` in all matched arms, so the new prior has an interpretable effect; a matched nonzero identity-prior ablation can follow. Keep the existing warp warm-up. Gain warm-up and gain/offset priors have no role with s_i=1 and o_i=0.
+
+**Round protocol and persistence.**
+
+1. Initialize every private warp to the identity, compute c_ik, initialize z^(0) to the identity, and fix gain at 1 with no offset.
+2. Broadcast the current shared D, detached server table z^(t), and the evidence needed to compute λ_ik. Do not overwrite the client's θ_i.
+3. Train P_i, θ_i, and the client's copy of D using the local objective. Preserve private adapter/warp optimizer states; reset shared-direction optimizer state as in current FedAvg.
+4. Upload the updated direction and K detached warp values. Counts can be uploaded once and reused for an unchanged dataset. Average D uniformly; construct the next server table as above. Do not average θ_i or their optimizer states.
+5. Persist the server table, evidence, grid/weighting settings, target-readiness state, and each client's warp/optimizer state for exact resume. At evaluation, load the shared D and the selected client's own warp; use h_i(α) directly for arbitrary α, without a runtime inside/outside switch.
+
+Initial scope is full participation. A later partial-participation extension must define count denominators, teacher freshness, and handling of absent clients explicitly rather than silently mixing stale curve values with fresh uploads.
+
+**Implementation mapping.** Add a distinct opt-in calibration mode (proposed name `coverage`) in `fedsteer/fed.py`; do not change the meaning of `private` or `shared`. Keep warp state with the client, and store the grid target separately in server metadata rather than in the tensor dictionary averaged with D. Reuse `fed.fix_gain=true` and `lora.offset=false` for fresh runs; ensure loading/resume validates u=0 (s=1), because freezing an already nonzero u does not set the gain to 1. Reject incompatible configs/checkpoints clearly. Reuse `fedsteer/warp.py` unchanged for the nonlinear family. Add the grid loss, count computation, projection, logging, export/resume, and evaluation support for the new state.
+
+**Assumptions and limits.** Local data supplies target examples and α labels, not known steering coefficients. Density-weighted pooling assumes that clients' well-supported warp values are useful to one another despite different P_i and prompt distributions. Local D updates also drift before averaging, so uploaded curves refer to related but not identical directions; monitor this and use a common frozen-D diagnostic if needed. Nonlinear parameters affect the whole curve, so local fitting and agreement outside support can compete. Fixing endpoints means shape changes alone cannot extend the coefficient range at frozen D and P_i; MATH-6's compressed output range is therefore not guaranteed to be solved by this augmentation. No-data regions remain extrapolation, and monotone coefficients do not guarantee monotone generated attributes.
+
+**Validation and experiment controls.** Test gain=1 after initialization/load, triangular counts and boundary cases, peer-evidence gating (including one-client/no-evidence cases), weighted pooling and monotone projection, detached targets with gradients reaching only the warp, and save/resume/evaluation round trips. Compare: (A) shared nonlinear warp with gain=1; (B) private nonlinear warps with gain=1, no borrowing; (C) the proposed coverage-aware borrowing. Match D/P capacity, datasets, α reference, training budgets, warm-up, and other regularizers. Compare local-only D_i baselines with gain=1 and private warps but no peer target. A local-only model using a federated target would no longer be a local-only baseline. Use B vs C to isolate calibration borrowing; compare B against local-only to isolate direction sharing. The full C vs local-only comparison changes both sharing mechanisms and must be described as such. Keep old learned-gain runs as historical references, not matched ablations.
+
+Report dense control sweeps, in-support error, genuine gaps separately from thin tails, worst-client error, monotonicity violations, and task quality/validity. Log c_ik, λ_ik, local curves, raw/projected server targets, supervised and borrowing losses, and direction norms. A common frozen-D/P calibration diagnostic isolates curve fitting, but cannot test endpoint reach or replace joint training. Held-out-client initialization and personalization require a separate E2 protocol; do not treat the server table as already being a new client's nonlinear warp.
 
 ---
 
@@ -199,7 +297,7 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 - **A1 (calibration design, entries 38, 40, 41):** ✅ on 1B.
   - **Learned vs. constant:** g(α) = α gives 0.153 vs. 0.151 for the method; it is worse only on reuters.com (+0.018) and the worst client (0.217 vs. 0.199). The learned warp stays near the identity, so the method effectively learns a shared scale (s = 1.93); the scale-only arm learns the same (0.153).
   - **Shared vs. per-client (no offset):** shared 0.151 (worst 0.199) vs. per-client 0.168 (worst 0.320). Per-client gains are small for broad clients (−0.006 to −0.015) but fail for skewed ones (nypost.com +0.143, reuters.com +0.026), because a per-client calibration is fitted only on the client's own support.
-  - **Design kept:** shared calibration, no offset; warp optional.
+  - **Design kept for the reported runs:** shared calibration, no offset; warp optional. **Next planned augmentation:** fixed gain, private nonlinear shapes with coverage-aware function sharing (§2.1).
 - **A2:** shared adapter (`fed.adapter: shared`): one global FedAvg model, nothing personalized; the **non-personalized FL baseline**. ✅ (entry 30) **A trade-off, not a loss:** overall 0.159 vs. 0.151 (worse in-support, 0.177 vs. 0.135), but better out-of-support on 6/8 clients (0.136 vs. 0.161), reach 0.50 vs. 0.39, best worst client (0.176). Private adapters give **no** dev-NLL benefit at their best round (1.081 vs. 1.078) and memorize after round ~50. ✅ **The private adapter is kept: it carries house style** (entry 31). Extractiveness-controlled publication attribution is 0.55 for the method (real summaries 0.59, A2 0.41) and the style-feature gap is 0.11 (A2 0.19). Flat across α, so orthogonal to the steered attribute. Federated ≈ local, so sharing D keeps the style. No adapter (`none`) is not planned: it confounds capacity with personalization.
 - **A3 (optional):** PFL-structured conditional SFT: shared and private LoRA with α as a *text control token* (FedDPA / FedSA-LoRA structure [8, 9]). ⏳ It would strengthen the answer to "isn't this just PFL?", but A2 (non-personalized FedAvg) and the positioning argument carry that answer without it.
 - **Calibration:** private vs. shared vs. **shared without offset** ✅ (entry 20; shared without offset is best). `none` (g = α) is not planned for now.
@@ -282,6 +380,9 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 
 | Date | Change | Evidence (`exp_log/EXPERIMENT_LOG.md`) |
 |---|---|---|
+| 10-05 | **Planned calibration augmentation (§2.1):** s_i=1, no offset, existing private nonlinear warps; aggregate grid values by local evidence and regularize toward the shared table where peer coverage is useful | User design discussion; specification only, not implemented or evaluated |
+| 10-05 | **§2.1 implemented** (`fed.calibration: coverage`); arms A / B / C (λ_max 1, 10) launched on Newsroom, 1B | NR-46 |
+| 10-06 | **§2.1 result:** borrowing (λ_max ≥ 0.1) repairs private warps but only matches the shared warp; no in-support benefit from private shapes | NR-52 |
 | 09-29 | Plan created (local-percentile α, private gain, 2k pairs) | — |
 | 09-29 | Gate G0 passed; Newsroom data built (12 clients, 3 rotations, temporal drift split) | entries 2–3 |
 | 09-29 | Calibration metric → percentile error; Spearman counts no-effect articles; order rate de-emphasized (ties) | entries 4–5 |

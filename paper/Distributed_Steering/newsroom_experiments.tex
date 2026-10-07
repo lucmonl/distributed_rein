@@ -1,0 +1,523 @@
+% Newsroom experiments: settings and positive results.
+% Standalone draft in the ACL review format. Build from this directory:
+%   pdflatex newsroom_experiments && bibtex newsroom_experiments && pdflatex newsroom_experiments && pdflatex newsroom_experiments
+% The two \section blocks between the BEGIN/END markers can be pasted into acl_latex.tex
+% (they need booktabs and amsmath in its preamble).
+%
+% Every number is taken from exp_log/EXPERIMENT_LOG.md and exp_log/reports/ (state of 2026-10-06):
+%   main comparison (1B)          entry 20, reports/qwen3_8b_c1.txt
+%   main comparison (8B)          entry "37. Results: C1 at 8B", reports/qwen3_8b_c1.txt
+%   equal-data 2k pair            entry 15
+%   baselines B1/B3/B4            entry 22
+%   house style                   entry 31 (1B), entry "37. ... C1 at 8B" (8B)
+%   held-out clients (E2)         entries 26, 30, reports/e2_method_run.txt
+%   shared vs per-client calib.   entries 20, 30, 41
+% Results not included (not positive, or not final): E3 drift, the learned-vs-constant gain
+% ablation (entry 40), NR-46 coverage calibration (running), A2's out-of-support advantage
+% (mentioned in one sentence only).
+
+\documentclass[11pt]{article}
+\usepackage[review]{acl}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% Shrink a table to the given width only if it is wider.
+\newsavebox{\fitbox}
+\newcommand{\fitwidth}[2]{\sbox{\fitbox}{#2}%
+  \ifdim\wd\fitbox>#1\resizebox{#1}{!}{\usebox{\fitbox}}\else\usebox{\fitbox}\fi}
+
+\newcommand{\fed}{\textsc{Fed}}
+\newcommand{\loc}{\textsc{Local}}
+\newcommand{\sig}{$^{*}$}
+
+\title{Federated Steering on Newsroom: Experimental Settings and Results}
+
+\author{Anonymous}
+
+\begin{document}
+\maketitle
+
+% ===================================================================== BEGIN
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Task, attribute and clients}
+\label{sec:setup-data}
+
+\paragraph{Task.}
+We study single-document news summarization on Newsroom \citep{grusky-etal-2018-newsroom}, and steer the \emph{extractiveness} of the generated summary.
+Extractiveness is measured by fragment density \citep{grusky-etal-2018-newsroom}.
+Let $\mathcal{F}(A,S)$ be the set of maximal shared token sequences (extractive fragments) between article $A$ and summary $S$.
+Then
+\begin{equation}
+  \mathrm{density}(A,S) = \frac{1}{|S|}\sum_{f\in\mathcal{F}(A,S)} |f|^{2}.
+\end{equation}
+Density is low when a summary rewrites its source, and high when it copies long spans.
+We reimplemented the scorer with a regex tokenizer. Its Spearman correlation with the density values distributed with Newsroom is 0.99.
+Articles are truncated to 400 words, and density is recomputed on the truncated article.
+Pairs whose summary depends on the removed text are dropped.
+The same scorer labels the training data and evaluates generated summaries.
+
+\paragraph{Clients.}
+Each publication is a client.
+We take the 12 publications with at least 5{,}000 usable pairs whose median densities are evenly spaced, from telegraph.co.uk (median 1.3) to nypost.com (32.0).
+Table~\ref{tab:clients} lists them.
+The publications are split into three held-out rotations of four clients, stratified by density.
+All results here use rotation~0: eight \emph{participants} train the shared control mechanism, and four \emph{held-out} clients join afterwards.
+The publications simulate organizations; this is not a deployment involving the publishers.
+
+\paragraph{Splits.}
+Each client has a training pool of up to 5{,}000 pairs, a development split of 100 articles, and a test split of 200 articles taken from Newsroom's official test split (180 for theguardian.com).
+Participants train on 4{,}000 pairs each unless stated otherwise.
+Training, development and test data come from years before each client's latest year, which is held back.
+That later data is not used in the experiments reported here.
+
+\paragraph{Data characteristics.}
+Two properties of the raw data matter for interpretation.
+First, 92\% of nypost.com's raw summaries are its first ${\sim}200$ characters followed by an ellipsis, a fixed format taken from page metadata.
+We keep them, and treat nypost.com as a client with a hard format convention.
+Second, density is partly coupled to length (Spearman 0.64 on the training data), so we report output length as an off-target measure.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \fitwidth{\linewidth}{\begin{tabular}{llrrc}
+    \toprule
+    Publication & Role & Median dens. & Pool & Support \\
+    \midrule
+    forbes.com      & part. & 1.80  & 5{,}000 & [0.03, 0.99] \\
+    theguardian.com & part. & 1.73  & 4{,}705 & [0.04, 0.55] \\
+    people.com      & part. & 2.07  & 5{,}000 & [0.03, 0.70] \\
+    wsj.com         & part. & 5.14  & 5{,}000 & [0.04, 0.89] \\
+    aol.com         & part. & 9.09  & 5{,}000 & [0.06, 0.82] \\
+    cbc.ca          & part. & 9.89  & 5{,}000 & [0.11, 0.95] \\
+    reuters.com     & part. & 20.00 & 4{,}023 & [0.10, 0.97] \\
+    nypost.com      & part. & 32.03 & 5{,}000 & [0.51, 0.95] \\
+    \midrule
+    telegraph.co.uk & held-out & 1.26  & 5{,}000 & [0.02, 0.99] \\
+    bbc.com         & held-out & 2.20  & 4{,}228 & [0.03, 0.79] \\
+    mashable.com    & held-out & 4.88  & 5{,}000 & [0.08, 0.79] \\
+    latimes.com     & held-out & 18.65 & 5{,}000 & [0.11, 0.98] \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Clients of rotation~0. \emph{Median dens.}: median fragment density of the training pool. \emph{Pool}: training pairs available. \emph{Support}: 5th--95th percentile of the client's own data on the shared control scale $\alpha$ (Section~\ref{sec:setup-alpha}). theguardian.com lacks extractive summaries; nypost.com lacks abstractive ones.}
+  \label{tab:clients}
+\end{table}
+
+\subsection{Shared control scale}
+\label{sec:setup-alpha}
+
+A requested level $\alpha\in[0,1]$ is a percentile on a scale shared by all clients.
+Let $a(y)$ be the density of summary $y$ and $F_i$ the empirical distribution of $a$ on participant $i$'s training data.
+The reference distribution is the equal-weight mixture $F=\frac{1}{M}\sum_{i=1}^{M}F_i$ over the $M=8$ participants.
+The server can build $F$ by averaging normalized per-client histograms, so no examples leave a client.
+Every training pair is labelled $\alpha(y)=F(a(y))$, and held-out clients reuse the same $F$.
+Under this scale, $\alpha=0.5$ requests the same behaviour on every client.
+A client's data covers only part of $[0,1]$.
+Its \emph{support} is the interval between the 5th and 95th percentiles of its own labels.
+Requests outside the support are \emph{out-of-support}.
+Values there are scarce in the client's data, although not necessarily absent.
+
+\subsection{Model and federated training}
+\label{sec:setup-model}
+
+\paragraph{Parameterization.}
+Every attention and MLP projection with frozen weight $W_0$ of client $i$ computes
+\begin{equation}
+  y = W_0x + B_i^{P}A_i^{P}x + g(\alpha)\,B^{D}A^{D}x .
+  \label{eq:steerlinear}
+\end{equation}
+$B_i^{P}A_i^{P}$ is a private rank-16 LoRA adapter that never leaves the client.
+$B^{D}A^{D}$ is the shared rank-16 steering direction $D$.
+$A^{D}$ is a random matrix generated from a common seed and kept frozen; only $B^{D}$ is trained, starting at zero.
+Since $A^{D}$ is identical across clients, averaging $B^{D}$ averages the direction products exactly.
+The calibration $g$ maps the requested level to an intervention strength:
+\begin{align}
+  g(\alpha) &= s\,h(\alpha), \\
+  h(\alpha) &= (1-w)\,\alpha + w\bigl[1-(1-\alpha^{p})^{q}\bigr].
+\end{align}
+Here $s=\exp(u)\in[\tfrac14,4]$ is a gain, and $h$ is a monotone map with $h(0)=0$ and $h(1)=1$, initialized at the identity.
+The calibration is \emph{shared}: one $(u,w,p,q)$ for all clients, aggregated with $B^{D}$.
+There is no offset, so $g(0)=0$.
+
+\paragraph{Objective.}
+Each client minimizes the negative log-likelihood of its reference summaries with steering active at the summary's own level,
+\begin{equation}
+  \mathcal{L}_i = \mathbb{E}_{(x,y)\sim S_i}\bigl[-\log p_{W_i(\alpha(y))}(y\mid x)\bigr],
+\end{equation}
+over $B_i^{P}, A_i^{P}$, its copy of $B^{D}$ and the calibration.
+Task adaptation and control are therefore learned in a single loss, and the direction is trained in the presence of the private adapters it must act on.
+
+\paragraph{Federated protocol.}
+We use FedAvg with full participation of the eight participants.
+In each round, every client takes 20 local AdamW steps with batch size 8.
+The server then averages $B^{D}$ and the calibration parameters uniformly across clients, so large clients do not dominate.
+Private adapters and their optimizer states persist across rounds; the optimizer state of shared parameters is reset each round.
+Training runs for 100 rounds.
+Learning rates are $2\times10^{-4}$ for the adapter and direction and $10^{-2}$ for the gain and warp, with 20 warm-up steps.
+The gain is trained from round 2 and the warp from round 5, with a penalty $0.01\cdot\overline{(h(a)-a)^2}$ toward the identity.
+Prompts are truncated to 1{,}024 tokens and targets to 128 tokens.
+
+\paragraph{Backbones.}
+The main backbone is Llama-3.2-1B-Instruct.
+We replicate the participant comparison on Qwen3-8B, with thinking disabled.
+Both use identical data and hyperparameters.
+
+\subsection{Compared methods}
+\label{sec:setup-baselines}
+
+All methods share the backbone, client data, $\alpha$ labels and adapter placement.
+\begin{itemize}
+  \item \textbf{\fed{} (ours).} The method above.
+  \item \textbf{\loc{}.} The same model, loss and step budget, but nothing is aggregated.
+  Each client learns its own direction and its own gain and warp from its own data.
+  \item \textbf{B1: prompting.} On each client's federated model with the direction removed ($B^{D}=0$), the requested level is stated in the prompt as a 0--100 extractiveness target.
+  The prompt has either no examples ($k=0$) or $k=3$ examples from the client's own training data nearest to the target level.
+  We also report $k=3$ on the base model without an adapter.
+  \item \textbf{B3: one-shot merge.} The uniform average of the \loc{} clients' directions, attached to each client's local adapter and calibration.
+  \item \textbf{B4: federated activation steering.} Contrastive activation addition \citep{rimsky-etal-2024-steering}.
+  Each client computes a mean-difference vector at the middle layer between its top- and bottom-quartile summaries, and the server averages these vectors.
+  Each client then fits one gain on 30 development articles, and steering adds $s(2\alpha-1)\,\bar{\lVert h\rVert}\,\hat v$ to the residual stream.
+  Like B1, it runs on the client's model with the direction removed.
+\end{itemize}
+B1 and B4 therefore keep the client's private adapter and change only the control mechanism.
+
+\paragraph{Held-out clients.}
+A new client joins with its first $n$ training pairs, for $n\in\{16, 64, 256, 1024, \text{all}\}$; the subsets are nested.
+Its $\alpha$ labels come from the participants' reference $F$ at no cost.
+We compare four ways for it to obtain control:
+\begin{itemize}
+  \item \textbf{Frozen $D$.} The participants' direction and shared calibration are frozen. The client trains a new private adapter with the participants' objective, i.e.\ with steering active at each pair's level.
+  \item \textbf{Local $D$.} The same objective and number of steps, but the client also learns its own direction and calibration from zero.
+  \item \textbf{Plug-in.} The adapter is trained by plain fine-tuning with steering off, and the frozen direction is attached afterwards.
+  \item \textbf{Prompting.} The plug-in adapter without the direction, with the level in the prompt and three examples drawn from the $n$ pairs.
+\end{itemize}
+All settings take $\mathrm{clip}(\lceil 4n/8\rceil, 200, 2000)$ steps: 200 for $n\le256$, 512 for $n=1024$, and 2{,}000 for the full pool.
+Four epochs match the participants' training budget.
+
+\subsection{Evaluation protocol and metrics}
+\label{sec:setup-eval}
+
+\paragraph{Protocol.}
+During training, every 10th round's checkpoint is evaluated on the development split (100 articles $\times$ 5 levels).
+We select the checkpoint with the lowest mean percentile error and report on test.
+At test time each client generates a summary for each of its test articles at $\alpha\in\{0, 0.25, 0.5, 0.75, 1\}$ with greedy decoding (at most 128 new tokens).
+Client-level metrics are averaged with equal client weights.
+We also report the worst client.
+
+\paragraph{Control.}
+The primary metric is the \emph{percentile error} $\lvert F(a(\hat y_\alpha))-\alpha\rvert$, averaged over articles and levels.
+It is bounded and scale-free.
+A model that always outputs the median scores $0.30$ on this grid, so a useful control must stay below that.
+We split the error into in-support and out-of-support requests.
+\emph{Reach} is the share of out-of-support outputs that leave the client's own support in the requested direction.
+Ordering is measured by the per-article Spearman correlation between $\alpha$ and output density.
+Articles whose output does not change with $\alpha$ count as 0.
+The \emph{near-tie} rate is the share of adjacent levels whose outputs are identical after normalizing quotes, whitespace and a trailing ellipsis, allowing a token-level edit ratio $\geq 0.95$.
+It guards against unchanged outputs that appear steerable, such as truncated leads cut at different positions.
+
+\paragraph{Quality.}
+Extractive summaries are easier to score as faithful, so quality is always compared with \emph{real summaries at the same requested level} (binned by $\alpha$).
+This follows the matched-extractiveness protocol of \citet{ladhak-etal-2022-faithful}.
+We report factual consistency with AlignScore-large \citep{zha-etal-2023-alignscore}, BERTScore F1 against the reference \citep{zhang-etal-2020-bertscore}, and length.
+On 25 articles per client and level, Qwen2.5-7B-Instruct also judges faithfulness at the sentence level, following FineSurE \citep{song-etal-2024-finesure}, and rates relevance and coherence on a 1--5 scale; it is blind to method and level.
+
+\paragraph{House style.}
+To test whether a client's outputs keep its publication's style independently of extractiveness, we train a publication classifier on the participants' real training summaries.
+It is logistic regression on character 2--5-gram and word 1--2-gram TF-IDF features.
+The training set is \emph{density-matched}: within each of five $\alpha$ bins, every publication contributes the same number of summaries (at most 400), so extractiveness cannot identify the publication.
+\emph{Attribution} is the share of a client's in-support outputs that the classifier assigns to its own publication; chance is 0.125.
+We also report a \emph{style-feature gap}, which is lower when outputs are closer to the client's style.
+It is the absolute standardized mean difference between generated summaries and the client's real summaries at a similar level ($\pm0.125$ in $\alpha$), averaged over 11 interpretable features.
+The features are sentence count, words per sentence, word length, quotes, ellipses, parentheses, numerals, capitalized words, first- and second-person pronouns, and question and exclamation marks.
+
+\paragraph{Uncertainty.}
+Method comparisons use the same test articles and levels.
+Per client, we compute a 95\% paired bootstrap interval over articles (4{,}000 resamples) for the difference in percentile error, and count clients whose interval excludes zero.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Collaboration improves control}
+\label{sec:results-c1}
+
+\begin{table*}[t]
+  \centering
+  \small
+  \fitwidth{\linewidth}{\begin{tabular}{llccccccc}
+    \toprule
+    Backbone & Method & Pct.\ err.\ $\downarrow$ (worst) & In $\downarrow$ & Out $\downarrow$ (worst) & Reach $\uparrow$ & Spearman $\uparrow$ & Near-tie $\downarrow$ & Better / worse \\
+    \midrule
+    Llama-3.2-1B & \fed{} & \textbf{0.151} (\textbf{0.199}) & \textbf{0.135} & \textbf{0.161} (\textbf{0.188}) & \textbf{0.387} & \textbf{0.933} & \textbf{0.204} & \textbf{4} / 0 \\
+                 & \loc{} & 0.165 (0.205) & 0.148 & 0.165 (0.249) & 0.363 & 0.906 & 0.246 & 0 / 4 \\
+    \midrule
+    Qwen3-8B     & \fed{} & \textbf{0.156} (0.236) & \textbf{0.130} & \textbf{0.171} (\textbf{0.261}) & \textbf{0.364} & \textbf{0.917} & \textbf{0.201} & \textbf{6} / 1 \\
+                 & \loc{} & 0.177 (\textbf{0.231}) & 0.153 & 0.183 (0.281) & 0.323 & 0.880 & 0.320 & 1 / 6 \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Participants, test set (200 articles per client, 4{,}000 training pairs per client). Percentile error is averaged over clients, with the worst client in parentheses. In/Out: error on in-support and out-of-support requests. \emph{Better / worse}: number of the 8 clients on which the method's overall error is significantly lower / higher than the other row's (95\% paired bootstrap). A constant output scores 0.30.}
+  \label{tab:main}
+\end{table*}
+
+\begin{table*}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \fitwidth{\linewidth}{\begin{tabular}{lcrrrrrrrr}
+    \toprule
+    & & \multicolumn{4}{c}{Llama-3.2-1B} & \multicolumn{4}{c}{Qwen3-8B} \\
+    \cmidrule(lr){3-6}\cmidrule(lr){7-10}
+    Client & Support & \fed{} & \loc{} & $\Delta$ overall & $\Delta$ out & \fed{} & \loc{} & $\Delta$ overall & $\Delta$ out \\
+    \midrule
+    theguardian.com & [0.04, 0.55] & 0.133 & 0.200 & $-0.066$\sig & $-0.101$\sig & 0.127 & 0.227 & $-0.100$\sig & $-0.137$\sig \\
+    nypost.com      & [0.51, 0.95] & 0.177 & 0.205 & $-0.028$\sig & $-0.040$\sig & 0.236 & 0.231 & $+0.005$     & $+0.002$     \\
+    people.com      & [0.03, 0.70] & 0.152 & 0.160 & $-0.008$     & $-0.005$     & 0.146 & 0.169 & $-0.023$\sig & $-0.022$\sig \\
+    aol.com         & [0.06, 0.82] & 0.132 & 0.138 & $-0.006$     & $+0.020$\sig & 0.129 & 0.136 & $-0.008$\sig & $-0.026$\sig \\
+    wsj.com         & [0.04, 0.89] & 0.144 & 0.151 & $-0.007$\sig & $+0.025$\sig & 0.124 & 0.145 & $-0.020$\sig & $-0.005$     \\
+    cbc.ca          & [0.11, 0.95] & 0.143 & 0.152 & $-0.009$\sig & $+0.008$     & 0.129 & 0.151 & $-0.022$\sig & $+0.015$\sig \\
+    reuters.com     & [0.10, 0.97] & 0.199 & 0.192 & $+0.007$     & $+0.028$\sig & 0.221 & 0.202 & $+0.019$\sig & $+0.031$\sig \\
+    forbes.com      & [0.03, 0.99] & 0.129 & 0.125 & $+0.003$     & $+0.029$\sig & 0.133 & 0.157 & $-0.024$\sig & $+0.051$\sig \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Per-client percentile error on test, with paired differences $\Delta=\fed{}-\loc{}$ over all requests (overall) and over out-of-support requests (out); negative favours \fed{}. \sig: 95\% paired bootstrap interval excludes zero. Clients are ordered by the width of their support, narrowest first.}
+  \label{tab:perclient}
+\end{table*}
+
+Table~\ref{tab:main} compares federated training with local training at equal data and steps.
+On Llama-3.2-1B, \fed{} lowers the mean percentile error from 0.165 to 0.151 and the worst-client out-of-support error from 0.249 to 0.188.
+It also increases the per-article Spearman correlation from 0.906 to 0.933 and reduces near-ties from 0.246 to 0.204.
+\fed{} is significantly better than \loc{} on four of eight clients and significantly worse on none.
+On in-support requests alone, it is better on six.
+The result replicates on a second model family and scale.
+On Qwen3-8B, \fed{} reduces the mean error from 0.177 to 0.156 and is significantly better on six of eight clients.
+The 2{,}000-pair setting shows the same direction: 0.162 for \fed{} versus 0.180 for \loc{}, significantly better on six clients.
+That pair used per-client calibration with an offset.
+
+\paragraph{The gains are largest where a client's own data does not cover the request.}
+Table~\ref{tab:perclient} breaks the comparison down by client.
+The largest improvements occur for the two clients missing large parts of the scale, mainly on out-of-support requests.
+theguardian.com has almost no extractive summaries (support $[0.04, 0.55]$).
+Its out-of-support error falls by 0.101 on 1B (95\% CI $[-0.118, -0.084]$) and by 0.137 on 8B.
+nypost.com has almost no abstractive summaries (support $[0.51, 0.95]$).
+On 1B, its out-of-support error falls by 0.040 ($[-0.051, -0.030]$).
+In the 2{,}000-pair pair, theguardian.com's mean output percentile at $\alpha=0,\dots,1$ is $0.18, 0.31, 0.49, 0.75, 0.90$ under \fed{} and $0.11, 0.37, 0.48, 0.57, 0.63$ under \loc{}.
+Its local model stalls near the top of its own data, while the federated model reaches the 90th percentile of the shared scale.
+For clients whose data already spans nearly the whole scale, ``out-of-support'' refers only to the 5\% tails, and \fed{} is slightly worse there (up to $+0.03$ on 1B).
+Collaboration therefore helps most where a client's data has gaps in coverage, consistent with the premise that clients with complementary coverage benefit from a shared direction.
+
+\begin{table*}[t]
+  \centering
+  \small
+  \fitwidth{\linewidth}{\begin{tabular}{lccccccccc}
+    \toprule
+    Method & Err.\ (worst) & In & Out & Reach & Spear. & End.\ NT & AlignScore in / out & Len.\ out & Ours better \\
+    \midrule
+    \fed{} (ours)               & \textbf{0.151} (\textbf{0.199}) & \textbf{0.135} & \textbf{0.161} & \textbf{0.39} & \textbf{0.933} & 0.002 & 0.779 / 0.729 & $+2.3$ & -- \\
+    B3 one-shot merge           & 0.184 (0.229) & 0.149 & 0.220 & 0.26 & 0.878 & 0.009 & 0.788 / 0.708 & $-1.7$ & 7/8 \\
+    B4 federated CAA            & 0.263 (0.317) & 0.212 & 0.312 & 0.22 & 0.752 & 0.000 & 0.594 / 0.476 & $+11.5$ & 7/8 \\
+    B1 prompt, $k=0$            & 0.378 (0.412) & 0.240 & 0.500 & 0.03 & $-0.002$ & 0.704 & 0.648 / 0.650 & $-6.9$ & -- \\
+    B1 prompt, $k=3$            & 0.378 (0.401) & 0.247 & 0.495 & 0.05 & 0.040 & 0.182 & 0.608 / 0.605 & $-7.2$ & 8/8 \\
+    B1 prompt, $k=3$, base & 0.341 (0.355) & 0.243 & 0.467 & 0.12 & 0.077 & 0.000 & 0.609 / 0.631 & $+72$ & -- \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Comparison with alternative control mechanisms (Llama-3.2-1B, test, 4{,}000 pairs per client). \emph{End.\ NT}: share of articles whose outputs at $\alpha=0$ and $\alpha=1$ are near-identical. \emph{Len.\ out}: tokens above real summaries at the same $\alpha$, out-of-support. \emph{Ours better}: clients on which \fed{} has significantly lower error. \emph{base}: base model without the private adapter.}
+  \label{tab:baselines}
+\end{table*}
+
+\paragraph{Iterative federated training is needed, and the learned knob beats simpler control.}
+Table~\ref{tab:baselines} compares the method with alternative control mechanisms.
+Averaging independently learned local directions once (B3) gives an error of 0.184.
+That is worse than both \fed{} and \loc{}, and \fed{} is better on seven of eight clients.
+A merged direction does not match the adapters and calibrations it is attached to.
+Federated activation steering (B4) orders outputs only partially (Spearman 0.752).
+It lowers AlignScore out of support by 0.21 relative to real summaries at the same level, and lengthens summaries by 11.5 tokens.
+Stating the target level in the prompt (B1) does not steer density with this backbone: Spearman is near zero.
+Without examples, 70\% of articles give near-identical summaries at $\alpha=0$ and $\alpha=1$.
+Fragment density is a corpus statistic that a model cannot easily estimate for its own output, so a learned control mechanism is needed.
+
+\begin{table*}[t]
+  \centering
+  \small
+  \fitwidth{\linewidth}{\begin{tabular}{llcccccc}
+    \toprule
+    Backbone & Method & AlignScore in / out & Gap in / out & BERTScore in / out & Len.\ gap in / out & Faithful in / out & Relevance gap out \\
+    \midrule
+    Llama-3.2-1B & \fed{} & 0.779 / 0.729 & $-0.026$ / $+0.046$ & 0.900 / 0.889 & $+2.0$ / $+2.3$ & 0.82 / 0.79 & $+0.02$ \\
+                 & \loc{} & 0.790 / 0.694 & $-0.015$ / $+0.011$ & 0.902 / 0.887 & $+2.7$ / $-0.5$ & 0.84 / 0.79 & $-0.05$ \\
+    Qwen3-8B     & \fed{} & 0.797 / 0.763 & $-0.007$ / $+0.080$ & 0.903 / 0.893 & $+1.6$ / $+2.3$ & 0.86 / 0.84 & $+0.09$ \\
+                 & \loc{} & 0.826 / 0.725 & $+0.022$ / $+0.042$ & 0.904 / 0.891 & $+4.5$ / $-0.2$ & -- & -- \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Summary quality on test, in-support / out-of-support. \emph{Gap}: AlignScore of generated minus real summaries requested at the same $\alpha$. \emph{Len.\ gap}: tokens above real summaries at the same $\alpha$. Judge columns use 25 articles per client and level and are indicative. The local Qwen3-8B judge run had not finished at the time of writing.}
+  \label{tab:quality}
+\end{table*}
+
+\paragraph{Control comes without a quality cost.}
+Table~\ref{tab:quality} shows that federated and local models have comparable consistency, BERTScore and judged faithfulness.
+Both stay close to real summaries requested at the same level.
+Absolute AlignScore varies with extractiveness even for real summaries: from 0.48 in the most abstractive bin to 0.84--0.87 in extractive bins.
+This is why we compare against the same-level reference.
+Out of support, the federated models are judged more relevant than the local ones (relevance gap $+0.02$ vs.\ $-0.05$ on 1B), and their outputs are 2--3 tokens longer than the reference.
+This reflects the coupling of density and length as they reach higher levels.
+
+\subsection{Private adaptation preserves house style}
+\label{sec:results-style}
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \fitwidth{\linewidth}{\begin{tabular}{lccc}
+    \toprule
+    Outputs & Attrib.\ $\uparrow$ & $P(\text{own})$ $\uparrow$ & Feat.\ gap $\downarrow$ \\
+    \midrule
+    Real test summaries      & 0.587 & 0.388 & -- \\
+    \midrule
+    \multicolumn{4}{l}{\emph{Llama-3.2-1B}} \\
+    \fed{}, private adapter (ours) & 0.552 & 0.378 & 0.108 \\
+    \loc{}                   & 0.553 & 0.375 & 0.104 \\
+    \fed{}, shared adapter   & 0.409 & 0.295 & 0.190 \\
+    B1 $k=3$, client model   & 0.556 & 0.371 & 0.166 \\
+    B1 $k=3$, base model     & 0.274 & --    & 0.666 \\
+    \midrule
+    \multicolumn{4}{l}{\emph{Qwen3-8B}} \\
+    \fed{}, private adapter (ours) & 0.559 & -- & 0.106 \\
+    \loc{}                   & 0.577 & -- & 0.115 \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Extractiveness-controlled publication attribution on in-support test outputs (mean over 8 participants; chance 0.125). $P(\text{own})$: mean classifier probability of the client's own publication. \emph{Feat.\ gap}: style-feature gap to the client's real summaries at the same level.}
+  \label{tab:style}
+\end{table}
+
+Collaboration should not erase what distinguishes a client's writing.
+Table~\ref{tab:style} measures publication style with a classifier trained so that extractiveness carries no information about the publication.
+The method's outputs are attributed to their own publication 55.2\% of the time, close to real test summaries (58.7\%) and to locally trained models (55.3\%).
+Sharing the direction therefore does not wash out private style.
+Making the adapter shared as well, so that nothing is personalized, lowers attribution to 40.9\% and nearly doubles the feature gap (0.190 vs.\ 0.108).
+Attribution drops for all eight clients, most for nypost.com (0.67 to 0.25) and theguardian.com (0.55 to 0.29).
+Two observations locate the style in the private adapter.
+Prompting on the client model, which keeps the adapter, retains attribution (0.556).
+The same prompts and in-context examples on the base model do not (0.274).
+Style is also orthogonal to the steered attribute: the method's attribution stays between 0.52 and 0.56 across requested levels from $\alpha=0$ to $1$.
+The advantage over the shared adapter is present from round 10 onward, so it does not come from late-round memorization.
+The 8B models show the same pattern (0.559 federated, 0.577 local).
+A fully shared adapter extrapolates better out of support (0.136 vs.\ 0.161) at the cost of in-support control (0.177 vs.\ 0.135) and house style.
+Private adaptation is thus the choice that preserves client characteristics while retaining the collaboration gains above.
+
+\subsection{The learned control transfers to new clients}
+\label{sec:results-e2}
+
+\begin{table*}[t]
+  \centering
+  \small
+  \fitwidth{\linewidth}{\begin{tabular}{rccccccc}
+    \toprule
+    $n$ & Frozen $D$ (in / out) & Local $D$ (in / out) & Spearman fr.\ / loc. & Frozen better & Plug-in & Prompt & Align.\ gap out fr.\ / loc. \\
+    \midrule
+    16   & \textbf{0.179} (0.203 / 0.153) & 0.295 (0.289 / 0.299) & 0.893 / 0.542 & 4/4 & 0.369 & 0.411 & $+0.05$ / $+0.06$ \\
+    64   & \textbf{0.170} (0.182 / 0.152) & 0.260 (0.256 / 0.266) & 0.922 / 0.735 & 4/4 & 0.376 & 0.388 & $+0.08$ / $+0.12$ \\
+    256  & \textbf{0.146} (0.148 / 0.143) & 0.225 (0.233 / 0.213) & 0.931 / 0.785 & 4/4 & 0.374 & 0.411 & $+0.06$ / $+0.06$ \\
+    1024 & \textbf{0.139} (0.141 / 0.136) & 0.192 (0.209 / 0.165) & 0.935 / 0.859 & 4/4 & 0.362 & 0.387 & $+0.07$ / $+0.04$ \\
+    all  & \textbf{0.135} (0.135 / 0.134) & 0.151 (0.159 / 0.138) & 0.932 / 0.925 & 2/4 & 0.343 & --    & $+0.07$ / $+0.04$ \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Held-out clients (telegraph.co.uk, bbc.com, mashable.com, latimes.com), test, mean percentile error over the four clients as a function of the number $n$ of local training pairs. \emph{Frozen better}: clients on which frozen $D$ has significantly lower error than local $D$ (95\% paired bootstrap); at full data the other two clients tie. \emph{all} is 4{,}228--5{,}000 pairs.}
+  \label{tab:e2}
+\end{table*}
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{3.5pt}
+  \fitwidth{\linewidth}{\begin{tabular}{lcccc}
+    \toprule
+    Client & $n=16$ & $n=256$ & $n=1024$ & all \\
+    \midrule
+    telegraph.co.uk & 0.159 / 0.253 & 0.128 / 0.224 & 0.128 / 0.190 & 0.120 / 0.127 \\
+    bbc.com         & 0.169 / 0.325 & 0.133 / 0.210 & 0.128 / 0.207 & 0.134 / 0.165 \\
+    mashable.com    & 0.187 / 0.299 & 0.136 / 0.217 & 0.126 / 0.169 & 0.117 / 0.134 \\
+    latimes.com     & 0.202 / 0.302 & 0.188 / 0.247 & 0.174 / 0.201 & 0.169 / 0.176 \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Per held-out client percentile error, frozen $D$ / local $D$.}
+  \label{tab:e2-perclient}
+\end{table}
+
+A direction that works only on the models it was co-trained with would be of limited use.
+Table~\ref{tab:e2} tests reuse on four clients that took no part in federation.
+With the participants' direction and calibration frozen, a new client that trains only its private adapter on 16 pairs reaches an error of 0.179.
+Learning its own direction from the same 16 pairs and steps gives 0.295, close to the constant-output level of 0.30.
+Frozen $D$ is significantly better on all four held-out clients at every budget from 16 to 1{,}024 pairs (Table~\ref{tab:e2-perclient}).
+At $n=16$, the per-client differences range from $-0.094$ to $-0.156$.
+With 16 pairs, the frozen direction already has a lower mean error than a locally learned direction with 1{,}024 pairs (0.192).
+At $n\le256$, both settings reach near-zero training loss in the same 200 steps, so local $D$'s deficit reflects sample efficiency rather than under-training.
+The gap narrows as local data grows.
+At full data, frozen $D$ is still better on two clients and ties on the other two, and its mean error (0.135) is below the participants' own (0.151).
+
+\paragraph{Joining requires training with the direction active.}
+The frozen direction transfers through an adapter trained with it.
+Attaching the direction to an adapter fine-tuned without it (plug-in) fails at every budget (0.34--0.38).
+Its outputs at $\alpha=0$ already sit high on the scale and are 26--37 tokens longer than real summaries at the same level.
+Joining therefore needs no new data type: the new client labels its pairs with the public reference $F$ and trains its adapter with steering active, exactly as the participants did.
+Prompting stays above the constant-output reference.
+
+\paragraph{Quality.}
+Frozen and local $D$ have equal summary quality.
+AlignScore gaps to the same-level reference are within 0.04 of each other at every $n$, BERTScore is 0.885--0.900 for both, and judged out-of-support relevance favours the frozen direction ($-0.03$ to $+0.03$ vs.\ $-0.04$ to $-0.15$).
+The exception is length: with 16 pairs, frozen $D$ writes summaries 14 tokens longer than the reference out of support, which falls to 2--7 tokens from $n=256$.
+
+\subsection{A shared calibration generalizes to under-covered clients}
+\label{sec:results-calibration}
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{3pt}
+  \fitwidth{\linewidth}{\begin{tabular}{llccccc}
+    \toprule
+    Calib. & Off. & Err.\ (worst) & In & Out (worst) & Spear. & End.\ NT \\
+    \midrule
+    \textbf{Shared} & no  & \textbf{0.151} (\textbf{0.199}) & 0.135 & \textbf{0.161} (\textbf{0.188}) & \textbf{0.933} & \textbf{0.002} \\
+    Per-client & no  & 0.168 (0.320) & 0.135 & 0.183 (0.365) & 0.915 & 0.046 \\
+    Shared     & yes & 0.158 (0.229) & 0.141 & 0.167 (0.204) & 0.920 & 0.002 \\
+    Per-client & yes & 0.155 (0.229) & \textbf{0.134} & 0.165 (0.253) & 0.926 & 0.009 \\
+    \bottomrule
+  \end{tabular}}
+  \caption{Shared versus per-client calibration $g$ in federated training (Llama-3.2-1B, test). \emph{Off.}: whether $g$ includes an additive offset. \emph{End.\ NT}: endpoint near-tie rate.}
+  \label{tab:calibration}
+\end{table}
+
+The global scale gives $\alpha$ the same meaning on every client, so the mapping from requested level to intervention strength can also be shared.
+Table~\ref{tab:calibration} shows that sharing it gives the best mean error, worst client, out-of-support error and Spearman correlation.
+A per-client calibration can only be fitted where the client has data.
+For broadly covered clients, it brings small in-support gains (at most $-0.015$).
+It fails for the skewed client it is meant to help: nypost.com's error rises by 0.143 and its out-of-support error from 0.188 to 0.365.
+Fitted only on $\alpha\in[0.51, 0.95]$, nypost.com's private calibration learns a small gain and a strongly bent warp.
+Its outputs at $\alpha=0, 0.25, 0.5, 0.75, 1$ sit at percentiles $0.64, 0.70, 0.76, 0.85, 0.90$.
+With the shared calibration they span $0.18, 0.41, 0.71, 0.84, 0.90$.
+The shared calibration also carries over to new clients.
+In the held-out setting, freezing it gives the same data-efficiency curve as training a private calibration on the new client's pairs:
+$0.179, 0.170, 0.146, 0.139, 0.135$ versus $0.183, 0.177, 0.151, 0.141, 0.132$ for $n=16,\dots,\text{all}$.
+A joining client therefore has no calibration parameters to fit.
+
+\paragraph{Scope of the evidence.}
+All results use one training seed and one held-out rotation, so the bootstrap intervals cover article sampling but not training or partition variance.
+The four held-out clients of rotation~0 have broad support.
+The held-out experiment therefore tests data efficiency more than transfer into coverage gaps.
+In the local baselines, the calibration gain ends at its upper bound of 4 for six or seven of eight clients.
+The direction's norm can compensate for this, but more slowly.
+The federated shared gain stays well inside the bound (1.93 on 1B, 2.31 on 8B).
+We keep the same bound for all runs.
+% ======================================================================= END
+
+\bibliography{custom,newsroom}
+
+\end{document}

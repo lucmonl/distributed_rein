@@ -123,7 +123,8 @@ def make_monitor(records: list[dict], clients: Sequence[str], quantiles: dict[st
             results[c] = evaluate_loaded_client(
                 trainer.model, fmt, raw_held[c][: cfg.full_prompts], cfg.full_alphas, _S[cfg.scorer],
                 quantiles[c], support=supports.get(c) if supports else None,
-                max_new_tokens=cfg.full_max_new_tokens, batch_size=cfg.full_batch_size, dev_loss=True)
+                max_new_tokens=cfg.full_max_new_tokens, batch_size=cfg.full_batch_size, dev_loss=True,
+                loss_batch_size=min(cfg.full_batch_size, 16, cfg.batch_size))
         snap = os.path.join(out_dir, "snapshots", f"round_{rnd:04d}.pt")
         res = assemble(results, cfg.full_alphas, cfg.split, snap, rnd)
         res["provenance"] = provenance(source="in-training monitor")

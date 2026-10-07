@@ -144,6 +144,8 @@ def main():
         with open(out, "w") as f:
             json.dump(res, f, indent=1)
         print(f"wrote {out}", flush=True)
+        from fedsteer.model import report_peak_memory
+        report_peak_memory('eval_direction.py')
 
 
 if __name__ == "__main__":

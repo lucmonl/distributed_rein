@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Optional, Sequence, Union
 
 import torch
@@ -12,6 +13,12 @@ from .lora import SteerLoraConfig, inject_steer_lora
 def load_model(model_name: str, lora_cfg: SteerLoraConfig, device: Union[str, torch.device] = "cuda",
                dtype: torch.dtype = torch.bfloat16, grad_checkpointing: bool = True,
                attn_implementation: Optional[str] = "sdpa"):
+    cap_gb = os.environ.get("FEDSTEER_GPU_MEM_GB")
+    if cap_gb and torch.cuda.is_available():
+        # emulate a smaller GPU (e.g. 40 GB A100s on a GH200): exceeding the cap raises a real OOM
+        total = torch.cuda.get_device_properties(0).total_memory
+        torch.cuda.set_per_process_memory_fraction(min(1.0, float(cap_gb) * 1024 ** 3 / total))
+        print(f"GPU memory capped at {float(cap_gb):.1f} GiB of {total / 1024 ** 3:.1f} GiB", flush=True)
     tok = AutoTokenizer.from_pretrained(model_name)
     if tok.pad_token_id is None:
         tok.pad_token = tok.eos_token
@@ -42,6 +49,14 @@ def generate_at_alpha(model, fmt: ChatFormatter, prompts: Sequence[str],
     alphas = [float(alpha)] * len(prompts) if isinstance(alpha, (int, float)) else [float(a) for a in alpha]
     old_side, tok.padding_side = tok.padding_side, "left"
     old_cache, model.config.use_cache = model.config.use_cache, True
+    # Generation runs no backward pass, so it can use SDPA even when training uses eager attention
+    # (the math config trains with eager because SDPA's *backward* gave NaN on DeltaAI). Eager prefill
+    # materializes batch x heads x L^2 fp32 scores, which OOMs a 40 GB GPU on ~3k-token few-shot
+    # prompts (math log MATH-11). Override with FEDSTEER_GEN_ATTN=eager to generate with eager.
+    old_attn = model.config._attn_implementation
+    gen_attn = os.environ.get("FEDSTEER_GEN_ATTN", "sdpa")
+    if old_attn == "eager" and gen_attn != "eager":
+        model.config._attn_implementation = gen_attn
     outs: list[list[str]] = []
     try:
         for i in range(0, len(prompts), batch_size):
@@ -67,4 +82,12 @@ def generate_at_alpha(model, fmt: ChatFormatter, prompts: Sequence[str],
     finally:
         tok.padding_side = old_side
         model.config.use_cache = old_cache
+        model.config._attn_implementation = old_attn
     return outs
+
+
+def report_peak_memory(tag: str) -> None:
+    """One line with the peak GPU memory allocated by this process (for sizing runs)."""
+    if torch.cuda.is_available():
+        print(f"PEAK_GPU_MEM {tag}: {torch.cuda.max_memory_allocated() / 1024 ** 3:.2f} GiB allocated, "
+              f"{torch.cuda.max_memory_reserved() / 1024 ** 3:.2f} GiB reserved", flush=True)

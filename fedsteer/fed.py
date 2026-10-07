@@ -25,6 +25,10 @@ client, fitted on its own data) or ``shared`` (one for all clients, averaged by 
 server every round like the direction).  Under the global alpha scale, ``shared``
 keeps everything about the attribute shared and only house style private (P_i).
 ``shared`` is undefined in ``local`` mode (nothing is aggregated there).
+``coverage`` (plan section 2.1, fedsteer/coverage.py): gain fixed at 1, no offset, a private
+nonlinear warp per client, plus a borrowing term that pulls each warp toward a server table
+of count-weighted, monotone-projected warp values on a common grid, wherever the client has
+little nearby data and its peers have much.  Warp parameters are never averaged.
 
 Ablation (orthogonal to mode): ``fix_gain`` (A1: s_i = 1).
 """
@@ -40,8 +44,10 @@ import time
 from dataclasses import asdict, dataclass
 from typing import Callable, Optional
 
+import numpy as np
 import torch
 
+from . import coverage as cov
 from .data import ClientStream
 from .monitor import format_monitor
 from .regularize import WEIGHT, RegConfig, penalty_terms
@@ -78,7 +84,12 @@ class FedConfig:
     warp_warmup_rounds: int = 5      # keep h_i = identity until D carries signal
     warp_reg: float = 1e-2           # weight of mean (h(a) - a)^2 penalty toward the identity
     adapter: str = "private"         # private | shared (A2) | none
-    calibration: str = "private"     # private | shared: gain/offset/warp per client or one for all
+    calibration: str = "private"     # private | shared | coverage (plan 2.1: private warps + borrowing)
+    cov_grid: int = 11               # coverage: K common grid points a_k, including 0 and 1
+    cov_bandwidth: float = 0.2       # coverage: triangular-kernel half-width b of the counts c_ik
+    cov_lambda_max: float = 1.0      # coverage: maximum weight of the borrowing term
+    cov_tau_local: float = 100.0     # coverage: local-need factor is 1/2 at c_ik = tau_local
+    cov_tau_peer: float = 100.0      # coverage: peer-evidence factor is 1/2 at R_ik = tau_peer
     share_private: bool = False      # deprecated alias for adapter: shared
     aggregation: str = "uniform"     # uniform | size
     server_lr: float = 1.0           # new = old + server_lr * (avg - old)
@@ -128,7 +139,7 @@ class FedSteerTrainer:
         if self.adapter not in ("private", "shared", "none"):
             raise ValueError(f"unknown adapter mode {cfg.adapter}")
         self.calibration = cfg.calibration
-        if self.calibration not in ("private", "shared"):
+        if self.calibration not in ("private", "shared", "coverage"):
             raise ValueError(f"unknown calibration mode {cfg.calibration}")
         if self.calibration == "shared" and cfg.mode == "local":
             raise ValueError("calibration=shared is undefined in local mode (nothing is aggregated); "
@@ -171,6 +182,57 @@ class FedSteerTrainer:
         }
         self.round = 0
         self.history: list[dict] = []
+        self.cov: Optional[dict] = None
+        if self.calibration == "coverage":
+            self._check_coverage_config()
+            self.cov = self._init_coverage(client_examples)
+            with open(os.path.join(out_dir, "coverage.json"), "w") as f:
+                json.dump(self.cov, f, indent=1)
+
+    # ---------------------------------------------------------------- coverage
+    def _check_coverage_config(self) -> None:
+        cfg = self.cfg
+        problems = []
+        if cfg.mode != "fedavg":
+            problems.append("mode must be fedavg (local-only has no peers; use calibration=private)")
+        if not cfg.fix_gain:
+            problems.append("fed.fix_gain must be true (gain fixed at 1)")
+        if self.control.o is not None:
+            problems.append("lora.offset must be false")
+        if self.control.warp.kind == "none":
+            problems.append("lora.warp must be a nonlinear warp (e.g. kumaraswamy_mix)")
+        if 0 < cfg.clients_per_round < len(self.client_ids):
+            problems.append("full participation only (clients_per_round = 0)")
+        if float(self.control.u.detach()) != 0.0:
+            problems.append("gain parameter u must be 0 (s = 1) at initialization")
+        if problems:
+            raise ValueError("calibration=coverage: " + "; ".join(problems))
+
+    def _init_coverage(self, client_examples: dict[str, list[dict]]) -> dict:
+        """Grid, evidence counts c_ik from each client's actual training subset (once), the
+        borrowing weights lambda_ik, and the identity as the initial server table z."""
+        cfg = self.cfg
+        grid = cov.make_grid(cfg.cov_grid)
+        counts = {c: cov.evidence_counts([e["alpha"] for e in client_examples[c]], grid, cfg.cov_bandwidth)
+                  for c in self.client_ids}
+        lam = cov.borrow_weights(counts, cfg.cov_lambda_max, cfg.cov_tau_local, cfg.cov_tau_peer)
+        n_warps = int(self.control.warp_on(torch.tensor(grid, dtype=torch.float32,
+                                                        device=self.control.warp._device())).shape[0])
+        return {
+            "grid": grid.tolist(), "bandwidth": cfg.cov_bandwidth, "lambda_max": cfg.cov_lambda_max,
+            "tau_local": cfg.cov_tau_local, "tau_peer": cfg.cov_tau_peer,
+            "counts": {c: v.tolist() for c, v in counts.items()},
+            "lambda": {c: v.tolist() for c, v in lam.items()},
+            "n_warps": n_warps,          # one table row per warp (per layer with lora.warp_scope)
+            "z": [grid.tolist()] * n_warps,   # server table [n_warps][K], starts at the identity
+            "ready": False,              # True once a round with trainable warps has completed
+            "updates": 0,                # rounds that updated z
+        }
+
+    def _warp_on_grid(self) -> torch.Tensor:
+        """This client's warps on the grid: [n_warps, K]."""
+        g = torch.tensor(self.cov["grid"], dtype=torch.float32, device=self.control.warp._device())
+        return self.control.warp_on(g)
 
     # ------------------------------------------------------------------ state
     def _server_state_from_model(self) -> dict[str, torch.Tensor]:
@@ -186,7 +248,7 @@ class FedSteerTrainer:
         c = self.clients[cid]
         if self.adapter == "private":
             load_state(self.model, c["private"])
-        if self.calibration == "private":
+        if self.calibration != "shared":
             load_state(self.model, c["gain"])          # shared calibration comes with the server state
         if shared is None:
             shared = c["shared_local"] if (self.cfg.mode == "local" and c["shared_local"] is not None) else self.server
@@ -196,7 +258,7 @@ class FedSteerTrainer:
         c = self.clients[cid]
         if self.adapter == "private":
             c["private"] = get_private_adapter_state(self.model)
-        if self.calibration == "private":
+        if self.calibration != "shared":
             c["gain"] = get_gain_state(self.model)
         if self.cfg.mode == "local":
             c["shared_local"] = self._server_state_from_model()
@@ -253,6 +315,12 @@ class FedSteerTrainer:
         anchors = ([m.lora_B_d.detach().float().clone() for m in self.layers]
                    if self.reg.fedprox_mu > 0 and cfg.mode == "fedavg" else None)
         offset_active = self.control.o is not None and self.round >= cfg.gain_warmup_rounds
+        borrow_on = self.cov is not None and self.cov["ready"] and warp_trainable
+        if borrow_on:
+            dev = self.control.warp._device()
+            z_target = torch.tensor(self.cov["z"], dtype=torch.float32, device=dev)   # detached, fixed this round
+            lam = torch.tensor(self.cov["lambda"][cid], dtype=torch.float32, device=dev)
+        borrows = []
         for _ in range(cfg.local_steps):
             f = self._lr_factor(c["steps"])
             for g, lr in zip(self.opt.param_groups, self._base_lrs):
@@ -275,6 +343,13 @@ class FedSteerTrainer:
                         pen = self.control.warp.penalty()
                         total = total + cfg.warp_reg * pen / cfg.grad_accum
                         penalties.append(pen.item())
+                    if borrow_on:
+                        # (1/K) sum_k lambda_ik (h_i(a_k) - z_k)^2, averaged over the client's warps
+                        # (one per layer with lora.warp_scope); reaches only the warp parameters;
+                        # / grad_accum so it counts once per optimizer step
+                        borrow = (lam * (self._warp_on_grid() - z_target) ** 2).mean()
+                        total = total + borrow / cfg.grad_accum
+                        borrows.append(borrow.item())
                     if self.reg.any_penalty():
                         terms = penalty_terms(self.reg, self.layers, self.control, anchors,
                                               gain_trainable, offset_active)
@@ -307,6 +382,8 @@ class FedSteerTrainer:
             out["warp"] = self.control.warp.describe()
             if penalties:
                 out["warp_penalty"] = sum(penalties) / len(penalties)
+        if borrows:
+            out["borrow_loss"] = sum(borrows) / len(borrows)          # weighted term, as optimized
         if reg_vals:
             out["reg"] = {k: sum(v) / len(v) for k, v in reg_vals.items()}   # unweighted term values
         return out
@@ -322,11 +399,15 @@ class FedSteerTrainer:
         selected = self._select()
         start = copy.deepcopy(self.server)
         uploads, weights, stats, deltas = [], [], {}, []
+        curves: dict[str, np.ndarray] = {}
         for cid in selected:
             self.load_client(cid)
             before = self._server_state_from_model()   # server state, or own direction in local mode
             self._load_opt(cid)
             stats[cid] = self._local_train(cid)
+            if self.cov is not None:
+                with torch.no_grad():
+                    curves[cid] = self._warp_on_grid().double().cpu().numpy()
             uploads.append(self._server_state_from_model())
             deltas.append(_flat(uploads[-1]) - _flat(before))
             weights.append(1.0 if self.cfg.aggregation == "uniform" else float(self.n_examples[cid]))
@@ -351,10 +432,48 @@ class FedSteerTrainer:
             lr = self.cfg.server_lr
             self.server = {k: start[k] + lr * (avg[k] - start[k]) for k in start}
             log["server_update_norm"] = float((_flat(self.server) - _flat(start)).norm())
+        if self.cov is not None:
+            log["coverage"] = self._update_coverage(curves)
         log["direction_norm"] = float(_flat({k: v for k, v in self.server.items() if k.endswith("lora_B_d")}).norm()) \
             if self.cfg.mode == "fedavg" else None
         self.round += 1
         return log
+
+    def _update_coverage(self, curves: dict[str, np.ndarray]) -> dict:
+        """Server side of plan 2.1: pool the uploaded grid values (count-weighted), project to a
+        monotone table, broadcast it next round.  Only rounds with trainable warps update it."""
+        rnd = lambda v: [round(float(x), 5) for x in v]
+        multi = self.cov["n_warps"] > 1
+
+        def summary(key, rows):                         # log the mean over layers (+ spread)
+            rows = np.asarray(rows)
+            res = {key: rnd(rows.mean(0))}
+            if multi:
+                res.update({f"{key}_min": rnd(rows.min(0)), f"{key}_max": rnd(rows.max(0))})
+            return res
+
+        out = {"borrow_active": self.cov["ready"] and self.round >= self.cfg.warp_warmup_rounds,
+               "values": {c: rnd(v.mean(0)) for c, v in curves.items()}}
+        if multi:
+            out["values_min"] = {c: rnd(v.min(0)) for c, v in curves.items()}
+            out["values_max"] = {c: rnd(v.max(0)) for c, v in curves.items()}
+        if self.round < self.cfg.warp_warmup_rounds:
+            return out                                  # warps were frozen: no trained teacher yet
+        counts = {c: np.asarray(self.cov["counts"][c]) for c in curves}
+        prev = np.asarray(self.cov["z"])
+        ms, zs, adj_max, adj_sq = [], [], 0.0, []
+        for l in range(prev.shape[0]):                  # each layer's warp is pooled on its own
+            m, z, diag = cov.pooled_target({c: v[l] for c, v in curves.items()}, counts, prev[l])
+            ms.append(m)
+            zs.append(z)
+            adj_max = max(adj_max, diag["proj_adjust_max"])
+            adj_sq.append(diag["proj_adjust_wrms"] ** 2)
+        self.cov["z"] = [z.tolist() for z in zs]
+        self.cov["ready"] = True
+        self.cov["updates"] += 1
+        out.update(**summary("raw", ms), **summary("z", zs), proj_adjust_max=adj_max,
+                   proj_adjust_wrms=float(np.sqrt(np.mean(adj_sq))), uncovered=diag["uncovered"])
+        return out
 
     def fit(self) -> None:
         self.maybe_resume()
@@ -386,6 +505,7 @@ class FedSteerTrainer:
             "server": self.server,
             "clients": {c: {k: v for k, v in st.items() if k != "opt"} for c, st in self.clients.items()},
             "fed_config": asdict(self.cfg),
+            "coverage": copy.deepcopy(self.cov),
         }
 
     def save(self) -> None:
@@ -415,8 +535,33 @@ class FedSteerTrainer:
             self.streams[c].load(s)
         r = st["rng"]
         self.rng.setstate((r[0], tuple(r[1]), r[2]))
+        if self.cov is not None:
+            self._resume_coverage(st)
         print(f"resumed from {path} at round {self.round}", flush=True)
         return True
+
+
+    def _resume_coverage(self, st: dict) -> None:
+        saved = st.get("coverage")
+        if not saved:
+            raise ValueError("calibration=coverage, but the saved state has no coverage table "
+                             "(it was trained with another calibration mode)")
+        if np.asarray(saved["z"]).ndim == 1:            # runs before per-layer warps: one table
+            saved = dict(saved, z=[saved["z"]], n_warps=1)
+        if saved["n_warps"] != self.cov["n_warps"]:
+            raise ValueError(f"saved run has {saved['n_warps']} warps per client, this config "
+                             f"{self.cov['n_warps']} (lora.warp_scope differs)")
+        for key in ("grid", "bandwidth", "lambda_max", "tau_local", "tau_peer"):
+            if not np.allclose(saved[key], self.cov[key]):
+                raise ValueError(f"coverage {key} differs from the saved run: {saved[key]} vs {self.cov[key]}")
+        for c in self.client_ids:
+            if not np.allclose(saved["counts"][c], self.cov["counts"][c]):
+                raise ValueError(f"coverage counts of {c} differ from the saved run (dataset or alpha "
+                                 "reference changed); start a new run")
+            u = float(self.clients[c]["gain"][GAIN_KEY])
+            if u != 0.0:
+                raise ValueError(f"client {c} has gain parameter u = {u} (s != 1); coverage needs s = 1")
+        self.cov = saved
 
 
 def load_snapshot_into(model, snapshot: dict, client: str, shared: Optional[dict] = None) -> None:

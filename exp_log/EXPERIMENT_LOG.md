@@ -1324,8 +1324,10 @@ near 72 GB on cc, so submit 8B jobs with `--partition=gpuA100x8,gpuH200x8`.
 end to end. Existing `exp_log/launch/*.sh` still hardcode cc settings (`RR=/u/lucmon/lucmon/rein_runs`
 resolves to `/projects/bhby/lucmon/rein_runs` on Delta, not `/work`); Delta launch scripts must
 set `RR=/u/lucmon/rein/runs` (or omit `out_dir` overrides) so output lands on `/work`.
-**Log convention for Delta:** tag entries `[delta]` and keep Delta run dirs distinguishable; the
-log lives on cc-login only.
+**Log convention for Delta:** tag entries `[delta]` and keep Delta run dirs distinguishable. The
+log is edited on cc-login only, and `scripts/sync_to_delta.sh` copies it (and the other markdown
+plans) to Delta like any other file -- it is not excluded. Docs differing between hosts means the
+sync is stale; re-run it. Only the sbatch headers differ by design (correction 2026-10-05).
 
 Files added/changed: `scripts/sync_to_delta.sh` (new).
 
@@ -2723,3 +2725,454 @@ mismatch, chemistry distinctiveness) must be re-checked against the new gains be
 | base reference: Qwen2.5-7B with the answer in the prompt, `math` client, 100 test problems, 4,096 cap | 3316652 | (dtai only) |
 
 **Watcher:** pid **3621148**, spec `exp_log/launch/MATH-7_race.json`, log **`sbatch/logs/race_MATH-7.log`**, `--min_running_s 1200`. It still does not survive a cc-login1 reboot (MATH-6); after one, resolve by hand.
+
+## MATH-8. `math-cot-experiment-plan.md` brought up to date (2026-10-05)
+
+The plan was last updated 10-04 at 12:45. It now reflects everything through MATH-7:
+- backbone Qwen2.5-7B; eager attention and the NaN guard; the Delta + dtai cluster rule and racing;
+- measured compute; the Qwen2.5-7B gate results (G0 PASS; G2 0.263 with a compressed range);
+- **answer-in-prompt as the main setting**, with the original-prompts runs as the reference;
+- the B1 template fix; the G2 accuracy condition dropped (accuracy reported, never gated);
+- the range investigation and the house-style metric as next steps;
+- a changelog mapping each change to its log entry.
+
+No experiments changed.
+
+## NR-46. Coverage-aware local nonlinear calibration (plan §2.1) implemented; four matched arms launched (2026-10-05)
+
+**What:** new opt-in calibration mode `fed.calibration: coverage`, as specified in `federated-steering-plan.md` §2.1. `private` and `shared` are unchanged, so earlier configs and checkpoints keep their meaning.
+- Gain fixed at 1 and no offset. The trainer **rejects** `coverage` unless `fix_gain=true`, `lora.offset=false`, a nonlinear `lora.warp`, `mode=fedavg` and full participation. On resume it also rejects any client with u ≠ 0 (s ≠ 1), and any saved state whose grid, bandwidth, λ/τ or counts c_ik differ from the config/data.
+- Each client keeps its own `kumaraswamy_mix` warp (`fedsteer/warp.py` is unchanged), stored with the client exactly like `private`. Warp parameters are never averaged.
+- Counts c_ik use a triangular kernel on the client's actual training subset (after `max_train_per_client`). They are computed once, and so is λ_ik = λ_max · τ_l/(τ_l + c_ik) · R_ik/(τ_p + R_ik).
+- Server side: count-weighted mean of the detached uploaded grid values h_i(a_k), then a weighted isotonic projection. The endpoints are fixed at 0 and 1, and uncovered points keep their previous value; within each run of free points this is the exact box-constrained solution. The table is stored in trainer metadata (`trainer.cov`), not in the tensor dict averaged with D. D is still averaged uniformly.
+- Local objective: NLL + (1/K) Σ_k λ_ik (h_i(a_k) − stopgrad z_k)², added once per optimizer step (divided across grad-accum micro-batches). Its gradient reaches only the warp parameters (tested).
+- Readiness: the table is updated only after rounds with trainable warps (round ≥ `warp_warmup_rounds`). Borrowing starts the round after the first such update, so there is none during warm-up or in the first trained round.
+- New settings in `FedConfig`: `cov_grid` (K = 11), `cov_bandwidth` (b = 0.2), `cov_lambda_max` (1.0), `cov_tau_local` (100), `cov_tau_peer` (100).
+- Logging/persistence:
+  - `<run>/coverage.json` holds the grid, c_ik, λ_ik and initial table.
+  - `train_log.jsonl` gets a per-round `coverage` block: each client's grid values, the raw pooled m, the projected z, the projection adjustment (max and count-weighted RMS) and the uncovered points. Each client's stats also get `borrow_loss`.
+  - Snapshots and `state.pt` carry `coverage` for exact resume.
+  - Evaluation needs no change: `load_snapshot_into` loads each client's own warp, as for `private`.
+- `e2_heldout.py` refuses coverage runs, because the plan requires a separate held-out-client protocol and its private path would train the gain. `e3_drift.py --refit_k>0` refuses them for the same gain reason.
+
+**Coverage counts on this data** (rotation 0, 4k per client, K = 11, b = 0.2), which motivated τ = 100:
+- In-support counts are 200–2,300.
+- The genuine gaps are theguardian.com at α ≥ 0.8 (35, 11, 5) and nypost.com at α ≤ 0.3 (48, 52, 37, 47).
+- Peer evidence R_ik ≥ ~3,000 everywhere, so the peer factor is ≈ 1. λ is therefore driven by local need: ≈ 0.9·λ_max in those gaps and ≤ 0.1·λ_max in well-covered regions.
+
+**Files:**
+- `fedsteer/coverage.py` (new: grid, counts, λ, pooling, projection)
+- `fedsteer/fed.py` (mode, checks, borrowing term, server update, export/resume)
+- `e2_heldout.py`, `e3_drift.py` (guards)
+- `tests/test_fedsteer.py`: 7 new tests, covering triangular counts and boundaries, peer gating (including one client / no peers), pooling and projection with fixed and uncovered points, config rejection, gradient reaching only the warp, gain staying at 1, warm-up/readiness, and the save/resume/eval round trip with u ≠ 0 and settings-mismatch rejection. The file also got a pytest-free `_raises` helper.
+- **Tests: 60/60 pass** (`python tests/test_fedsteer.py`).
+
+**Jobs** (cc; launch [NR-46_coverage_calibration.sh](launch/NR-46_coverage_calibration.sh)). The setting is that of entries 38–41: Llama-3.2-1B, rotation 0, 4k per client, 100 rounds, standard train → dev selection → test → quality → judge pipeline. As §2.1 prescribes, **all four arms** use gain = 1, no offset, the `kumaraswamy_mix` warp and `fed.warp_reg=0`; they differ only in calibration.
+
+| Arm | Calibration | Job | Run dir prefix |
+|---|---|---|---|
+| A | shared nonlinear warp | 11174458 | `runs/nr46_cal_shared_g1` |
+| B | private warps, no borrowing | 11174459 | `runs/nr46_cal_private_g1` |
+| C1 | coverage, λ_max = 1 | 11174460 | `runs/nr46_cal_coverage_l1` |
+| C10 | coverage, λ_max = 10 | 11174461 | `runs/nr46_cal_coverage_l10` |
+
+- Logs are `sbatch/logs/fedsteer.o<jobid>`. Partitions: dali, IllinoisComputes-GPU, scavenger (V100 nodes excluded; 24 h limit).
+- λ_max is untuned; pick between 1 and 10 on dev only. A rough gradient-scale estimate (dNLL/dh ~ O(1) vs. 2λ·Δ/K for the prior) suggests λ_max = 1 may be too weak to matter.
+- Comparisons:
+  - B vs. C isolates calibration borrowing.
+  - A is the shared-curve reference.
+  - The old learned-gain runs (11063910, 11145309) are historical references, not matched ablations.
+- Read on: per-client error in/out of support, with **theguardian.com high-α and nypost.com low-α gaps reported separately from thin tails**; worst client; monotonicity violations; quality. Also the coverage block in `train_log.jsonl` (does z move away from the identity; how large is the projection adjustment).
+- Not launched: the matched local-only (gain 1, private warps) baseline for B-vs-local, and a nonzero identity-prior ablation.
+
+## NR-47. NR-46 arms raced on Anvil; Anvil set up for the Newsroom pipeline (2026-10-06)
+
+Follow-up to NR-46. The news workstream races cc against Anvil (memory `reference-slurm`), and NR-46 had been submitted to cc only. All four cc copies were still PENDING (Priority), so nothing was cancelled or resubmitted.
+
+**One-time Anvil setup for Newsroom.** Until now Anvil was set up for ChEMBL only.
+- Code rsynced to `/home/x-zchen17/lucmon/rein`, with the same excludes as `scripts/setup_anvil.sh`, plus `/hf_home`, so that `--delete` does not remove Anvil's `hf_home` symlink. A dry run showed no deletions.
+- `data/newsroom_fed` (333 MB) is on scratch, symlinked into the code tree.
+- HF weights were copied from cc's cache to `$SCR/hf_home/hub`: Llama-3.2-1B-Instruct, FacebookAI/roberta-large (BERTScore + AlignScore backbone), yzha/AlignScore, and the judge model Qwen/Qwen2.5-7B-Instruct (≈ 24 GB in total).
+- `sbatch/train_eval_anvil.sbatch` is new: an Anvil port of `train_eval.sbatch` (train → dev selection → test → quality → judge) with the header and environment of `train_eval_chembl_anvil.sbatch` (`-A cis260796-ai -p ai`).
+- Smoke check on the Anvil login node:
+  - env torch 2.5.1+cu124 / transformers 4.56.0 (same versions as cc);
+  - AlignScore checkpoint found; Llama and RoBERTa tokenizers load offline;
+  - the 5 pure coverage tests pass. The 2 training-loop tests did not finish within 15 min on the shared login node; the code is byte-identical to cc, where all 60 pass.
+
+**Jobs.** Launch commands are appended to [NR-46_coverage_calibration.sh](launch/NR-46_coverage_calibration.sh). Run dirs are `runs/nr46_cal_*_anvil_<stamp>` on Anvil scratch, and the log is `sbatch/logs/fedsteer.o<jobid>` in Anvil's code tree.
+
+| Arm | cc | Anvil |
+|---|---|---|
+| A shared | 11174458 | 21122589 |
+| B private | 11174459 | 21122590 |
+| C1 coverage λ_max = 1 | 11174460 | 21122591 |
+| C10 coverage λ_max = 10 | 11174461 | 21122592 |
+
+**Race watcher:** pid **2316884** on cc-login1, spec `exp_log/launch/NR-46_race.json`, log **`sbatch/logs/race_NR-46.log`**, `--min_running_s 1200`.
+- The four arms are **one group**, so the host whose copy has run ≥ 20 min first gets all four, and the matched comparison comes from a single host.
+- cc copies may land on `scavenger` (preemptible; a requeue restarts from round 0). They are not marked preemptible, so a cc copy that starts there can win the race.
+- Like MATH-6/7, the watcher does not survive a cc-login1 reboot. After one, resolve the race by hand: cancel the other host's copies only once a copy is RUNNING.
+
+## NR-48. NR-46 interim analysis: coverage borrowing fixes nypost.com's private-warp failure at round 20 (2026-10-06, 09:55)
+
+**State.**
+- The race (NR-47) went to **cc** at 03:41; the four Anvil copies were cancelled while still PENDING.
+- A (shared, 11174458) is **done**: selected round 100, test + quality + judge complete.
+- B (11174459, IllinoisComputes-GPU) is at round 72. C1 (11174460, IllinoisComputes-GPU) is at round 27. C10 (11174461) is at round 2, on **scavenger** (preemptible).
+- Run dirs: `runs/nr46_cal_{shared_g1,private_g1,coverage_l1,coverage_l10}_<stamp>_j<job>`.
+
+**A (shared nonlinear warp, gain 1), test.** Pct error 0.154 (worst 0.214); in-support 0.136; out-of-support 0.166 (worst 0.199); Spearman 0.924.
+- vs. the historical constant g = α arm (11145307): 0.153 (0.217). vs. the learned-gain method (11063910): 0.151 (0.199).
+- Paired, A is worse than the method on reuters.com (+0.016) and nypost.com (+0.010), with no client better.
+- Quality and judge are the same as all earlier arms.
+- The final shared warp is close to the identity: h(.25, .5, .75) = 0.27, 0.53, 0.78.
+- So with gain fixed at 1 and the warp unpenalized, the shared warp still stays near-linear (entry 40 again).
+
+**Dev, matched rounds** (100 articles × 5 α per client; paired bootstrap over articles; it does NOT capture seed variance):
+
+| Round | Arm | Pct err (worst) | Spearman worst | nypost.com err (out-of-support) | nypost output pct at α = 0 |
+|---|---|---|---|---|---|
+| 10 | A / B / C1 | 0.242 / 0.243 / 0.244 (0.334 / 0.334 / 0.338) | 0.72 / 0.62 / 0.67 | 0.334 / 0.334 / 0.338 | 0.59 / 0.61 / 0.59 |
+| 20 | A / B / C1 | 0.204 / 0.209 / 0.203 (0.267 / 0.314 / 0.269) | 0.82 / 0.73 / 0.83 | 0.267 (0.297) / 0.314 (0.353) / 0.269 (0.301) | 0.35 / 0.55 / 0.36 |
+
+- **C1 − B at round 20:** nypost.com **−0.045 [−0.058, −0.033]**, out-of-support **−0.052 [−0.068, −0.037]**; reuters.com −0.007; all other clients tie. C1 − A: tie on nypost; ±0.007–0.009 on aol.com and reuters.com.
+- At round 10 everything ties: borrowing has only been on for 5 rounds.
+- **B's nypost failure persists:** dev error 0.29–0.32 at rounds 30–40 and 0.25–0.28 at rounds 50–70, with α = 0 output at percentile 0.39–0.63. A's is 0.18–0.24 with α = 0 at 0.18–0.30. This is the private-calibration failure of entry 41, reproduced with gain 1.
+
+**Mechanism.**
+- nypost's data covers α ∈ [0.51, 0.95]. In B its private warp bends ever lower: h(0.25) = 0.17 (round 9) → 0.12 (19) → 0.06 (69), and h(0.5) = 0.28 at round 20. So its in-support examples are trained at small coefficients on D.
+- Because h(0) = 0 for everyone, the α = 0 output is the adapter alone. In B, nypost's adapter evidently absorbs the copy-heavy style, so α = 0 stays at percentile ≈ 0.55.
+- In C1, λ for nypost is 0.65–0.72 on the low grid points. The borrowing term holds its warp near the pooled table (h(0.25) = 0.22, h(0.5) = 0.45 at round 20), D carries the attribute, and α = 0 reaches percentile 0.36 — the same as the shared warp.
+- theguardian.com's high-α gap shows no effect yet: its warp stays near-linear in every arm.
+
+**Coverage diagnostics (C1).**
+- The weighted borrowing loss is tiny (≈ 1e-4 per step) yet decisive for nypost, so λ_max = 1 is *not* too weak. That corrects the a-priori gradient-scale guess in NR-46.
+- The server table z stays near the identity and drifts slightly below it (z(0.9) = 0.881 at round 26).
+- The raw pooled mean has always been monotone (projection adjustment 0), and no grid point is uncovered. So in this run the isotonic projection and the keep-prior rule are not yet exercised.
+- Direction norms are equal across arms (5.44–5.47 at round 20).
+
+**Caveats.**
+- These are single-seed dev numbers at round 20. The final comparison is on test at each run's dev-selected round.
+- The real question is whether C1 matches A on nypost *and* beats A where private warps help (the in-support gains of entry 41: theguardian.com, people.com). At round 20 there is no sign of the latter.
+- C10 runs on scavenger and can be preempted.
+
+**Next:** when B and C1 finish, run `compare_runs.py` on test for C1 vs. B, C1 vs. A and B vs. A (per client, in- and out-of-support), then C10 vs. C1 on dev to choose λ_max.
+
+## NR-49. Coverage calibration: smaller λ_max (0.1, 0.01) launched; A is the primary comparison (2026-10-06)
+
+**Why.** NR-48 found that λ_max = 1 is decisive for nypost.com although the weighted borrowing loss is only ≈ 1e-4 per step. So the useful range may lie lower. The user asked for smaller values.
+- Two new arms, identical to NR-46 arm C except for λ_max: **0.1** and **0.01**.
+- With the running 1 and 10 this is a decade grid {0.01, 0.1, 1, 10}.
+- The code is byte-identical to C1's snapshot (`runs/_code/20261006-082124_j11174460`, checked with `diff -r`), so the arms stay matched.
+- Anvil code was re-synced first; only docs differed.
+
+| Arm | cc | Anvil | Run dir prefix |
+|---|---|---|---|
+| C0.1 (λ_max = 0.1) | 11178538 | 21136128 | `runs/nr46_cal_coverage_l0p1` |
+| C0.01 (λ_max = 0.01) | 11178539 | 21136129 | `runs/nr46_cal_coverage_l0p01` |
+
+- Launch file: [NR-49_coverage_lambda_small.sh](launch/NR-49_coverage_lambda_small.sh). Race watcher: pid **519108** on cc-login1, spec `exp_log/launch/NR-49_race.json`, log `sbatch/logs/race_NR-49.log`, `--min_running_s 1200`. The two arms are one group.
+- Caveat: if Anvil wins, these two arms run on a different host than A/B/C1/C10 (cc). Same torch/transformers versions, but note the host in any table.
+
+**Analysis plan (user, 2026-10-06): A is a major comparison, not only B.**
+- **C vs. A** asks whether private warps with coverage borrowing beat one shared warp. The bar is: match A on the gap clients (nypost.com, reuters.com) *and* gain in-support on the broad clients.
+- **C vs. B** isolates the borrowing.
+- **The λ sweep** should show the interpolation from B (λ → 0) toward A-like behaviour (large λ, warps tied to the pooled table). Find the smallest λ that still repairs nypost.com, and check whether any λ keeps B's in-support gains.
+- Selection between λ values on dev only. Then test, with paired bootstrap per client, in-support / out-of-support.
+
+## MATH-9. Delta copy of the answer-in-prompt G0 died of CUDA OOM; dtai copies kept, Delta copies to be withdrawn (2026-10-06) [dtai+delta]
+
+**Event.** The user found `sbatch/logs/fedsteer_math.o22685329` on Delta (MATH-7's Delta G0 copy, `--partition=gpuA100x8,gpuH200x8`) ending in CUDA OOM.
+- The OOM details are not read yet: the `delta-login2` SSH master was down on 10-06 at 10:15, and that log is only on Delta.
+- **User decision:** keep the DeltaAI copies (GH200, 96 GB).
+
+**Why dtai is safe:**
+- The dtai runs with identical settings (MATH-5 G0 / G2 / E1-fed, eager attention, generation batch 64) peaked at **57.3 / 57.3 / 57.1 GB of 95.6 GB** (`gpumem.o3311353/54/56`, nvidia-smi every 30 s, so spikes can be higher).
+- The answer-in-prompt prompts are at most ~64 tokens longer.
+- Delta's A100s have 80 GB, and its torch (2.5.1) differs; the OOM is plausibly a Delta-only peak.
+
+**Actions:**
+- `race_watch.py` for MATH-7 (pid 3621148) **stopped**. It could not reach Delta, so it had done nothing. Once the Delta master returned, it could have declared a Delta copy the winner after 20 min and cancelled the dtai twin, and that copy might still OOM at a later eval. Noted in `sbatch/logs/race_MATH-7.log`.
+- ⏳ **Cancel the remaining Delta copies** (22685330 G2, 22685331 G1, 22685332 E1-fed, 22685333 E1-local) once the master is back, or by the user directly. Read the OOM traceback at the same time, to rule out a phase that could also hit dtai.
+- dtai copies unchanged: 3316647 G0, 3316648 G2, 3316649 G1, 3316650 E1-fed, 3316651 E1-local, 3316652 base, all PENDING. The MATH-5 reference E1-fed 3311356 is RUNNING (21 h 45 min).
+
+**Code-sync note.** Another session added `calibration: coverage` to `fedsteer/fed.py` on 10-05 at 23:34 (with a new module `fedsteer/coverage.py`, imported at load time). Math runs (`shared` / `private`) behave identically, since the `!= "shared"` checks equal the old `== "private"` for those modes. dtai is deliberately **not** re-synced while the MATH-7 jobs are pending: they start with the code synced on 10-05 (~17:30), which is functionally the same for math, and a new import cannot break them at startup.
+
+## MATH-10. Delta OOM explained: gpuA100x8 is 40 GB, not 80 GB; all Delta copies failed or withdrawn; dtai only (2026-10-06) [delta+dtai]
+
+Follows MATH-9. The `delta-login2` master was restored by the user.
+
+**Root cause, from `sbatch/logs/fedsteer_math.o22685329` (Delta):**
+- The job ran on **gpuc05, `NVIDIA A100-SXM4-40GB`**, although it requested `--partition=gpuA100x8,gpuH200x8` on the assumption that `gpuA100x8` had 80 GB GPUs. **That was wrong.** The memory note had flagged it as "assumed, unverified", and E0a (22640626 / 22640760) had already run on gpuc05.
+- `sinfo`: gpuc01–06 (`gpuA100x8`) are A100s; gpue01–06 (`gpuH200x8`) are H200s.
+- Failure point: `fed.fit` → `monitor.eval_fn` → `monitor.mean_loss` (the first dev-loss eval, after round 0): `torch.OutOfMemoryError: Tried to allocate 11.36 GiB … total capacity of 39.49 GiB … 28.13 GiB in use`. That is the full-vocabulary (~152k) logits of a long dev batch on top of the 7B weights and the eager attention.
+- gpumem 3.3 → 32.8 → 38.1 GB in the first minute.
+
+**All five Delta copies are gone:**
+
+| job | outcome |
+|---|---|
+| 22685329 (G0) | FAILED, OOM after 2 min 16 s |
+| 22685330 (G2) | FAILED after 1 min 46 s |
+| 22685332 (E1-fed) | FAILED after 8 min 51 s |
+| 22685333 (E1-local) | FAILED after 8 min 49 s |
+| 22685331 (G1) | cancelled (PENDING, its G2 had failed) |
+
+All four ran on gpuc05.
+
+**dtai is not at risk:** GH200, 95.6 GB; the same settings peaked at 57.3 GB (MATH-9). The answer-in-prompt suite runs **on dtai only** (user, 10-06): 3316647 G0, 3316648 G2, 3316649 G1, 3316650 E1-fed, 3316651 E1-local, 3316652 base, all PENDING. The MATH-5 reference E1-fed 3311356 is still RUNNING. The MATH-7 watcher stays stopped (nothing left to race).
+
+**Fixes:**
+- Memory `reference-slurm.md`: Delta GPU sizes recorded as verified (only `gpuH200x8` has more than 40 GB; 7B math runs need it).
+- Launch files `MATH-4_…`, `MATH-5_…`, `MATH-7_…`: the Delta partition is now `--partition=gpuH200x8`, with a note.
+- No job was resubmitted on Delta. If a second racing copy is wanted, use `gpuH200x8`.
+
+## NR-50. C10 landed on a Turing GPU (11× slower, cannot finish); replacement raced; Turing nodes excluded (2026-10-06)
+
+**What the user saw.** Job logs contain `(null): _log_init: Unable to open logfile `': No such file or directory`.
+- **This is harmless.** It is printed by a SLURM-side process (SLURM's logging library, started with an empty LogFile), not by our code; fedsteer's only subprocess is `git`.
+- It appears twice in each of 11174459, 11174460 and 11174461, and in the molecule jobs 11165980, 11169098 and 11169100, on several nodes (ccc0390, ccc0234). Training continues normally around it.
+
+**The real problem, found in the same logs.**
+- **C10 (11174461)** landed on scavenger node **ccc0234, a Quadro RTX 6000 (Turing: no native bf16)**. It runs **~985 s/round**, against ~87 s for B/C1 on ccc0390's A100s.
+- At round ~10 after 2 h 51 m, 100 rounds plus evaluations need ~27 h. That exceeds the 24 h limit, so the job will time out around round 85, before test evaluation.
+- The NR-46/NR-49 launch scripts excluded only scavenger's V100s (ccc0089/0090).
+
+**Done.**
+- Turing nodes **ccc0232–ccc0236** added to the exclude list:
+  - of the still-PENDING NR-49 jobs 11178538 and 11178539 (`scontrol update ... ExcNodeList`);
+  - in `exp_log/launch/NR-46_*.sh` and `NR-49_*.sh`;
+  - in memory `reference-slurm`.
+- **Replacement C10** (λ_max = 10, same overrides; run dir prefix `runs/nr46_cal_coverage_l10b`): cc **11179850** (Turing excluded) and Anvil **21140719**. Launch file [NR-50_c10_replacement.sh](launch/NR-50_c10_replacement.sh). Race watcher pid 1242329, spec `exp_log/launch/NR-50_race.json`, log `sbatch/logs/race_NR-50.log`.
+- **The slow original 11174461 is left running** (not cancelled; user's decision). It will produce dev evaluations at rounds 10–80 but no test evaluation. Cancelling it once the replacement is RUNNING frees a scavenger GPU.
+- **Not changed:** `sbatch/train_eval_chembl.sbatch` (molecule workstream) also lists scavenger and excludes only the V100s. Its jobs (18 GiB peak) can land on the 24 GB Turing nodes too.
+
+## MOL-18. Coverage-borrowing arms launched on pruned ChEMBL (with/without borrowing, local-only, optimizer control) (2026-10-06)
+
+Rationale and reading guide in
+[`chembl-experiment-plan.md`, §11](../chembl-experiment-plan.md#11-dated-implementation-and-experiment-changes).
+This is the experiment the 10-06 plan entry "What coverage calibration can diagnose or repair"
+asks for, run **prospectively against local** as that entry requires. No scoring definition was
+changed, and nothing from NR-48's Newsroom result is assumed to carry over.
+
+**Arms.** All four are identical except for the calibration / optimizer line, following
+`federated-steering-plan.md` §2.1 exactly as NR-46 did on Newsroom: gain fixed at 1
+(`fed.fix_gain=true`, so u = 0 and s = exp(0) = 1), no offset, `kumaraswamy_mix` warp, identity
+penalty off (`fed.warp_reg=0`), full participation, `data/chembl_deco_skew_pruned`, 100 rounds,
+rotation 0, seed 0, strict scorer throughout, dev selection on `pct_calib_err_penalized`.
+
+| arm | overrides | cc | Anvil |
+|---|---|---|---|
+| COV (borrowing, λ_max = 1) | `fed.calibration=coverage fed.cov_lambda_max=1` | 11180420 | 21142036 |
+| PRIV (no borrowing) | `fed.calibration=private` | 11180421 | 21142037 |
+| LOCAL (local-only) | `fed.mode=local fed.calibration=private` | 11180422 | 21142038 |
+| NORESET (optimizer control) | `fed.calibration=private fed.reset_shared_opt_state=false` | 11180423 | 21142039 |
+
+COV − PRIV isolates the borrowing; PRIV − NORESET isolates the Adam-state reset; LOCAL is the bar
+the plan insists on. **Why NORESET exists:** `reset_shared_opt_state=True` drops the direction's
+Adam state every round but only in fedavg mode (`fed.py:270`), so every fed-vs-local comparison so
+far has confounded sharing with an optimizer reset. Local mode cannot be made to reset without a
+code change, so the control runs the other way: a fedavg arm that keeps the state.
+
+⚠️ **These are not comparable with Exp45's numbers.** Exp45 used a *learned* gain (.606–.956 FED,
+1.191–1.544 LOCAL); here gain is fixed at 1 for all arms. The arms are comparable with each other.
+
+Launch script `exp_log/launch/exp46_coverage_arms.sh`. Race watcher **pid 1579007**, spec
+`exp_log/launch/MOL-18_race.json`, log `sbatch/logs/race_MOL-18.log`, `--min_running_s 1200`.
+**All four arms are ONE race group**, so they all land on the same host: cc has rdkit 2025.09.6 and
+Anvil 2026.03.6, and a split would confound the arms with the scorer's version.
+
+**Pre-flight (login nodes, free; the informative part).** All four override sets build through
+`train_fed.py`'s own loader and satisfy every condition in `_check_coverage_config`. More
+importantly, **the borrowing mechanism is in an active regime on this dataset and targets the
+designed gaps.** Smoothed evidence counts and λ_ik (K = 11, b = 0.2, τ_local = τ_peer = 100):
+
+| client | role | λ at α ≤ 0.2 | λ at α ≥ 0.8 | n_train |
+|---|---|---|---|---|
+| CHEMBL243 | low specialist | .11 / .09 / .13 | **.84 / .86 / .89** | 1,554 |
+| CHEMBL228 | high specialist | **.93 / .91 / .82** | .16 / .16 / .24 | 1,146 |
+| CHEMBL4078 | **middle only** | **.92 / .83 / .56** | **.37 / .59 / .76** | 1,073 |
+| CHEMBL2039 | low moderate | .74 / .56 / .46 | .44 / .54 / .69 | 643 |
+| CHEMBL204 | untouched | .13 / .09 / .09 | .22 / .24 / .34 | 2,876 |
+| CHEMBL240 | broad | .50 / .25 / .16 | .09 / .09 / .16 | 3,535 |
+
+Each client borrows precisely where its training data was thinned, the middle-only client borrows
+at **both** ends, and the broad donors stay ≤ .34. λ mean .354, no grid point has zero total
+evidence (so the isotonic projection's keep-prior rule is not exercised, as on Newsroom). λ_max = 1
+is NR-48's decisive Newsroom value and is **untuned for ChEMBL**; NR-49's sweep should inform any
+follow-up rather than a second ChEMBL sweep now.
+
+**⚠️ Turing hazard from NR-50 applied to this workstream.** NR-50 closed with "Not changed:
+`sbatch/train_eval_chembl.sbatch` … can land on the 24 GB Turing nodes too", and that was about to
+cost this experiment: the four cc copies were submitted with only the V100s excluded.
+- `ccc0232–0236` (Quadro RTX 6000, Turing) are now excluded **in the still-pending cc jobs**
+  (`scontrol update … ExcNodeList`, verified on all four) and **in
+  `sbatch/train_eval_chembl.sbatch`** itself, so future molecule jobs inherit it.
+- This was not cosmetic: a Turing copy running for 20 min would have satisfied the watcher's
+  `--min_running_s` and **cancelled the Anvil copies in favour of a job that cannot finish.**
+- `ccc0496–0499` are RTX6000B (Blackwell), not Turing, and stay in the pool.
+
+**Measured on the molecule task, confirming NR-50's diagnosis.** Exp45's cc local duplicate
+`11169100` landed on ccc0235 and runs at **855 s/round** (rounds 0–2: 815/855/862 s), against
+**~180 s/round** for its A100 sibling `11169098` on ccc0390 — 4.7× slower. 100 rounds alone needs
+~23.8 h against a 24 h limit, so **it will time out before its test evaluation.**
+
+**Exp45 cc duplicates: left running, deliberately.** Both started *after* the Anvil copies had
+already completed and been analysed, so the failover rule's cancellation no longer applies to them.
+They were worth keeping because the 10-06 analysis entry records that the Anvil runs' "raw
+generation grids/snapshots were not found in the local workspace", so no molecule-level audit or
+paired interval was possible; the cc copies would produce exactly those artifacts locally.
+- `11169098` (A100, round 45 of 100) will deliver them. Keep.
+- ⏳ `11169100` (Turing) **cannot** — it times out before the test evaluation, so it cannot deliver
+  the artifacts that justified keeping it, while holding a GPU the MOL-18 arms are queued for.
+  **Recommend cancelling it; not cancelled here**, because NR-50 set the precedent that this call
+  is the user's (the slow `11174461` was left running by their decision). Its dev evaluations would
+  duplicate Exp45's Anvil logs at the same seed, so the loss from cancelling is ~nil.
+
+**What to read first when the arms finish.** (1) COV vs PRIV on each client's borrowed region —
+CHEMBL243 above .75, CHEMBL228 below .25, CHEMBL4078 at both ends — since that is where λ is large
+and where the mechanism must act if it acts at all; (2) whether COV reaches LOCAL, the bar the plan
+sets, not merely PRIV; (3) PRIV vs NORESET, which tells us how much of every previous fed-vs-local
+gap was the optimizer reset rather than sharing; (4) the unscorable-sweep rate per arm, because
+under a penalty-1 metric an arm can win by failing less rather than calibrating better; (5) the
+logged warp values h(.25/.5/.75) and server table z per round, to check borrowing moved the warps
+at all. Single seed and dev-selected checkpoints, so no significance claim from these runs alone —
+the plan's item (1), multiple matched seeds, remains outstanding.
+
+## MATH-11. Math runs made to fit a 40 GB GPU (micro-batching, small loss batch, SDPA generation); verified under a 39.5 GiB cap; Delta back in the race (2026-10-06) [dtai+delta]
+
+**User feedback on MATH-10:** "restrict Delta to H200" is not a fix; the jobs must fit a 40 GB GPU.
+
+**Where the memory went** (Qwen2.5-7B, vocab ~152k):
+- *Dev loss* (`monitor.mean_loss`, the OOM site): batch 16 × ~1.6k tokens × full-vocab fp32 logits ≈ 15.6 GB, plus the bf16 copy, on top of the 15 GB of weights.
+- *Training*: batch 8 → ~7.8 GB of fp32 logits, plus the bf16 copy and the gradient.
+- *Generation* keeps only the last position's logits (fine), **but eager attention's prefill materializes batch × heads × L² fp32 scores**. B1's 3-shot prompts (~3–3.7k tokens) needed 5.8–6.9 GiB per layer and OOMed under the cap at batch 8 **and at batch 4** (it scales with L², not just the batch).
+
+**Changes:**
+1. `configs/math_fedavg.yaml`:
+   - `fed.batch_size: 2`, `fed.grad_accum: 4`: the **same 8 examples per optimizer step**, in the same stream order. The only numerical difference: the step averages 4 micro-batch token-means rather than one token-mean over 8 sequences.
+   - `monitor.batch_size: 4` (dev-loss batch).
+2. `fedsteer/evaluate.py`: `evaluate_loaded_client(loss_batch_size=…)`. `fedsteer/monitor.py` passes `min(full_batch_size, 16, monitor.batch_size)`, which **equals the old `min(full_batch_size, 16)` under the default `monitor.batch_size: 16`**, so other workstreams are unchanged.
+3. `fedsteer/model.py`:
+   - `generate_at_alpha` uses **SDPA for generation when the model trains with eager** (restored afterwards; `FEDSTEER_GEN_ATTN=eager` disables this). Generation runs no backward pass, and SDPA's NaN on dtai was in the *backward* only (MATH-5). A CPU check found **identical greedy outputs** (fp32, 3 prompts, SDPA vs. eager). Other workstreams already use SDPA, so for them nothing changes.
+   - `load_model` honours **`FEDSTEER_GPU_MEM_GB`** (`torch.cuda.set_per_process_memory_fraction`), so a 40 GB card can be emulated on a GH200.
+   - `report_peak_memory()` prints `PEAK_GPU_MEM …` at the end of `train_fed.py`, `eval_direction.py` and `eval_baselines.py`.
+4. `sbatch/eval_b1_math.sbatch`: batch 32 for the zero-shot row; **8** (`B1_LONG_BS`) for the 3-shot and base rows. `eval_b1_math.sbatch` and `eval_base_math.sbatch` now set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (as `train_eval_math.sbatch` already did).
+
+**Verification under `FEDSTEER_GPU_MEM_GB=39.5`** (a 40 GB A100 reports 39.49 GiB usable), dtai `ghx4-interactive`, answer-in-prompt data:
+
+| probe | what | peak allocated / reserved | result |
+|---|---|---|---|
+| 3322211 | aops_forum (longest targets), 2 rounds × 20 steps (micro-batch 2 × 4), a full dev eval each round (50 problems, generation batch 64, dev-loss batch 4), test eval (50 problems, batch 64) | train **21.93 / 24.03 GiB**; test eval **19.91 / 20.88 GiB** (nvidia-smi 25.4 GB) | ✅ |
+| 3322474 | B1 on that run, 3-shot rows at batch 8, eager generation | — | ❌ OOM (6.94 GiB alloc at 37.8 in use) |
+| 3322586 | same, batch 4, eager | zero-shot row 15.00 GiB | ❌ OOM (5.79 GiB alloc at 36.7 in use) |
+| 3322819 | same, batch 8, **SDPA generation** | zero-shot 15.47 / 15.89; 3-shot client **23.55 / 39.05**; base (4,096 cap) **23.55 / 39.14 GiB** | ✅ (reserved near the cap is allocator fragmentation; hence `expandable_segments`) |
+
+Probe run dir: `runs/math11_mem40_probe_20261006-104227_j3322211`. Cost: 2 rounds took **57.7 s / 58.7 s vs. ~28 s** with batch 8, so E1 training is about 2× slower (an estimated ~8 min per round, ~13 h for 100 rounds). Micro-batch 4 (`fed.batch_size=4 fed.grad_accum=2`) would likely fit as well (train peak 21.9 GiB; ~2 GiB more expected) but is not yet verified.
+
+**Jobs.** The pending dtai MATH-7 copies (3316647/48/50/51/52) pick up the new config and code automatically: the config is read from the repo, and the code snapshotted, **at job start**. Both hosts were synced and imports checked on each, including the other session's new `fedsteer/coverage.py` (imported by `fed.py`).
+- Delta copies resubmitted (launch `exp_log/launch/MATH-11_delta_40gb.sh`), back on **all** Delta GPU partitions (`gpuA100x4,gpuA100x8,gpuH200x8`): G0 **22703346**, G2 **22703347**, E1-fed **22703349**, E1-local **22703350**.
+- G1 jobs carried stale B1 script copies (SLURM copies the batch script at submission). Replaced, both confirmed PENDING: dtai 3316649 → **3323140** (afterok 3316648); Delta 22703348 → **22705844** (afterok 22703347).
+- Watcher: spec `exp_log/launch/MATH-11_race.json` (G1 dependents updated); pid **3329925**; log `sbatch/logs/race_MATH-11.log`.
+
+**Also:** the MATH-5 reference E1-fed (dtai 3311356, original prompts) **COMPLETED** after 23 h 07 min, ending 10-06 at 11:38. Analysis pending.
+
+## NR-51. Paper draft: Newsroom settings and positive results in LaTeX (2026-10-06)
+
+No code or jobs. New `paper/Distributed_Steering/newsroom_experiments.tex` (standalone ACL review format; extra citations in `paper/Distributed_Steering/newsroom.bib`; built PDF in `paper/Distributed_Steering/.build/newsroom_experiments.pdf`).
+- **Setup section:** data and clients (rotation 0), the global α scale and support, the parameterization and FedAvg protocol, the compared methods (local, B1, B3, B4; E2 settings frozen/local D, plug-in, prompt), and the metrics (percentile error, in/out of support, reach, Spearman, near-ties, quality against the same-α reference, judge, extractiveness-controlled house style, paired bootstrap).
+- **Results tables:** fed vs. local at 1B and 8B (entries 20, 37) with per-client paired differences; baselines (entry 22); quality; house style (entries 31, 37); the E2 curve and per-client errors (entries 26, 30); shared vs. per-client calibration (entries 20, 30, 41).
+- **Left out on purpose** (not positive or not final): E3 drift, learned vs. constant gain (entry 40), NR-46 coverage calibration (running). A2's better out-of-support error and the local gain clamp are stated as qualifications.
+- Every number is from this log or `exp_log/reports/`; sources are listed in a header comment of the .tex file.
+
+## NR-52. NR-46/49 test results: coverage borrowing repairs private warps and matches, but does not beat, the shared warp (2026-10-06, 21:00)
+
+**Finished** (all on cc, all dev-selected round 100): A shared 11174458, B private 11174459, C1 11174460, C0.1 11178538, C0.01 11178539. Report: `exp_log/reports/nr46_coverage_calibration_test.txt` (`compare_runs.py`, 200 test articles per client, paired bootstrap over articles; seed variance not captured).
+- **C10 replacement:** both race copies are RUNNING (watcher bug, below). Anvil 21140719 has finished training and is evaluating; cc 11179850 is at round 96. Its dev curve tracks C1 throughout (round 90: 0.155 vs. 0.158).
+- **The old C10 11174461** (Turing node, NR-50) is still running at round 29 after 11 h 50 m. It has no use any more.
+
+| Arm | λ_max | Pct err (worst) | In-support | Out-of-support (worst) | Spearman (worst) | nypost.com | reuters.com |
+|---|---|---|---|---|---|---|---|
+| A shared warp | – | **0.154 (0.214)** | 0.136 | **0.166 (0.199)** | 0.924 (0.863) | **0.187** | 0.214 |
+| B private warps | – | 0.167 (0.265) | 0.136 | 0.185 (0.298) | 0.912 (0.845) | 0.265 | 0.221 |
+| C0.01 | 0.01 | 0.164 (0.252) | 0.136 | 0.180 (0.282) | 0.914 (0.836) | 0.252 | 0.216 |
+| C0.1 | 0.1 | 0.155 (0.214) | 0.135 | 0.168 (0.205) | **0.928 (0.892)** | 0.188 | 0.214 |
+| C1 | 1 | 0.155 (0.214) | **0.134** | 0.168 (0.214) | 0.924 (0.871) | 0.197 | 0.214 |
+| *old method (learned shared gain, warp_reg 0.01), 11063910* | – | *0.151 (0.199)* | *0.135* | *0.161 (0.188)* | *0.933 (0.910)* | *0.177* | *0.199* |
+
+**Paired, per client:**
+
+| Comparison | Better on | Worse on | Details |
+|---|---|---|---|
+| B − A | 0/8 | 4/8 | nypost.com +0.078, out-of-support +0.099; theguardian.com +0.008; forbes.com, wsj.com +0.005. Private warps give **no** in-support gain anywhere. |
+| C1 − B | 4/8 | 0/8 | nypost.com −0.068; theguardian.com, forbes.com, wsj.com −0.006/−0.007 |
+| C0.1 − B | 2/8 | 0/8 | nypost.com −0.077; theguardian.com −0.006 |
+| C0.01 − B | 1/8 | 0/8 | nypost.com −0.013 only |
+| C1 − A | 0/8 | 1/8 | nypost.com +0.010 [+0.002, +0.018]; people.com out-of-support −0.009 is the only gain |
+| C0.1 − A | 0/8 | 0/8 | ties on all 8, overall and out-of-support |
+| C0.01 − A | 0/8 | 2/8 | nypost.com +0.066, theguardian.com +0.007 |
+
+- Quality: AlignScore, BERTScore and the judge are within noise across arms. C0.01, like B, writes slightly longer out-of-support summaries (length gap +3.9 / +3.1 vs. +2.8 for A).
+
+**Reading.**
+1. **Borrowing works as intended against B.** A tiny weight is enough: λ_max = 0.1 already removes B's nypost.com failure. The α = 0 output percentile is 0.51 for B, 0.46 for C0.01, 0.25 for C0.1, 0.23 for C1 and 0.19 for A. λ_max = 0.01 is too weak. λ_max = 10 behaves like 1 on dev.
+2. **It does not beat the shared warp (A, the primary comparison).**
+   - The best arm, C0.1, ties A on every client. C1 is slightly worse on nypost.com.
+   - The premise that private warps buy in-support accuracy on well-covered clients does not hold here: B's in-support error equals A's (0.136), and B is never better than A.
+   - On this data the calibration curve has no client-specific shape worth keeping, so the best a private warp can do is to be pulled back to the shared one.
+3. **Pooling weights reward the clients whose warps are least trustworthy.** At round 100 the server table bends sharply at high α when λ is small:
+   - C0.01: z(0.8, 0.9) = 0.66, 0.74, then 1 at α = 1. C0.1: 0.74, 0.84. C1: 0.79, 0.89, near the identity.
+   - The high-α grid points are where nypost.com and reuters.com hold most of their data (counts 2,200+). Under weak borrowing these two collapse their own warps: nypost h(0.9) = 0.53 in B and C0.01, and its private adapter absorbs the copy style (NR-48).
+   - So the count-weighted table passes that collapse on to clients that lack high-α data (theguardian.com, λ ≈ 0.7–0.9·λ_max there).
+   - Count measures how much data a client has near a point, not whether its warp value there is identified. The warp trades off against P_i, as §2.1's assumptions paragraph warns. With large λ the system settles at a near-identity fixed point instead.
+4. **Unused machinery.** The isotonic projection never changed the table (adjustment 0 in every round of every run), and no grid point was uncovered.
+5. **Fixing the gain at 1 costs reuters.com.** Every gain-1 arm has reuters at 0.214–0.221, against 0.199 for the old learned-gain method (A − old method: +0.016, significant, NR-48). This matches entry 40 (const g = α: reuters 0.217). §2.1 says a shared gain is absorbable into D "although optimizer dynamics change"; here those dynamics measurably matter. The old method also had warp_reg = 0.01, so the comparison is historical, not matched.
+
+**Race-watcher bug (`scripts/race_watch.py`), fixed.**
+- **What happened:** the NR-50 watcher exited at 15:50, when the cc copy was RUNNING but not yet past `--min_running_s` and the Anvil copy was PENDING. The exit test counted only PENDING copies as live. Anvil then started at ~16:52, and both copies ran.
+- **Fix:** RUNNING/REQUEUED/unanswered copies count as live while the race is undecided. A decided race stays open while a loser is still PENDING or unanswered and was not cancelled (the retry the old second condition provided).
+- **Check:** simulated the NR-50 sequence (cc RUNNING 120 s → keep watching; cc 1,500 s → cancel Anvil → exit).
+- Running watchers (e.g. MATH-7's) keep the old code in memory; only new watchers get the fix.
+
+**Suggested next steps** (not launched):
+- (a) The matched local-only baseline is now less interesting than (b) and (c).
+- (b) Try coverage borrowing with a **learned shared gain**, to see whether it recovers reuters.com.
+- (c) If §2.1 continues: weight the server pooling by something other than raw counts (e.g. down-weight a client's values where its warp deviates strongly from its peers'), or pool only the clients with broad support.
+- (d) Seed replicates of A, C0.1 and the old method, before claiming differences of ~0.01.
+
+## NR-53. Why coverage borrowing (§2.1) cannot beat the shared warp here: diagnosis from the NR-46/49 test evals (2026-10-06)
+
+Analysis only; no code or jobs. Inputs: the round-100 test evals of A, B and C0.1 (NR-52).
+
+**1. The warp responds differently per client, so peers' h values are the wrong target.**
+- In A every client uses the same coefficient at each α, so differences in output are differences in the clients' response to D.
+- At α = 0.25 (coefficient 0.27), the output percentile is 0.27–0.35 for the six broad clients but **0.45 for nypost.com and 0.52 for reuters.com**. At α = 0.75 it ranges from 0.66 (people.com) to 0.85 (forbes.com).
+- The right warp is h_i = r_i⁻¹, the inverse of client i's own response. A peer's data at α identifies r_j⁻¹(α), not r_i⁻¹(α).
+- For nypost to produce percentile 0.25 it would need h(0.25) ≈ 0.06 (interpolating between 0.19 at coefficient 0 and 0.45 at 0.27). Its peers say ≈ 0.25.
+- The clients that lack coverage (copy-heavy, skewed) are exactly the ones whose response differs most from the peers that have coverage. Data skew and house style come together.
+
+**2. What borrowing actually fixed is in-support co-adaptation, through the warp family's coupling.**
+- B's nypost failure is an in-support identifiability problem: the warp compresses and P_i absorbs the copy style (NR-48).
+- Borrowing repaired it although λ in nypost's support is only 0.04–0.08·λ_max. The 3-parameter Kumaraswamy curve couples all α: in C0.1, h(0.75) = 0.57 against 0.32 in B.
+- So C acts as global shrinkage toward the pooled curve and converges to A. With a global parametric warp, "fit inside the support, borrow outside" cannot be implemented as stated.
+
+**3. Count-weighted pooling trusts collapsed curves** (NR-52: the high-α table at small λ is driven by nypost and reuters).
+
+**4. Little headroom on this benchmark.** Per-article |pct − α| on test, 40 cells (8 clients × 5 α); "headroom" is the error removable by perfectly centring each interior cell (median-centring floor; approximate):
+
+| Cell type | Cells | Mean err A / B / C0.1 | Share of A's total | Headroom (A) |
+|---|---|---|---|---|
+| in support | 20 | 0.139 / 0.139 / 0.139 | 45% | 0.024 per cell |
+| out of support, **endpoint** (α = 0 or 1) | 16 | 0.165 / 0.189 / 0.170 | **43%** | **0**: h(0) = 0 and h(1) = 1 are fixed |
+| out of support, interior | 4 | 0.186 / 0.218 / 0.179 | 12% | 0.048 per cell |
+
+- Perfect calibration everywhere would lower A's mean from 0.154 by at most ≈ 0.017. Only ≈ 0.005 of that is out of support.
+- The idea targets the region where this benchmark has almost no measurable cells: two clients with real gaps, a 5-point α grid, and fixed endpoints.
+
+**Implications** (proposals, not run):
+- (i) Measure the calibration headroom properly first: dense α grid and the post-hoc oracle remap (`eval_direction.py --posthoc_remap`) on A's checkpoint.
+- (ii) Borrow the curve *shape*, not its level: h_i = z + δ_i, with δ_i fitted in support and extrapolated smoothly outside (penalize δ_i' there, not δ_i).
+- (iii) Free the endpoints, i.e. let δ_i(0) ≠ 0 act as a client offset.
+- (iv) Use a local, piecewise-linear warp on the grid, so that in-support and out-of-support are actually decoupled.
+- (v) Weight pooling by agreement or identifiability, not by raw count.
+- (vi) Evaluate in a setting with real gaps: α windows, rotation 2, or the E2 coverage protocol.

@@ -1,0 +1,1290 @@
+{
+  "source": {
+    "fed": "sbatch/logs/fedsteer_chembl.o21102995",
+    "local": "sbatch/logs/fedsteer_chembl.o21102996",
+    "selected_rounds": {
+      "fed": 100,
+      "local": 80
+    },
+    "basis": "Logged test summaries and per-client statistics; no per-prompt bootstrap performed."
+  },
+  "dataset_reference": "data/chembl_deco_skew_pruned/alpha_reference.json",
+  "reference_sha256": "0c976aa65cb5e793e73c396cca82dd6c1a58927d7c6c794f5248c1b12ce6199f",
+  "alpha_bins": "[0,.25), [.25,.5), [.5,.75), [.75,1]",
+  "clients": {
+    "CHEMBL243": {
+      "target_name": "Human immunodeficiency virus type 1 protease",
+      "train_count": 1554,
+      "alpha_min_max": [
+        0.0015965049332942892,
+        0.9732302483431968
+      ],
+      "central_90pct_support": [
+        0.009237290245260951,
+        0.4060184550168154
+      ],
+      "alpha_quartile_counts": [
+        1274,
+        233,
+        30,
+        17
+      ],
+      "test_alphas_outside_support": [
+        0,
+        0.5,
+        0.75,
+        1
+      ],
+      "fed_minus_local_errors": {
+        "pct_calib_err": 0.000147849394438071,
+        "pct_err_in_support": 0.009781536194012064,
+        "pct_err_out_support": -0.0022605723054553994,
+        "pct_calib_err_penalized": -0.02616734659641118
+      },
+      "fed": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.020000000000000018,
+        "pct_calib_err_penalized": 0.28131920292230395,
+        "support": [
+          0.0092,
+          0.406
+        ],
+        "pct_err_in_support": 0.2626222686812336,
+        "pct_err_out_support": 0.28212404496292176,
+        "reach_rate": 0.5102040816326531,
+        "concordance": 0.7721088435374149,
+        "pct_calib_err": 0.2782236897065842,
+        "pct_range": 0.43798218471163103,
+        "mean_pct_by_alpha": [
+          0.2,
+          0.398,
+          0.47,
+          0.533,
+          0.638
+        ],
+        "order_rate": 0.05442176870748299,
+        "no_effect_rate": 0.061224489795918366,
+        "adjacent_increase_rate": 0.4574829931972789,
+        "adjacent_tie_rate": 0.46258503401360546,
+        "adjacent_decrease_rate": 0.07993197278911565,
+        "endpoint_increase_rate": 0.8979591836734694,
+        "spearman": 0.6879821401924272,
+        "norm_range": 1.6193880148668616,
+        "calib_mae_iqr": 7.36657602952597,
+        "mean_score_by_alpha": [
+          -1.29,
+          -0.22,
+          0.11,
+          0.347,
+          0.831
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.46,
+        "near_tie_rate": 0.5483333333333333,
+        "near_no_effect_rate": 0.1,
+        "endpoint_near_tie_rate": 0.1,
+        "adjacent_increase_rate_nt": 0.37666666666666665,
+        "concordance_nt": 0.735,
+        "gain": 0.7812384963035583,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 0.6422,
+          "q": 1.2432,
+          "w": 0.4215,
+          "curve": {
+            "0.1": 0.1738,
+            "0.25": 0.3476,
+            "0.5": 0.5927,
+            "0.75": 0.8093,
+            "0.9": 0.9279
+          }
+        }
+      },
+      "local": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.1466666666666666,
+        "pct_calib_err_penalized": 0.3074865495187151,
+        "support": [
+          0.0092,
+          0.406
+        ],
+        "pct_err_in_support": 0.25284073248722155,
+        "pct_err_out_support": 0.28438461726837716,
+        "reach_rate": 0.490234375,
+        "concordance": 0.730078125,
+        "pct_calib_err": 0.2780758403121461,
+        "pct_range": 0.40916315602288017,
+        "mean_pct_by_alpha": [
+          0.205,
+          0.409,
+          0.476,
+          0.562,
+          0.614
+        ],
+        "order_rate": 0.03125,
+        "no_effect_rate": 0.0625,
+        "adjacent_increase_rate": 0.392578125,
+        "adjacent_tie_rate": 0.50390625,
+        "adjacent_decrease_rate": 0.103515625,
+        "endpoint_increase_rate": 0.8828125,
+        "spearman": 0.6209476327266417,
+        "norm_range": 1.3647976888269444,
+        "calib_mae_iqr": 7.382116594432627,
+        "mean_score_by_alpha": [
+          -1.159,
+          -0.147,
+          0.118,
+          0.431,
+          0.628
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.45166666666666666,
+        "near_tie_rate": 0.5216666666666666,
+        "near_no_effect_rate": 0.06,
+        "endpoint_near_tie_rate": 0.06,
+        "adjacent_increase_rate_nt": 0.3416666666666667,
+        "concordance_nt": 0.6716666666666666,
+        "gain": 1.268451452255249,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 0.7603,
+          "q": 1.5019,
+          "w": 0.5127,
+          "curve": {
+            "0.1": 0.1764,
+            "0.25": 0.3651,
+            "0.5": 0.6222,
+            "0.75": 0.8337,
+            "0.9": 0.9404
+          }
+        }
+      }
+    },
+    "CHEMBL204": {
+      "target_name": "Prothrombin",
+      "train_count": 2876,
+      "alpha_min_max": [
+        0.0003624193651153937,
+        0.9991690234586712
+      ],
+      "central_90pct_support": [
+        0.025414325564470083,
+        0.9156754613503617
+      ],
+      "alpha_quartile_counts": [
+        1359,
+        666,
+        435,
+        416
+      ],
+      "test_alphas_outside_support": [
+        0,
+        1
+      ],
+      "fed_minus_local_errors": {
+        "pct_calib_err": 0.020134772649729987,
+        "pct_err_in_support": 0.005806471609172831,
+        "pct_err_out_support": 0.04162722421056561,
+        "pct_calib_err_penalized": 0.015626179779288207
+      },
+      "fed": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.0,
+        "pct_calib_err_penalized": 0.2217564993329799,
+        "support": [
+          0.0254,
+          0.9157
+        ],
+        "pct_err_in_support": 0.21581084027247383,
+        "pct_err_out_support": 0.23067498792373897,
+        "reach_rate": 0.18,
+        "concordance": 0.835,
+        "pct_calib_err": 0.2217564993329799,
+        "pct_range": 0.5386500241525221,
+        "mean_pct_by_alpha": [
+          0.171,
+          0.292,
+          0.462,
+          0.602,
+          0.71
+        ],
+        "order_rate": 0.04666666666666667,
+        "no_effect_rate": 0.04,
+        "adjacent_increase_rate": 0.49833333333333335,
+        "adjacent_tie_rate": 0.455,
+        "adjacent_decrease_rate": 0.04666666666666667,
+        "endpoint_increase_rate": 0.96,
+        "spearman": 0.8324328111132252,
+        "norm_range": 1.6016117814775221,
+        "calib_mae_iqr": 7.245429468968037,
+        "mean_score_by_alpha": [
+          -1.163,
+          -0.592,
+          0.006,
+          0.497,
+          0.934
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.455,
+        "near_tie_rate": 0.545,
+        "near_no_effect_rate": 0.1,
+        "endpoint_near_tie_rate": 0.08666666666666667,
+        "adjacent_increase_rate_nt": 0.41,
+        "concordance_nt": 0.791,
+        "gain": 0.6383808851242065,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 0.9322,
+          "q": 0.9641,
+          "w": 0.3058,
+          "curve": {
+            "0.1": 0.104,
+            "0.25": 0.255,
+            "0.5": 0.5034,
+            "0.75": 0.7507,
+            "0.9": 0.8994
+          }
+        }
+      },
+      "local": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.026666666666666616,
+        "pct_calib_err_penalized": 0.20613031955369168,
+        "support": [
+          0.0254,
+          0.9157
+        ],
+        "pct_err_in_support": 0.210004368663301,
+        "pct_err_out_support": 0.18904776371317336,
+        "reach_rate": 0.21232876712328766,
+        "concordance": 0.8561643835616438,
+        "pct_calib_err": 0.2016217266832499,
+        "pct_range": 0.6219044725736533,
+        "mean_pct_by_alpha": [
+          0.192,
+          0.353,
+          0.533,
+          0.696,
+          0.814
+        ],
+        "order_rate": 0.04794520547945205,
+        "no_effect_rate": 0.0,
+        "adjacent_increase_rate": 0.541095890410959,
+        "adjacent_tie_rate": 0.3921232876712329,
+        "adjacent_decrease_rate": 0.06678082191780822,
+        "endpoint_increase_rate": 0.9931506849315068,
+        "spearman": 0.8681331692354144,
+        "norm_range": 1.8742211218774265,
+        "calib_mae_iqr": 7.1803213434575905,
+        "mean_score_by_alpha": [
+          -1.115,
+          -0.37,
+          0.272,
+          0.881,
+          1.34
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.38333333333333336,
+        "near_tie_rate": 0.44333333333333336,
+        "near_no_effect_rate": 0.02,
+        "endpoint_near_tie_rate": 0.02,
+        "adjacent_increase_rate_nt": 0.4866666666666667,
+        "concordance_nt": 0.823,
+        "gain": 1.1907811164855957,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 1.0933,
+          "q": 1.0192,
+          "w": 0.1811,
+          "curve": {
+            "0.1": 0.0968,
+            "0.25": 0.2452,
+            "0.5": 0.4955,
+            "0.75": 0.7476,
+            "0.9": 0.8992
+          }
+        }
+      }
+    },
+    "CHEMBL325": {
+      "target_name": "Histone deacetylase 1",
+      "train_count": 2020,
+      "alpha_min_max": [
+        0.0005580035097607344,
+        0.9994739680694397
+      ],
+      "central_90pct_support": [
+        0.17037175598880241,
+        0.9882775137916197
+      ],
+      "alpha_quartile_counts": [
+        300,
+        525,
+        351,
+        844
+      ],
+      "test_alphas_outside_support": [
+        0,
+        1
+      ],
+      "fed_minus_local_errors": {
+        "pct_calib_err": 0.028871762250354344,
+        "pct_err_in_support": 0.02050220770714664,
+        "pct_err_out_support": 0.04142609406516587,
+        "pct_calib_err_penalized": 0.02926061151197576
+      },
+      "fed": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.013333333333333308,
+        "pct_calib_err_penalized": 0.19939892378294888,
+        "support": [
+          0.1704,
+          0.9883
+        ],
+        "pct_err_in_support": 0.18105824436098272,
+        "pct_err_out_support": 0.2196103849905925,
+        "reach_rate": 0.10810810810810811,
+        "concordance": 0.831081081081081,
+        "pct_calib_err": 0.1964791006128266,
+        "pct_range": 0.560779230018815,
+        "mean_pct_by_alpha": [
+          0.276,
+          0.299,
+          0.446,
+          0.703,
+          0.837
+        ],
+        "order_rate": 0.02027027027027027,
+        "no_effect_rate": 0.04054054054054054,
+        "adjacent_increase_rate": 0.5,
+        "adjacent_tie_rate": 0.4341216216216216,
+        "adjacent_decrease_rate": 0.06587837837837837,
+        "endpoint_increase_rate": 0.9594594594594594,
+        "spearman": 0.8212079668816528,
+        "norm_range": 1.625788116281855,
+        "calib_mae_iqr": 7.186456443842714,
+        "mean_score_by_alpha": [
+          -0.564,
+          -0.472,
+          0.02,
+          0.909,
+          1.564
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.43166666666666664,
+        "near_tie_rate": 0.4866666666666667,
+        "near_no_effect_rate": 0.05333333333333334,
+        "endpoint_near_tie_rate": 0.05333333333333334,
+        "adjacent_increase_rate_nt": 0.44166666666666665,
+        "concordance_nt": 0.807,
+        "gain": 0.6062622666358948,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 1.6988,
+          "q": 0.6362,
+          "w": 0.6313,
+          "curve": {
+            "0.1": 0.0449,
+            "0.25": 0.131,
+            "0.5": 0.3162,
+            "0.75": 0.563,
+            "0.9": 0.7634
+          }
+        }
+      },
+      "local": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.00666666666666671,
+        "pct_calib_err_penalized": 0.17013831227097312,
+        "support": [
+          0.1704,
+          0.9883
+        ],
+        "pct_err_in_support": 0.16055603665383608,
+        "pct_err_out_support": 0.17818429092542662,
+        "reach_rate": 0.15100671140939598,
+        "concordance": 0.8771812080536913,
+        "pct_calib_err": 0.16760733836247227,
+        "pct_range": 0.6436314181491467,
+        "mean_pct_by_alpha": [
+          0.262,
+          0.315,
+          0.486,
+          0.729,
+          0.905
+        ],
+        "order_rate": 0.14093959731543623,
+        "no_effect_rate": 0.006711409395973154,
+        "adjacent_increase_rate": 0.610738255033557,
+        "adjacent_tie_rate": 0.32550335570469796,
+        "adjacent_decrease_rate": 0.06375838926174497,
+        "endpoint_increase_rate": 0.9932885906040269,
+        "spearman": 0.8886425767222399,
+        "norm_range": 1.9242704532943535,
+        "calib_mae_iqr": 7.080148436242697,
+        "mean_score_by_alpha": [
+          -0.588,
+          -0.401,
+          0.115,
+          0.939,
+          1.932
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.32166666666666666,
+        "near_tie_rate": 0.39,
+        "near_no_effect_rate": 0.013333333333333334,
+        "endpoint_near_tie_rate": 0.013333333333333334,
+        "adjacent_increase_rate_nt": 0.5483333333333333,
+        "concordance_nt": 0.8593333333333333,
+        "gain": 1.2782933712005615,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 1.8087,
+          "q": 0.627,
+          "w": 0.6152,
+          "curve": {
+            "0.1": 0.0445,
+            "0.25": 0.1281,
+            "0.5": 0.3093,
+            "0.75": 0.5544,
+            "0.9": 0.7564
+          }
+        }
+      }
+    },
+    "CHEMBL2835": {
+      "target_name": "Tyrosine-protein kinase JAK1",
+      "train_count": 1493,
+      "alpha_min_max": [
+        0.01641494736663115,
+        0.9889912287139682
+      ],
+      "central_90pct_support": [
+        0.13809711324672208,
+        0.884721919860088
+      ],
+      "alpha_quartile_counts": [
+        368,
+        412,
+        409,
+        304
+      ],
+      "test_alphas_outside_support": [
+        0,
+        1
+      ],
+      "fed_minus_local_errors": {
+        "pct_calib_err": 0.0028718588815203616,
+        "pct_err_in_support": 0.01057939958033241,
+        "pct_err_out_support": -0.008689452166697642,
+        "pct_calib_err_penalized": 0.005884807162224198
+      },
+      "fed": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.020000000000000018,
+        "pct_calib_err_penalized": 0.22130754059042115,
+        "support": [
+          0.1381,
+          0.8847
+        ],
+        "pct_err_in_support": 0.1898893468952683,
+        "pct_err_out_support": 0.2609024604313908,
+        "reach_rate": 0.2755102040816326,
+        "concordance": 0.8282312925170068,
+        "pct_calib_err": 0.21829459230971732,
+        "pct_range": 0.4781950791372183,
+        "mean_pct_by_alpha": [
+          0.272,
+          0.347,
+          0.456,
+          0.601,
+          0.75
+        ],
+        "order_rate": 0.027210884353741496,
+        "no_effect_rate": 0.047619047619047616,
+        "adjacent_increase_rate": 0.48639455782312924,
+        "adjacent_tie_rate": 0.46938775510204084,
+        "adjacent_decrease_rate": 0.04421768707482993,
+        "endpoint_increase_rate": 0.9387755102040817,
+        "spearman": 0.8119246308496934,
+        "norm_range": 1.2324449376512492,
+        "calib_mae_iqr": 7.239550045770622,
+        "mean_score_by_alpha": [
+          -0.588,
+          -0.326,
+          0.011,
+          0.461,
+          1.025
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.46166666666666667,
+        "near_tie_rate": 0.5216666666666666,
+        "near_no_effect_rate": 0.1,
+        "endpoint_near_tie_rate": 0.10666666666666667,
+        "adjacent_increase_rate_nt": 0.42833333333333334,
+        "concordance_nt": 0.7933333333333333,
+        "gain": 0.7299569845199585,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 1.7067,
+          "q": 0.9329,
+          "w": 0.6145,
+          "curve": {
+            "0.1": 0.0498,
+            "0.25": 0.1504,
+            "0.5": 0.3704,
+            "0.75": 0.6496,
+            "0.9": 0.8473
+          }
+        }
+      },
+      "local": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.0,
+        "pct_calib_err_penalized": 0.21542273342819696,
+        "support": [
+          0.1381,
+          0.8847
+        ],
+        "pct_err_in_support": 0.17930994731493588,
+        "pct_err_out_support": 0.26959191259808846,
+        "reach_rate": 0.20666666666666667,
+        "concordance": 0.8333333333333334,
+        "pct_calib_err": 0.21542273342819696,
+        "pct_range": 0.4608161748038231,
+        "mean_pct_by_alpha": [
+          0.283,
+          0.368,
+          0.5,
+          0.639,
+          0.744
+        ],
+        "order_rate": 0.07333333333333333,
+        "no_effect_rate": 0.04,
+        "adjacent_increase_rate": 0.52,
+        "adjacent_tie_rate": 0.4066666666666667,
+        "adjacent_decrease_rate": 0.07333333333333333,
+        "endpoint_increase_rate": 0.9466666666666667,
+        "spearman": 0.8108294185703735,
+        "norm_range": 1.1524742630212323,
+        "calib_mae_iqr": 7.241379196578648,
+        "mean_score_by_alpha": [
+          -0.533,
+          -0.24,
+          0.149,
+          0.558,
+          0.976
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.405,
+        "near_tie_rate": 0.4766666666666667,
+        "near_no_effect_rate": 0.09333333333333334,
+        "endpoint_near_tie_rate": 0.10666666666666667,
+        "adjacent_increase_rate_nt": 0.46166666666666667,
+        "concordance_nt": 0.8056666666666666,
+        "gain": 1.3783072233200073,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 1.9026,
+          "q": 1.0302,
+          "w": 0.6331,
+          "curve": {
+            "0.1": 0.0448,
+            "0.25": 0.1383,
+            "0.5": 0.3571,
+            "0.75": 0.6483,
+            "0.9": 0.8541
+          }
+        }
+      }
+    },
+    "CHEMBL4078": {
+      "target_name": "Acetylcholinesterase",
+      "train_count": 1073,
+      "alpha_min_max": [
+        0.09698748923899596,
+        0.9974957380480216
+      ],
+      "central_90pct_support": [
+        0.29996549116962334,
+        0.798184641517011
+      ],
+      "alpha_quartile_counts": [
+        27,
+        479,
+        478,
+        89
+      ],
+      "test_alphas_outside_support": [
+        0,
+        0.25,
+        1
+      ],
+      "fed_minus_local_errors": {
+        "pct_calib_err": 0.016626372008677254,
+        "pct_err_in_support": 0.020868977080856874,
+        "pct_err_out_support": 0.013797968627224183,
+        "pct_calib_err_penalized": 0.019553889572452077
+      },
+      "fed": {
+        "n_prompts": 138,
+        "unscorable_row_rate": 0.021739130434782594,
+        "pct_calib_err_penalized": 0.1943688615497384,
+        "support": [
+          0.3,
+          0.7982
+        ],
+        "pct_err_in_support": 0.1243179524994407,
+        "pct_err_out_support": 0.23315456153684064,
+        "reach_rate": 0.3333333333333333,
+        "concordance": 0.8525925925925926,
+        "pct_calib_err": 0.18961991792188065,
+        "pct_range": 0.43270520151890685,
+        "mean_pct_by_alpha": [
+          0.311,
+          0.36,
+          0.451,
+          0.636,
+          0.744
+        ],
+        "order_rate": 0.05925925925925926,
+        "no_effect_rate": 0.037037037037037035,
+        "adjacent_increase_rate": 0.5425925925925926,
+        "adjacent_tie_rate": 0.4111111111111111,
+        "adjacent_decrease_rate": 0.046296296296296294,
+        "endpoint_increase_rate": 0.9481481481481482,
+        "spearman": 0.840328631568985,
+        "norm_range": 0.9446613376779873,
+        "calib_mae_iqr": 7.1972923080405,
+        "mean_score_by_alpha": [
+          -0.382,
+          -0.226,
+          0.022,
+          0.505,
+          0.855
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.40398550724637683,
+        "near_tie_rate": 0.4673913043478261,
+        "near_no_effect_rate": 0.07971014492753623,
+        "endpoint_near_tie_rate": 0.09420289855072464,
+        "adjacent_increase_rate_nt": 0.48007246376811596,
+        "concordance_nt": 0.8166666666666667,
+        "gain": 0.9559484124183655,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 2.4132,
+          "q": 1.3342,
+          "w": 0.7961,
+          "curve": {
+            "0.1": 0.0245,
+            "0.25": 0.0882,
+            "0.5": 0.2948,
+            "0.75": 0.6328,
+            "0.9": 0.8711
+          }
+        }
+      },
+      "local": {
+        "n_prompts": 138,
+        "unscorable_row_rate": 0.01449275362318836,
+        "pct_calib_err_penalized": 0.17481497197728632,
+        "support": [
+          0.3,
+          0.7982
+        ],
+        "pct_err_in_support": 0.10344897541858383,
+        "pct_err_out_support": 0.21935659290961645,
+        "reach_rate": 0.43137254901960786,
+        "concordance": 0.8827205882352941,
+        "pct_calib_err": 0.1729935459132034,
+        "pct_range": 0.5170654726637613,
+        "mean_pct_by_alpha": [
+          0.304,
+          0.411,
+          0.559,
+          0.713,
+          0.821
+        ],
+        "order_rate": 0.16911764705882354,
+        "no_effect_rate": 0.014705882352941176,
+        "adjacent_increase_rate": 0.6341911764705882,
+        "adjacent_tie_rate": 0.3235294117647059,
+        "adjacent_decrease_rate": 0.042279411764705885,
+        "endpoint_increase_rate": 0.9558823529411765,
+        "spearman": 0.8659646873996472,
+        "norm_range": 1.2532154376948588,
+        "calib_mae_iqr": 7.142964469581998,
+        "mean_score_by_alpha": [
+          -0.429,
+          -0.079,
+          0.303,
+          0.747,
+          1.212
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.32065217391304346,
+        "near_tie_rate": 0.39855072463768115,
+        "near_no_effect_rate": 0.036231884057971016,
+        "endpoint_near_tie_rate": 0.028985507246376812,
+        "adjacent_increase_rate_nt": 0.5615942028985508,
+        "concordance_nt": 0.8565217391304348,
+        "gain": 1.543850302696228,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 2.2238,
+          "q": 1.203,
+          "w": 0.7285,
+          "curve": {
+            "0.1": 0.0324,
+            "0.25": 0.1079,
+            "0.5": 0.319,
+            "0.75": 0.6364,
+            "0.9": 0.8621
+          }
+        }
+      }
+    },
+    "CHEMBL2039": {
+      "target_name": "Amine oxidase [flavin-containing] B",
+      "train_count": 643,
+      "alpha_min_max": [
+        0.0006324072470746605,
+        0.9994430274753803
+      ],
+      "central_90pct_support": [
+        0.12829059764475906,
+        0.9035876020769452
+      ],
+      "alpha_quartile_counts": [
+        102,
+        225,
+        205,
+        111
+      ],
+      "test_alphas_outside_support": [
+        0,
+        1
+      ],
+      "fed_minus_local_errors": {
+        "pct_calib_err": 0.011947579035963968,
+        "pct_err_in_support": -0.006499740442132626,
+        "pct_err_out_support": 0.03961855825310878,
+        "pct_calib_err_penalized": 0.008247302594731304
+      },
+      "fed": {
+        "n_prompts": 136,
+        "unscorable_row_rate": 0.014705882352941124,
+        "pct_calib_err_penalized": 0.15749543910315336,
+        "support": [
+          0.1283,
+          0.9036
+        ],
+        "pct_err_in_support": 0.09656823282376235,
+        "pct_err_out_support": 0.24281103965556786,
+        "reach_rate": 0.10820895522388059,
+        "concordance": 0.8958955223880597,
+        "pct_calib_err": 0.15506535555648457,
+        "pct_range": 0.5143779206888642,
+        "mean_pct_by_alpha": [
+          0.288,
+          0.316,
+          0.446,
+          0.714,
+          0.802
+        ],
+        "order_rate": 0.03731343283582089,
+        "no_effect_rate": 0.007462686567164179,
+        "adjacent_increase_rate": 0.5895522388059702,
+        "adjacent_tie_rate": 0.3917910447761194,
+        "adjacent_decrease_rate": 0.018656716417910446,
+        "endpoint_increase_rate": 0.9850746268656716,
+        "spearman": 0.9222429406162228,
+        "norm_range": 1.164401833812457,
+        "calib_mae_iqr": 7.119599451953674,
+        "mean_score_by_alpha": [
+          -0.442,
+          -0.348,
+          0.017,
+          0.737,
+          1.082
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.3897058823529412,
+        "near_tie_rate": 0.41360294117647056,
+        "near_no_effect_rate": 0.03676470588235294,
+        "endpoint_near_tie_rate": 0.04411764705882353,
+        "adjacent_increase_rate_nt": 0.5643382352941176,
+        "concordance_nt": 0.8746323529411765,
+        "gain": 0.8425151109695435,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 2.6656,
+          "q": 1.3387,
+          "w": 0.8154,
+          "curve": {
+            "0.1": 0.0208,
+            "0.25": 0.0732,
+            "0.5": 0.2596,
+            "0.75": 0.6005,
+            "0.9": 0.8576
+          }
+        }
+      },
+      "local": {
+        "n_prompts": 136,
+        "unscorable_row_rate": 0.03676470588235292,
+        "pct_calib_err_penalized": 0.14924813650842206,
+        "support": [
+          0.1283,
+          0.9036
+        ],
+        "pct_err_in_support": 0.10306797326589498,
+        "pct_err_out_support": 0.20319248140245907,
+        "reach_rate": 0.2748091603053435,
+        "concordance": 0.9080152671755726,
+        "pct_calib_err": 0.1431177765205206,
+        "pct_range": 0.5936150371950819,
+        "mean_pct_by_alpha": [
+          0.261,
+          0.299,
+          0.45,
+          0.736,
+          0.855
+        ],
+        "order_rate": 0.10687022900763359,
+        "no_effect_rate": 0.0,
+        "adjacent_increase_rate": 0.6431297709923665,
+        "adjacent_tie_rate": 0.31679389312977096,
+        "adjacent_decrease_rate": 0.04007633587786259,
+        "endpoint_increase_rate": 1.0,
+        "spearman": 0.9336890355405318,
+        "norm_range": 2.6048361990865914,
+        "calib_mae_iqr": 7.155774989302314,
+        "mean_score_by_alpha": [
+          -0.57,
+          -0.433,
+          0.015,
+          0.839,
+          2.841
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.31066176470588236,
+        "near_tie_rate": 0.33639705882352944,
+        "near_no_effect_rate": 0.04411764705882353,
+        "endpoint_near_tie_rate": 0.04411764705882353,
+        "adjacent_increase_rate_nt": 0.6158088235294118,
+        "concordance_nt": 0.8786764705882353,
+        "gain": 1.493548035621643,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 2.3738,
+          "q": 1.1705,
+          "w": 0.7611,
+          "curve": {
+            "0.1": 0.0277,
+            "0.25": 0.0928,
+            "0.5": 0.2883,
+            "0.75": 0.6062,
+            "0.9": 0.8459
+          }
+        }
+      }
+    },
+    "CHEMBL240": {
+      "target_name": "Voltage-gated inwardly rectifying potassium channel KCNH2",
+      "train_count": 3535,
+      "alpha_min_max": [
+        0.011700369507714345,
+        0.9992839456651775
+      ],
+      "central_90pct_support": [
+        0.16451622576637856,
+        0.9603281897759449
+      ],
+      "alpha_quartile_counts": [
+        417,
+        766,
+        1092,
+        1260
+      ],
+      "test_alphas_outside_support": [
+        0,
+        1
+      ],
+      "fed_minus_local_errors": {
+        "pct_calib_err": -0.0018573202183480575,
+        "pct_err_in_support": 0.0011890188491145148,
+        "pct_err_out_support": -0.006426828819541874,
+        "pct_calib_err_penalized": -0.03706635267556055
+      },
+      "fed": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.013333333333333308,
+        "pct_calib_err_penalized": 0.16963148245595663,
+        "support": [
+          0.1645,
+          0.9603
+        ],
+        "pct_err_in_support": 0.14968731214225695,
+        "pct_err_out_support": 0.1931145588191972,
+        "reach_rate": 0.2533783783783784,
+        "concordance": 0.8793918918918919,
+        "pct_calib_err": 0.16705821081303304,
+        "pct_range": 0.6137708823616055,
+        "mean_pct_by_alpha": [
+          0.283,
+          0.385,
+          0.559,
+          0.72,
+          0.897
+        ],
+        "order_rate": 0.10135135135135136,
+        "no_effect_rate": 0.006756756756756757,
+        "adjacent_increase_rate": 0.6148648648648649,
+        "adjacent_tie_rate": 0.32263513513513514,
+        "adjacent_decrease_rate": 0.0625,
+        "endpoint_increase_rate": 0.9932432432432432,
+        "spearman": 0.8850717748441009,
+        "norm_range": 1.6987268771750235,
+        "calib_mae_iqr": 7.087401285507351,
+        "mean_score_by_alpha": [
+          -0.54,
+          -0.187,
+          0.303,
+          0.797,
+          1.685
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.31666666666666665,
+        "near_tie_rate": 0.36,
+        "near_no_effect_rate": 0.006666666666666667,
+        "endpoint_near_tie_rate": 0.006666666666666667,
+        "adjacent_increase_rate_nt": 0.57,
+        "concordance_nt": 0.8586666666666667,
+        "gain": 0.7096588611602783,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 1.8842,
+          "q": 0.7088,
+          "w": 0.663,
+          "curve": {
+            "0.1": 0.0398,
+            "0.25": 0.1191,
+            "0.5": 0.3015,
+            "0.75": 0.5582,
+            "0.9": 0.7696
+          }
+        }
+      },
+      "local": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.11333333333333329,
+        "pct_calib_err_penalized": 0.20669783513151718,
+        "support": [
+          0.1645,
+          0.9603
+        ],
+        "pct_err_in_support": 0.14849829329314243,
+        "pct_err_out_support": 0.19954138763873908,
+        "reach_rate": 0.21052631578947367,
+        "concordance": 0.8917293233082707,
+        "pct_calib_err": 0.1689155310313811,
+        "pct_range": 0.6009172247225217,
+        "mean_pct_by_alpha": [
+          0.299,
+          0.389,
+          0.531,
+          0.731,
+          0.899
+        ],
+        "order_rate": 0.09774436090225563,
+        "no_effect_rate": 0.0,
+        "adjacent_increase_rate": 0.6353383458646616,
+        "adjacent_tie_rate": 0.31390977443609025,
+        "adjacent_decrease_rate": 0.05075187969924812,
+        "endpoint_increase_rate": 1.0,
+        "spearman": 0.9058724363139655,
+        "norm_range": 1.6430168325962318,
+        "calib_mae_iqr": 7.1010487269036195,
+        "mean_score_by_alpha": [
+          -0.494,
+          -0.19,
+          0.217,
+          0.841,
+          1.658
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.3016666666666667,
+        "near_tie_rate": 0.3616666666666667,
+        "near_no_effect_rate": 0.0,
+        "endpoint_near_tie_rate": 0.0,
+        "adjacent_increase_rate_nt": 0.55,
+        "concordance_nt": 0.8123333333333334,
+        "gain": 1.3459980487823486,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 2.2017,
+          "q": 0.689,
+          "w": 0.6794,
+          "curve": {
+            "0.1": 0.035,
+            "0.25": 0.1024,
+            "0.5": 0.2659,
+            "0.75": 0.5165,
+            "0.9": 0.7384
+          }
+        }
+      }
+    },
+    "CHEMBL228": {
+      "target_name": "Sodium-dependent serotonin transporter",
+      "train_count": 1146,
+      "alpha_min_max": [
+        0.11254984852180758,
+        0.9996375806348846
+      ],
+      "central_90pct_support": [
+        0.45689468468134975,
+        0.9706560746257742
+      ],
+      "alpha_quartile_counts": [
+        12,
+        79,
+        355,
+        700
+      ],
+      "test_alphas_outside_support": [
+        0,
+        0.25,
+        1
+      ],
+      "fed_minus_local_errors": {
+        "pct_calib_err": 0.003752233845058739,
+        "pct_err_in_support": -0.013709598812649798,
+        "pct_err_out_support": 0.015393455616864393,
+        "pct_calib_err_penalized": 0.007532305049994026
+      },
+      "fed": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.053333333333333344,
+        "pct_calib_err_penalized": 0.2398173883400419,
+        "support": [
+          0.4569,
+          0.9707
+        ],
+        "pct_err_in_support": 0.14124432776488544,
+        "pct_err_out_support": 0.2933709822287871,
+        "reach_rate": 0.3380281690140845,
+        "concordance": 0.8066901408450704,
+        "pct_calib_err": 0.23252032044322646,
+        "pct_range": 0.40886873560148734,
+        "mean_pct_by_alpha": [
+          0.495,
+          0.527,
+          0.549,
+          0.717,
+          0.904
+        ],
+        "order_rate": 0.007042253521126761,
+        "no_effect_rate": 0.007042253521126761,
+        "adjacent_increase_rate": 0.4630281690140845,
+        "adjacent_tie_rate": 0.4982394366197183,
+        "adjacent_decrease_rate": 0.03873239436619718,
+        "endpoint_increase_rate": 0.9929577464788732,
+        "spearman": 0.8001591832982684,
+        "norm_range": 1.249497673377981,
+        "calib_mae_iqr": 7.228138831461414,
+        "mean_score_by_alpha": [
+          0.123,
+          0.21,
+          0.264,
+          0.787,
+          1.759
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.49333333333333335,
+        "near_tie_rate": 0.5133333333333333,
+        "near_no_effect_rate": 0.02,
+        "endpoint_near_tie_rate": 0.02,
+        "adjacent_increase_rate_nt": 0.43666666666666665,
+        "concordance_nt": 0.783,
+        "gain": 0.7249755263328552,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 3.6067,
+          "q": 0.8429,
+          "w": 0.8363,
+          "curve": {
+            "0.1": 0.0165,
+            "0.25": 0.0457,
+            "0.5": 0.1401,
+            "0.75": 0.3807,
+            "0.9": 0.6668
+          }
+        }
+      },
+      "local": {
+        "n_prompts": 150,
+        "unscorable_row_rate": 0.026666666666666616,
+        "pct_calib_err_penalized": 0.23228508329004788,
+        "support": [
+          0.4569,
+          0.9707
+        ],
+        "pct_err_in_support": 0.15495392657753523,
+        "pct_err_out_support": 0.2779775266119227,
+        "reach_rate": 0.3493150684931507,
+        "concordance": 0.8256849315068493,
+        "pct_calib_err": 0.22876808659816772,
+        "pct_range": 0.4347207316297646,
+        "mean_pct_by_alpha": [
+          0.475,
+          0.5,
+          0.534,
+          0.689,
+          0.91
+        ],
+        "order_rate": 0.0136986301369863,
+        "no_effect_rate": 0.0,
+        "adjacent_increase_rate": 0.476027397260274,
+        "adjacent_tie_rate": 0.4982876712328767,
+        "adjacent_decrease_rate": 0.025684931506849314,
+        "endpoint_increase_rate": 1.0,
+        "spearman": 0.8421669450887599,
+        "norm_range": 1.3157109499069963,
+        "calib_mae_iqr": 7.213723215275907,
+        "mean_score_by_alpha": [
+          0.052,
+          0.115,
+          0.227,
+          0.711,
+          1.774
+        ],
+        "target_by_alpha": [
+          -39.017,
+          -0.533,
+          0.139,
+          0.777,
+          8.269
+        ],
+        "text_tie_rate": 0.49833333333333335,
+        "near_tie_rate": 0.5166666666666667,
+        "near_no_effect_rate": 0.0,
+        "endpoint_near_tie_rate": 0.0,
+        "adjacent_increase_rate_nt": 0.4533333333333333,
+        "concordance_nt": 0.8116666666666666,
+        "gain": 1.3708467483520508,
+        "warp": {
+          "kind": "kumaraswamy_mix",
+          "p": 3.7334,
+          "q": 0.8033,
+          "w": 0.803,
+          "curve": {
+            "0.1": 0.0198,
+            "0.25": 0.0529,
+            "0.5": 0.1474,
+            "0.75": 0.3768,
+            "0.9": 0.6546
+          }
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Single seed; selected FED r100 vs LOCAL r80.",
+    "Conditional scores and curves use different complete-sweep subsets.",
+    "Raw per-prompt outputs not analyzed; no paired confidence intervals.",
+    "Out-of-support denotes outside local 5th\u201395th percentiles, not absent training alpha."
+  ]
+}

@@ -77,6 +77,8 @@ def main():
                         max_prompt_tokens=cfg.get("max_prompt_tokens", 1024),
                         max_target_tokens=cfg.get("max_target_tokens", 256))
     snap = torch.load(args.snapshot, map_location="cpu", weights_only=False)
+    if args.refit_k > 0 and cfg["fed"].get("calibration") == "coverage":
+        raise SystemExit("--refit_k fits a gain, which calibration=coverage fixes at 1 (plan 2.1)")
 
     stamp = make_stamp()
     results = {(s, v): {} for s in range(args.stages + 1) for v in ("asis", "refit")}

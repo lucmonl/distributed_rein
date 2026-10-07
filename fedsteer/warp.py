@@ -145,3 +145,43 @@ def make_warp(kind: str, **kw) -> AlphaWarp:
         return StepWarp(kw.get("step_c_init", 0.5), kw.get("step_tau_init", 0.2),
                         kw.get("step_tau_min", 0.02), kw.get("step_tau_max", 1.0))
     raise ValueError(f"unknown warp {kind!r}; choose from {WARP_KINDS}")
+
+
+class WarpBank(nn.Module):
+    """Independent warps for different adapted layers (``SteerLoraConfig.warp_scope``).
+
+    Layer l of client i then uses g_{i,l}(alpha) = s_i * h_{i,l}(alpha): the shared direction
+    is applied with a layer-specific coefficient.  Every member is an ordinary warp of the
+    same kind with its own parameters (identity at init), stored as ``bank.<l>.<param>``."""
+
+    def __init__(self, warps: list[AlphaWarp], scope: str):
+        super().__init__()
+        if not warps:
+            raise ValueError("WarpBank needs at least one warp")
+        self.bank = nn.ModuleList(warps)
+        self.kind = warps[0].kind
+        self.scope = scope
+
+    def __len__(self) -> int:
+        return len(self.bank)
+
+    def forward(self, alpha: torch.Tensor, idx: int) -> torch.Tensor:
+        return self.bank[idx](alpha)
+
+    def all_on(self, x: torch.Tensor) -> torch.Tensor:
+        """Every member evaluated at x: shape [n_warps, len(x)]."""
+        return torch.stack([w(x) for w in self.bank])
+
+    def penalty(self) -> torch.Tensor:
+        return torch.stack([w.penalty() for w in self.bank]).mean()
+
+    @torch.no_grad()
+    def describe(self, points=(0.1, 0.25, 0.5, 0.75, 0.9)) -> dict:
+        x = torch.tensor(points, device=self._device())
+        v = self.all_on(x)
+        r = lambda t: {str(p): round(float(y), 4) for p, y in zip(points, t)}
+        return {"kind": self.kind, "scope": self.scope, "n_warps": len(self.bank),
+                "curve": r(v.mean(0)), "curve_min": r(v.min(0).values), "curve_max": r(v.max(0).values)}
+
+    def _device(self):
+        return self.bank[0]._device()

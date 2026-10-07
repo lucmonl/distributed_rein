@@ -143,6 +143,8 @@ def main():
     json.dump(res, open(out, "w"), indent=1)
     print("SUMMARY", json.dumps(res["summary"]), flush=True)
     print(f"wrote {out}", flush=True)
+    from fedsteer.model import report_peak_memory
+    report_peak_memory('eval_baselines.py')
 
 
 if __name__ == "__main__":

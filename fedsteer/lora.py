@@ -15,6 +15,9 @@ With a warp (``SteerLoraConfig.warp``, see fedsteer/warp.py) the coefficient
 ``s * alpha`` becomes ``s * h(alpha)`` with a private monotone h, h(0)=0, h(1)=1.
 With ``SteerLoraConfig.offset`` it becomes ``o + s * h(alpha)``: a private offset o
 sets where along the shared direction the client's alpha = 0 starts.
+``SteerLoraConfig.warp_scope`` sets how many warps a client has: ``model`` (one h for all
+layers, the original), ``block`` (one per transformer block) or ``module`` (one per adapted
+matrix), so different layers can use different calibration functions h_l.
 
 The layers read ``alpha`` and ``s`` from a single ``SteerControl`` module that is
 registered once on the model, so no model forward signature has to change.
@@ -23,6 +26,7 @@ registered once on the model, so no model forward signature has to change.
 from __future__ import annotations
 
 import math
+import re
 import zlib
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -32,7 +36,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from .warp import AlphaWarp, make_warp
+from .warp import AlphaWarp, WarpBank, make_warp
 
 PRIVATE_KEYS = ("lora_A_p", "lora_B_p")
 SHARED_KEYS = ("lora_B_d",)
@@ -58,6 +62,9 @@ class SteerLoraConfig:
     # private monotone reparameterization of alpha (fedsteer/warp.py):
     # none | kumaraswamy (A) | kumaraswamy_mix (B) | step (C)
     warp: str = "none"
+    # how many warps: model (one for all layers) | block (one per transformer block) |
+    # module (one per adapted matrix); ignored for warp = none
+    warp_scope: str = "model"
     offset: bool = False             # private offset o_i: coefficient = o_i + s_i * h_i(alpha)
     offset_max: float = 2.0          # |o_i| is clamped to this (coefficient units)
     warp_shape_min: float = 0.2      # Kumaraswamy p, q range
@@ -103,17 +110,30 @@ class SteerControl(nn.Module):
             return torch.zeros((), device=self.u.device)
         return self.o.clamp(-self.offset_max, self.offset_max)
 
-    def coef_for(self, y: torch.Tensor) -> torch.Tensor:
-        """Per-example coefficient o + s * h(alpha), broadcastable against ``y``."""
-        coef = self.alpha_for(y, warped=True) * self.gain()
+    def coef_for(self, y: torch.Tensor, warp_idx: Optional[int] = None) -> torch.Tensor:
+        """Per-example coefficient o + s * h(alpha), broadcastable against ``y``.  With a warp
+        bank, ``warp_idx`` selects the calling layer's own warp h_l."""
+        coef = self.alpha_for(y, warped=True, warp_idx=warp_idx) * self.gain()
         return coef + self.offset() if self.o is not None else coef
 
-    def alpha_for(self, y: torch.Tensor, warped: bool = False) -> torch.Tensor:
+    def warp_on(self, x: torch.Tensor) -> torch.Tensor:
+        """Every warp of this client evaluated at x: shape [n_warps, len(x)] (n_warps = 1
+        for warp_scope = model)."""
+        if isinstance(self.warp, WarpBank):
+            return self.warp.all_on(x)
+        return self.warp(x).unsqueeze(0)
+
+    def alpha_for(self, y: torch.Tensor, warped: bool = False, warp_idx: Optional[int] = None) -> torch.Tensor:
         if self._alpha is None:
             raise RuntimeError("alpha is not set; wrap the forward in `control.use_alpha(...)`")
         a = self._alpha.to(device=y.device)
         if warped:
-            a = self.warp(a)
+            if isinstance(self.warp, WarpBank):
+                if warp_idx is None:
+                    raise ValueError("a per-layer warp bank needs the calling layer's warp index")
+                a = self.warp(a, warp_idx)
+            else:
+                a = self.warp(a)
         if a.numel() == 1:
             return a.reshape(())
         batch = y.shape[0]
@@ -133,8 +153,10 @@ def _shared_init(out_rank: int, in_features: int, seed: int, name: str) -> torch
 
 
 class SteerLinear(nn.Module):
-    def __init__(self, base: nn.Linear, name: str, cfg: SteerLoraConfig, control: SteerControl):
+    def __init__(self, base: nn.Linear, name: str, cfg: SteerLoraConfig, control: SteerControl,
+                 warp_idx: Optional[int] = None):
         super().__init__()
+        self.warp_idx = warp_idx                       # this layer's warp in a per-layer bank
         self.base = base
         for p in self.base.parameters():
             p.requires_grad_(False)
@@ -160,7 +182,7 @@ class SteerLinear(nn.Module):
         h = h.to(dt)
         priv = F.linear(F.linear(h, self.lora_A_p.to(dt)), self.lora_B_p.to(dt)) * self.scale_p
         shared = F.linear(F.linear(h, self.lora_A_d.to(dt)), self.lora_B_d.to(dt)) * self.scale_d
-        coef = self._control.coef_for(shared)
+        coef = self._control.coef_for(shared, self.warp_idx)
         return y + (priv + coef.to(shared.dtype) * shared).to(y.dtype)
 
     def extra_repr(self) -> str:
@@ -172,24 +194,52 @@ def inject_steer_lora(model: nn.Module, cfg: SteerLoraConfig) -> SteerControl:
     """Freeze the model and replace targeted Linear layers with SteerLinear."""
     for p in model.parameters():
         p.requires_grad_(False)
-    warp = make_warp(cfg.warp, shape_min=cfg.warp_shape_min, shape_max=cfg.warp_shape_max,
-                     mix_w_init=cfg.warp_mix_w_init, step_c_init=cfg.warp_step_c_init,
-                     step_tau_init=cfg.warp_step_tau_init, step_tau_min=cfg.warp_step_tau_min,
-                     step_tau_max=cfg.warp_step_tau_max)
-    control = SteerControl(cfg.gain_min, cfg.gain_max, warp, offset=cfg.offset,
-                           offset_max=cfg.offset_max).to(next(model.parameters()).device)
     targets = []
     for name, module in model.named_modules():
         if isinstance(module, nn.Linear) and name.split(".")[-1] in cfg.target_modules:
             targets.append(name)
     if not targets:
         raise ValueError(f"no Linear modules matched {cfg.target_modules}")
+    new_warp = lambda: make_warp(cfg.warp, shape_min=cfg.warp_shape_min, shape_max=cfg.warp_shape_max,
+                                 mix_w_init=cfg.warp_mix_w_init, step_c_init=cfg.warp_step_c_init,
+                                 step_tau_init=cfg.warp_step_tau_init, step_tau_min=cfg.warp_step_tau_min,
+                                 step_tau_max=cfg.warp_step_tau_max)
+    warp_idx = warp_indices(targets, cfg.warp_scope if cfg.warp != "none" else "model")
+    if warp_idx is None:
+        warp = new_warp()                                    # one h for every layer (original)
+    else:
+        warp = WarpBank([new_warp() for _ in range(max(warp_idx.values()) + 1)], cfg.warp_scope)
+    control = SteerControl(cfg.gain_min, cfg.gain_max, warp, offset=cfg.offset,
+                           offset_max=cfg.offset_max).to(next(model.parameters()).device)
     for name in targets:
         parent_name, _, child = name.rpartition(".")
         parent = model.get_submodule(parent_name) if parent_name else model
-        setattr(parent, child, SteerLinear(getattr(parent, child), name, cfg, control))
+        setattr(parent, child, SteerLinear(getattr(parent, child), name, cfg, control,
+                                           warp_idx=None if warp_idx is None else warp_idx[name]))
     model.steer_control = control
     return control
+
+
+WARP_SCOPES = ("model", "block", "module")
+
+
+def warp_indices(targets: Sequence[str], scope: str) -> Optional[dict[str, int]]:
+    """Which warp each adapted layer uses: None for one shared warp (``model``), otherwise
+    a contiguous index per transformer block (``block``) or per adapted matrix (``module``)."""
+    if scope not in WARP_SCOPES:
+        raise ValueError(f"unknown warp_scope {scope!r}; choose from {WARP_SCOPES}")
+    if scope == "model":
+        return None
+    if scope == "module":
+        return {t: i for i, t in enumerate(targets)}
+    blocks = {}
+    for t in targets:
+        m = re.search(r"\.layers\.(\d+)\.", "." + t)
+        if m is None:
+            raise ValueError(f"warp_scope=block: cannot find the block index in {t!r}")
+        blocks[t] = int(m.group(1))
+    order = {b: i for i, b in enumerate(sorted(set(blocks.values())))}
+    return {t: order[b] for t, b in blocks.items()}
 
 
 def steer_layers(model: nn.Module) -> Iterator[tuple[str, SteerLinear]]:

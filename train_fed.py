@@ -143,6 +143,8 @@ def main():
 
     trainer = FedSteerTrainer(model, fmt, examples, fed_cfg, out_dir, eval_fn=eval_fn, reg=reg_cfg)
     trainer.fit()
+    from fedsteer.model import report_peak_memory
+    report_peak_memory('train_fed.py')
 
 
 if __name__ == "__main__":

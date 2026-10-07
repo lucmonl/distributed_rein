@@ -1,0 +1,46 @@
+{
+ "hosts": {
+  "delta": "delta-login2",
+  "dtai": "dtai-1"
+ },
+ "races": [
+  {
+   "name": "G0",
+   "copies": {
+    "delta": "22703346",
+    "dtai": "3316647"
+   }
+  },
+  {
+   "name": "G2",
+   "copies": {
+    "delta": "22703347",
+    "dtai": "3316648"
+   },
+   "dependents": {
+    "delta": [
+     "22705844"
+    ],
+    "dtai": [
+     "3323140"
+    ]
+   }
+  },
+  {
+   "name": "E1fed",
+   "group": "E1",
+   "copies": {
+    "delta": "22703349",
+    "dtai": "3316650"
+   }
+  },
+  {
+   "name": "E1local",
+   "group": "E1",
+   "copies": {
+    "delta": "22703350",
+    "dtai": "3316651"
+   }
+  }
+ ]
+}

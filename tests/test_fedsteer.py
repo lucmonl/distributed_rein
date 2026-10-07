@@ -941,6 +941,149 @@ def test_generation_with_zero_alpha_ignores_direction():
     b = generate_at_alpha(model, fmt, ["Hello there."], 0.0, max_new_tokens=6, bf16=False)
     assert a == b
 
+# ------------------------------------------------- coverage-aware calibration (plan 2.1)
+
+
+class _raises:
+    """Minimal stand-in for pytest.raises (the file also runs without pytest)."""
+
+    def __init__(self, exc, match=""):
+        self.exc, self.match = exc, match
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, typ, val, tb):
+        if typ is None:
+            raise AssertionError(f"{self.exc.__name__} not raised")
+        if not issubclass(typ, self.exc) or self.match not in str(val):
+            return False
+        return True
+
+def _cov_trainer(out_dir, rounds=3, **kw):
+    model = tiny_model(warp=kw.pop("warp", "kumaraswamy_mix"), offset=kw.pop("offset", False))
+    ex, _ = build_clients(toy_records(), ["c0", "c1"], alpha_mode="global")
+    cfg = FedConfig(mode=kw.pop("mode", "fedavg"), rounds=rounds, local_steps=3, batch_size=4, bf16=False,
+                    warmup_steps=1, gain_warmup_rounds=1, save_every=1, lr_private=5e-3, lr_shared=5e-3,
+                    calibration="coverage", fix_gain=kw.pop("fix_gain", True), warp_reg=0.0,
+                    warp_warmup_rounds=kw.pop("warp_warmup_rounds", 1), lr_warp=0.2,
+                    cov_grid=5, cov_bandwidth=0.5, cov_lambda_max=kw.pop("cov_lambda_max", 5.0),
+                    cov_tau_local=2.0, cov_tau_peer=2.0, **kw)
+    return FedSteerTrainer(model, ChatFormatter(tokenizer()), ex, cfg, out_dir)
+
+
+def test_coverage_counts_are_triangular():
+    from fedsteer.coverage import evidence_counts, make_grid
+    g = make_grid(3)                                     # 0, 0.5, 1
+    c = evidence_counts([0.0, 0.25, 0.5, 1.0], g, 0.5)
+    assert np.allclose(c, [1.0 + 0.5, 0.5 + 1.0, 1.0])   # distance >= b contributes 0
+    assert np.allclose(evidence_counts([0.5], g, 0.5), [0, 1, 0])
+    assert np.allclose(evidence_counts([], g, 0.2), 0)
+    assert np.allclose(evidence_counts([0.2], make_grid(11), 0.2), [0, 0.5, 1, 0.5] + [0] * 7)
+    with _raises(ValueError):
+        make_grid(1)
+
+
+def test_coverage_borrow_weights_gate_on_peer_evidence():
+    from fedsteer.coverage import borrow_weights
+    counts = {"a": np.array([10.0, 0.0, 0.0]), "b": np.array([0.0, 10.0, 0.0])}
+    lam = borrow_weights(counts, lambda_max=2.0, tau_local=10.0, tau_peer=10.0)
+    assert np.allclose(lam["a"], [0.0, 2.0 * 1.0 * 0.5, 0.0])   # borrows only where b has data
+    assert np.allclose(lam["b"], [2.0 * 0.5, 0.0, 0.0])
+    one = borrow_weights({"a": np.array([0.0, 5.0])}, 1.0, 1.0, 1.0)
+    assert np.allclose(one["a"], 0.0)                          # nobody else: no borrowing
+
+
+def test_coverage_pooling_and_monotone_projection():
+    from fedsteer.coverage import pooled_target, project_monotone
+    prev = np.linspace(0, 1, 5)
+    # count-weighted pooling: each client contributes only where it has evidence
+    vals = {"a": np.array([0, 0.1, 0.2, 0.3, 1]), "b": np.array([0, 0.5, 0.6, 0.9, 1])}
+    cnts = {"a": np.array([1, 3, 1, 0, 0.0]), "b": np.array([0, 1, 1, 2, 1.0])}
+    m, z, diag = pooled_target(vals, cnts, prev)
+    assert np.allclose(m[1:4], [(0.3 + 0.5) / 4, 0.4, 0.9])
+    assert z[0] == 0 and z[-1] == 1 and np.all(np.diff(z) >= 0)
+    # a non-monotone raw mean is pooled; endpoints and uncovered points are fixed
+    z = project_monotone(np.array([0, 0.8, 0.2, 0.5, 1]), np.array([1, 1, 1, 0, 1.0]), prev)
+    assert np.allclose(z, [0, 0.5, 0.5, 0.75, 1])
+    # free values beyond a fixed neighbour are clipped to it (exact box-constrained solution)
+    z = project_monotone(np.array([0, 0.9, 0.9, 0.5, 1]), np.array([1, 1, 1, 0, 1.0]), prev)
+    assert np.allclose(z, [0, 0.75, 0.75, 0.75, 1])
+    _, _, diag = pooled_target({"a": np.array([0, 0.8, 0.2, 0.5, 1])},
+                               {"a": np.array([1, 1, 1, 0, 1.0])}, prev)
+    assert diag["uncovered"] == [3] and abs(diag["proj_adjust_max"] - 0.3) < 1e-9
+
+
+def test_coverage_rejects_incompatible_configs():
+    with tempfile.TemporaryDirectory() as d:
+        for kw in ({"fix_gain": False}, {"offset": True}, {"warp": "none"}, {"mode": "local"},
+                   {"clients_per_round": 1}):
+            with _raises(ValueError, match="coverage"):
+                _cov_trainer(d, **kw)
+
+
+def test_coverage_borrow_gradient_reaches_only_the_warp():
+    with tempfile.TemporaryDirectory() as d:
+        tr = _cov_trainer(d)
+        tr.cov["ready"] = True
+        tr.cov["z"] = [0, 0.6, 0.8, 0.9, 1]
+        tr.load_client("c0")
+        tr.model.zero_grad(set_to_none=True)
+        lam = torch.tensor(tr.cov["lambda"]["c0"]).clamp_min(1.0)
+        z = torch.tensor(tr.cov["z"])
+        loss = (lam * (tr._warp_on_grid() - z) ** 2).mean()
+        assert not z.requires_grad
+        loss.backward()
+        got = {n for n, p in tr.model.named_parameters() if p.grad is not None and p.grad.abs().sum() > 0}
+        assert got and all(n.startswith("steer_control.warp.") for n in got)
+
+
+def test_coverage_training_keeps_gain_one_and_private_warps():
+    with tempfile.TemporaryDirectory() as d:
+        tr = _cov_trainer(d, rounds=3, warp_warmup_rounds=1)
+        assert os.path.exists(os.path.join(d, "coverage.json"))
+        tr.fit()
+        assert not any(k.startswith("steer_control") for k in tr.server)           # warps never averaged
+        for c in ("c0", "c1"):
+            assert tr.clients[c]["gain"]["steer_control.u"].item() == 0.0          # s = 1 throughout
+        w0, w1 = (tr.clients[c]["gain"] for c in ("c0", "c1"))
+        assert any(not torch.equal(w0[k], w1[k]) for k in w0 if k.startswith("steer_control.warp."))
+        h = [r["coverage"] for r in tr.history]
+        assert "z" not in h[0] and not h[0]["borrow_active"]       # round 0: warps frozen, no target
+        assert "z" in h[1] and not h[1]["borrow_active"]           # first trained values -> table
+        assert h[2]["borrow_active"] and "borrow_loss" in tr.history[2]["clients"]["c0"]
+        z = tr.cov["z"]
+        assert z[0] == 0 and z[-1] == 1 and all(b >= a for a, b in zip(z, z[1:]))
+        assert tr.cov["updates"] == 2 and tr.cov["ready"]
+
+
+def test_coverage_save_resume_and_eval_round_trip():
+    with tempfile.TemporaryDirectory() as d:
+        tr = _cov_trainer(d, rounds=2)
+        tr.fit()
+        tr2 = _cov_trainer(d, rounds=3)
+        assert tr2.maybe_resume() and tr2.round == 2
+        assert tr2.cov == tr.cov
+        tr2.fit()
+        assert tr2.round == 3 and tr2.cov["updates"] == 2
+        snap = torch.load(os.path.join(d, "snapshots", "round_0003.pt"), weights_only=False)
+        assert snap["coverage"]["z"] == tr2.cov["z"]
+        m = tiny_model(warp="kumaraswamy_mix")
+        load_snapshot_into(m, snap, "c1")                          # each client evaluates its own warp
+        for k, v in snap["clients"]["c1"]["gain"].items():
+            assert torch.equal(dict(m.named_parameters())[k].detach().cpu(), v)
+        # resume refuses a state whose gain moved away from s = 1
+        st = torch.load(os.path.join(d, "state.pt"), weights_only=False)
+        st["clients"]["c0"]["gain"]["steer_control.u"] = torch.tensor(0.3)
+        torch.save(st, os.path.join(d, "state.pt"))
+        with _raises(ValueError, match="s != 1"):
+            _cov_trainer(d, rounds=4).maybe_resume()
+        # and a state saved under different coverage settings
+        with tempfile.TemporaryDirectory() as d2:
+            _cov_trainer(d2, rounds=1).fit()
+            with _raises(ValueError, match="lambda_max"):
+                _cov_trainer(d2, rounds=2, cov_lambda_max=1.0).maybe_resume()
+
 
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_") and callable(f)]

@@ -1,0 +1,5 @@
+{"hosts": {"cc": null, "anvil": "x-zchen17@anvil.rcac.purdue.edu"},
+ "races": [
+  {"name": "C0.1_coverage",  "group": "NR49", "copies": {"cc": "11178538", "anvil": "21136128"}},
+  {"name": "C0.01_coverage", "group": "NR49", "copies": {"cc": "11178539", "anvil": "21136129"}}
+ ]}

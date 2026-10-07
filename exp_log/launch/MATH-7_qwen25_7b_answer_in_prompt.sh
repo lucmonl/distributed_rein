@@ -8,6 +8,8 @@
 # Raced on dtai (ghx4) and Delta (gpuA100x8,gpuH200x8); losers cancelled by scripts/race_watch.py
 # (spec MATH-7_race.json) once a copy has RUN for 20 min. Plus a base-model reference with the answer
 # in the prompt (math client, 4,096 cap) on dtai only. Run on cc-login1 after syncing both hosts.
+# 10-06 (MATH-10): gpuA100x8 is A100-SXM4-40GB, not 80 GB as assumed; the 7B OOMs there, so Delta
+# copies use --partition=gpuH200x8 only.
 set -e
 MODEL="model_name=Qwen/Qwen2.5-7B-Instruct data_path=data/math_fed_ans/data.jsonl clients_file=data/math_fed_ans/clients.json max_prompt_tokens=576"  # 7 of 49,800 answer-in-prompt prompts exceed 512 tokens (max 549)
 ONE="$MODEL clients=[math] fed.rounds=100 fed.save_every=10 monitor.full_every=20 monitor.full_prompts=50 monitor.full_batch_size=64"
@@ -32,7 +34,7 @@ L=\$(sbatch --parsable --job-name=math7_ans_e1_local_$2 $3 --time=2-00:00:00 \
 echo \$G0 \$G2 \$G1 \$F \$L" </dev/null 2>&1 | grep -v OpenSSL
 }
 read T0 T2 T1 TF TL < <(submit dtai-1 dtai "")
-read D0 D2 D1 DF DL < <(submit delta-login2 delta "--partition=gpuA100x8,gpuH200x8")
+read D0 D2 D1 DF DL < <(submit delta-login2 delta "--partition=gpuH200x8")
 B=$(timeout 300 ssh -o BatchMode=yes dtai-1 "cd /u/lucmon/rein && sbatch --parsable --job-name=math7_ans_base_dtai \
   --export=ALL,OUT=runs/math7_ans_base_qwen25_7b,MODEL=Qwen/Qwen2.5-7B-Instruct,MAX_NEW=4096,BATCH=16,CLIENTS=math,EXTRA='--data data/math_fed_ans/data.jsonl --clients_file data/math_fed_ans/clients.json' \
   sbatch/eval_base_math.sbatch" </dev/null 2>&1 | grep -v OpenSSL)
