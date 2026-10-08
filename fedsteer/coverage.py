@@ -111,3 +111,76 @@ def saturating_weights(counts: dict[str, np.ndarray], tau: float, scale: float =
     if tau <= 0:
         raise ValueError("tau must be positive")
     return {c: scale * v / (tau + v) for c, v in counts.items()}
+
+
+# ----------------------------------------------------------------------------- aligned mode
+# ``fed.calibration: aligned`` (NR-58): train AND infer with the same pooled curve g-bar.
+# In client i's forward pass g-bar is built from its own live warp values (with gradient) and the
+# other clients' values frozen from the last round; the identical operator, applied to everyone's
+# final values, is the inference map.  One function below is used on both sides.
+
+def isotonic_blocks(y: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Block label per point of the weighted pool-adjacent-violators solution (points with
+    the same label share one fitted value: their weighted mean)."""
+    blocks = []                                   # [mean, weight, first, last]
+    for k, (yk, wk) in enumerate(zip(y, w)):
+        blocks.append([yk, wk, k, k])
+        while len(blocks) > 1 and blocks[-2][0] > blocks[-1][0]:
+            m2, w2, _, l2 = blocks.pop()
+            m1, w1, f1, _ = blocks.pop()
+            blocks.append([(m1 * w1 + m2 * w2) / (w1 + w2), w1 + w2, f1, l2])
+    lab = np.empty(len(y), dtype=np.int64)
+    for b, (_, _, f, l) in enumerate(blocks):
+        lab[f:l + 1] = b
+    return lab
+
+
+def pool_and_project(num: "torch.Tensor", den: "torch.Tensor") -> tuple["torch.Tensor", dict]:
+    """g-bar on the grid from pooled sums: num [L, K] = sum_j w_jk g_j(a_k), den [K] = sum_j w_jk.
+
+    m = num / den, then a weighted isotonic projection per layer (weights den) that passes
+    gradients: block membership is found without gradient, each block's value is the
+    weighted mean of its members WITH gradient, so where nothing violates monotonicity the
+    projection is the identity.  Grid points nobody covers (den = 0) are linearly interpolated
+    from their covered neighbours; the endpoints are exactly 0 and 1 (every warp has them)."""
+    import torch
+    L, K = num.shape
+    covered = den > 0
+    if not bool(covered.any()):
+        raise ValueError("no client covers any grid point")
+    m = num / den.clamp_min(1e-12)
+    w = den.detach().double().cpu().numpy()
+    md = m.detach().double().cpu().numpy()
+    cov_idx = np.flatnonzero(w > 0)
+    labels = np.stack([isotonic_blocks(md[l, cov_idx], w[cov_idx]) for l in range(L)])     # [L, Kc]
+    flat = torch.as_tensor(labels + np.arange(L)[:, None] * K, device=num.device).reshape(-1)
+    mc, wc = m[:, cov_idx], den[cov_idx].expand(L, -1)
+    s_w = torch.zeros(L * K, device=num.device, dtype=m.dtype).index_add_(0, flat, wc.reshape(-1))
+    s_wm = torch.zeros(L * K, device=num.device, dtype=m.dtype).index_add_(0, flat, (wc * mc).reshape(-1))
+    zc = (s_wm / s_w.clamp_min(1e-12))[flat].reshape(L, -1)                               # [L, Kc]
+    if len(cov_idx) == K:
+        z = zc
+    else:                                         # fill uncovered points by linear interpolation
+        cols = []
+        for k in range(K):
+            if covered[k]:
+                cols.append(zc[:, int(np.flatnonzero(cov_idx == k)[0])])
+                continue
+            lo = cov_idx[cov_idx < k]
+            hi = cov_idx[cov_idx > k]
+            if len(lo) == 0 or len(hi) == 0:      # uncovered end: the fixed endpoint value
+                cols.append(torch.full((L,), 0.0 if len(lo) == 0 else 1.0, device=num.device, dtype=m.dtype))
+                continue
+            a, b = lo[-1], hi[0]
+            ia, ib = int(np.flatnonzero(cov_idx == a)[0]), int(np.flatnonzero(cov_idx == b)[0])
+            t = (k - a) / (b - a)
+            cols.append(zc[:, ia] * (1 - t) + zc[:, ib] * t)
+        z = torch.stack(cols, dim=1)
+    # exact endpoints (pooled values are 0 and 1 up to rounding)
+    z = torch.cat([torch.zeros(L, 1, device=z.device, dtype=z.dtype), z[:, 1:-1],
+                   torch.ones(L, 1, device=z.device, dtype=z.dtype)], dim=1)
+    adj = (z - m).detach().abs()[:, covered]
+    diag = {"proj_adjust_max": float(adj.max()) if adj.numel() else 0.0,
+            "proj_layers": int((adj.max(dim=1).values > 1e-6).sum()) if adj.numel() else 0,
+            "uncovered": [int(k) for k in np.flatnonzero(w <= 0)]}
+    return z, diag

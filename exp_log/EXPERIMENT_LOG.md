@@ -1,5 +1,7 @@
 # Experiment log: federated learning of steering directions
 
+> **Archive, frozen on 2026-10-07.** New entries go to the per-dataset logs `exp_log/newsroom/LOG.md`, `exp_log/molecule/LOG.md`, `exp_log/math-cot/LOG.md`, and cross-dataset decisions to `exp_log/coordinator/LOG.md` (which starts with CAL-1). Conventions: `../CONVENTIONS.md`.
+
 Updated after every code change and every job. Newest entries at the bottom.
 The plan is in `../federated-steering-plan.md`.
 
@@ -3298,3 +3300,658 @@ Analysis only; no code or jobs. Inputs: the round-100 test evals of A, B and C0.
 - Caveat: for broad clients, out-of-support α are mostly the endpoints 0 and 1, whose targets are the dataset's extremes (77 / 1,024 tokens), the same compression as in G2.
 
 **Synthesis.** Three runs on two backbones and both prompt settings show the same compressed output range (≈ 250 → 510–590 tokens). Calibration is good inside each client's data range and fails at the extremes and out of support. The next test is the gain clamp (`lora.gain_max=16`), on the answer-in-prompt single-client G2 where the gain is pinned at 4. A G2 run takes ≈ 4 h on a Delta A100.
+
+## MOL-19. MOL-18 interim: 3 of 4 arms done. Coverage borrowing acts exactly where interior out-of-support alphas exist — but all arms tie on the failure-inclusive metric (2026-10-06)
+
+Three of MOL-18's four arms completed on cc (the race went to cc at 16:10 and the four Anvil
+copies were cancelled by the watcher, correctly — the cc copies had started and all three that ran
+finished). **NORESET (11180423) is still pending**: it hit cc's
+`user_env_retrieval_failed_requeued_held` (Restarts=1) and was **released** (memory
+`reference-slurm`: transient, just release); it is now PENDING/Priority. So the
+optimizer-reset control is NOT yet in, and the sharing-vs-reset question below stays open.
+
+| arm | job | node | selected | wall |
+|---|---|---|---|---|
+| COV (λ_max = 1) | 11180420 | ccc0284 | r100 | 5:19 |
+| PRIV (no borrowing) | 11180421 | ccc0465 | r80 | 5:09 |
+| LOCAL | 11180422 | ccc0389 | r100 | 6:17 |
+
+**Test, mean over 8 clients (150 prompts/client, gain 1 in all arms):**
+
+| metric | COV | PRIV | LOCAL |
+|---|---:|---:|---:|
+| **all-cell error, penalty 1 (the selection metric)** | 0.2075 | 0.2072 | **0.2066** |
+| percentile error, complete scorable sweeps | **0.197** | 0.199 | 0.205 |
+| in-support (conditional) | 0.174 | **0.164** | 0.167 |
+| out-of-support (conditional) | **0.215** | 0.226 | 0.238 |
+| worst client (conditional) | **0.270** | 0.279 | 0.303 |
+| reach rate | **0.367** | 0.327 | 0.279 |
+| Spearman | **0.848** | 0.847 | 0.840 |
+| **unscorable row rate** | 0.0630 | 0.0473 | **0.0119** |
+
+⚠️ **Read the first and last rows together before anything else.** On the metric the checkpoints
+were *selected* on, the three arms are indistinguishable (spread 0.0009, LOCAL nominally best),
+because COV/PRIV buy their conditional-calibration advantage with a **4–5× higher rate of invalid
+molecules** (6.3% / 4.7% vs 1.2%). This is the trap MOL-18's own reading guide flagged, running in
+the opposite direction to the one anticipated. **No arm wins the primary metric.**
+
+**Paired per-client bootstrap** (`compare_runs.py --pair`, negative = first arm better, * = 95% CI
+excludes 0):
+
+| contrast | overall | out-of-support |
+|---|---|---|
+| COV − PRIV (borrowing, cleanly isolated: both fedavg) | better 1/8, worse 1/8 | CHEMBL228 **−0.039*** |
+| COV − LOCAL | better 2/8, worse 1/8 | better 4/8 (243, 204, 325, 228), worse 1/8 |
+| PRIV − LOCAL | better 2/8, worse **0/8** | better 3/8, worse 1/8 |
+
+**The structural finding, and it is clean.** Of the eight clients, exactly **three have interior
+out-of-support test alphas** — CHEMBL243 [.01,.41], CHEMBL4078 [.30,.80], CHEMBL228 [.46,.97];
+for the other five the only out-of-support alphas are {0, 1}, where h(0) = 0 and h(1) = 1 are fixed
+and no warp can move them (NR-53 §4 makes the same point on Newsroom). **All three significant
+COV − LOCAL effects are on exactly those three clients** — CHEMBL243 −0.034*, CHEMBL228 −0.019*,
+CHEMBL4078 **+0.024*** — while the other five are all |effect| ≤ 0.011 and none significant.
+So the mechanism acts precisely where it structurally can, and nowhere else.
+
+**But its sign is not uniform, and the adverse case is the one that mattered most.** CHEMBL4078,
+the middle-only client that borrows at *both* ends (λ .92/.83 low, .59/.76 high) and was MOL-14's
+worst-hit client, is significantly **worse** under borrowing — against both PRIV (+0.014*) and
+LOCAL (+0.024*, OOS +0.026*). The two one-sided specialists are significantly better. This fits
+NR-53 §1: a peer's h value identifies the peer's inverse response, not the recipient's, and a
+client needing *both* tails borrows from two disjoint peer sets whose responses differ from its own
+in opposite directions.
+
+**What cannot yet be claimed.** PRIV − LOCAL is better on 2/8 and worse on 0/8, which looks like
+the first federated win on this task (Exp45: 0/8 better, 2/8 worse) — but PRIV vs LOCAL still
+confounds sharing with the direction's Adam-state reset, which is exactly what the pending NORESET
+arm controls. Until 11180423 lands, the honest statement is: **with gain fixed at 1 the fed arms
+stop losing and gain conditional out-of-support accuracy, at a cost in validity, and no arm
+improves the failure-inclusive metric.** Single seed, and the arms' dev-selected rounds differ
+(100/80/100).
+
+**Next:** NORESET when it completes; then the plan §11 entry for the full four-arm set. The
+validity gap deserves its own look — whether COV/PRIV's extra failures are concentrated at the
+reached extremes (which would make the conditional gain partly a selection effect) or spread
+across alpha. Not run.
+
+## MOL-20. Endpoint decomposition of MOL-18, and MOL-15's result (never analysed): the α=0 cell is the dominant error and no arm touches it (2026-10-07)
+
+Analysis only, no new jobs. Two things: MOL-15's completed run had never been compared, and the
+MOL-18 arms' error is decomposed per alpha cell. NORESET (11180423) is still PENDING.
+
+### MOL-15 (exp44, job 11165980, completed 10-05 16:23) — federated still loses with a learned gain
+
+This was MOL-14's matched comparison: `fed.calibration=private` with a **learned** gain, so only
+the direction varies, on `data/chembl_deco_skew` against Exp43's local (21068553).
+
+| | FEDPRIV | LOCAL43 |
+|---|---:|---:|
+| percentile error (conditional) | 0.198 | **0.187** |
+| all-cell, penalty 1 | 0.202 | **0.195** |
+| out-of-support | 0.230 | **0.211** |
+| reach rate | 0.304 | **0.353** |
+
+Paired bootstrap: **federated significantly better on 0/8, worse on 3/8** (CHEMBL4078 +0.029*,
+CHEMBL204 +0.018*, CHEMBL2039 +0.013*; out-of-support worse on 4/8). **So removing MOL-14's
+calibration confound does not change MOL-14's conclusion** — with a per-client learned gain,
+federated loses. The worst-hit client is again CHEMBL4078, the middle-only one.
+
+⚠️ **This reframes MOL-19.** MOL-18's federated arms look good partly because **gain 1 removes the
+per-client gain freedom that local exploits**: local's reach is 0.353 with a learned gain and
+0.279 at gain 1, while COV reaches 0.367 at gain 1. Fixing the gain handicaps the baseline as much
+as it constrains the method. "Federated stops losing at gain 1" and "federated is better" are not
+the same claim, and only the first is supported.
+
+### Per-cell error decomposition (MOL-18, test, equal-weight over clients)
+
+Computed from the saved score grids and each run's own `alpha_reference.json`, per prompt×alpha
+cell — *not* from the curve means, which measure bias and overstate the endpoints' share.
+
+| arm | α=0 | α=.25 | α=.5 | α=.75 | α=1 | endpoints | interior |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| COV | **0.304** | 0.188 | 0.180 | 0.181 | **0.129** | 0.216 | 0.183 |
+| PRIV | **0.302** | 0.187 | 0.175 | 0.170 | 0.155 | 0.229 | 0.177 |
+| LOCAL | **0.285** | 0.182 | 0.176 | 0.170 | 0.211 | 0.248 | 0.176 |
+
+All-cell with penalty 1: α=1 becomes 0.174 / 0.184 / 0.214; α=0 and the interior barely move.
+
+**Three findings.**
+1. **α=0 is the worst cell for every arm (~0.30), 1.6–1.7× the interior cells, and the arms are
+   indistinguishable there** — the federated arms are marginally *worse* (0.304/0.302 vs 0.285).
+   This is structural, not a tuning failure: with gain 1, no offset and h(0) = 0, the coefficient
+   on D at α=0 is exactly 0, so the output is the **private adapter alone**. No warp, no borrowing
+   and no amount of direction sharing can move it. It is also why every §2.1 variant tried so far
+   (NR-46/49/53, MOL-18) leaves it untouched.
+2. **The entire between-arm difference is at α=1**, where COV cuts the error to 0.129 against
+   LOCAL's 0.211 (−39%). Interior cells are 0.176–0.185 in all three arms.
+3. **COV's invalidity is concentrated exactly where it wins.** Going from conditional to penalty-1
+   costs COV **+0.045 at α=1**, PRIV +0.029, LOCAL +0.003, while α=0 and the interior move by
+   ≤0.004. So the high-endpoint advantage is partly bought by emitting unscorable molecules at the
+   extreme — this is now measured, not hypothesised (MOL-19 flagged it as an open question).
+
+**Consequence for mitigation.** For five of eight clients the only out-of-support alphas are
+{0, 1}, so endpoint reach *is* their out-of-support score; and the α=0 endpoint cannot be addressed
+by any calibration-side change. The candidates that can act on it are `lora.offset=true` (a nonzero
+coefficient at α=0, so D can be applied negatively below the adapter's natural level; `offset_max`
+is already 2.0, and per `fed.py:303` the offset trains even with `fix_gain=true`) and
+`reg.decorr > 0` (currently 0; keeps the private adapter from absorbing attribute signal, which is
+NR-48's measured Newsroom mechanism for a stuck α=0). Both are untested here. Before spending runs
+on them, two cheap diagnostics on existing checkpoints: `eval_direction.py --posthoc_remap` to
+bound how much error *any* recalibration could remove (predicted ≈0 at the endpoints), and a
+wider coefficient sweep at frozen P_i/D to see whether the shared direction can reach percentile
+0/1 at all and at what validity cost. Not run.
+
+## MATH-13. Diagnosis of the extrapolation failure: per-client response levels set by the private adapter, and a calibration that cannot express the needed coefficients (2026-10-07)
+
+Analysis only; no code or jobs. Question (user): is out-of-support failure caused by a low-quality direction or an invalid calibration function? Read against the consensus-calibration design (NR-56) and NR-53's diagnosis.
+
+**Calibration as implemented:** coefficient = o + s·h(α), h monotone with h(0) = 0 and h(1) = 1, s ∈ [0.25, 4], offset off in all math runs. Hence the **coefficient ∈ [0, s]; it is never negative**.
+
+**Measured response at equal coefficients** (MATH-5 reference E1-fed, original prompts, test round 80; shared calibration, so every client gets the same coefficient at each α: 0, 0.80, 1.55, 2.25, 2.88). Median output percentile on the global scale:
+
+| client | coef 0 | 0.80 | 1.55 | 2.25 | 2.88 | span | own support |
+|---|---|---|---|---|---|---|---|
+| cn_k12 / Logic | 0.072 | 0.178 | 0.379 | 0.478 | 0.593 | 0.52 | [0.01, 0.62] |
+| gsm8k | 0.179 | 0.256 | 0.353 | 0.427 | 0.466 | 0.29 | [0.10, 0.60] |
+| orca_math / Algebra | 0.353 | 0.375 | 0.403 | 0.475 | 0.476 | **0.12** | [0.04, 0.74] |
+| cn_k12 / Inequalities | 0.130 | 0.250 | 0.453 | 0.592 | 0.689 | 0.56 | [0.05, 0.82] |
+| cn_k12 / Geometry | 0.172 | 0.317 | 0.496 | 0.606 | 0.718 | 0.55 | [0.04, 0.89] |
+| math | 0.422 | 0.511 | 0.589 | 0.685 | 0.754 | 0.33 | [0.18, 0.87] |
+| olympiads | **0.676** | 0.743 | 0.769 | 0.836 | 0.887 | 0.21 | [0.54, 0.98] |
+| aops_forum | 0.606 | 0.734 | 0.800 | 0.854 | 0.912 | 0.31 | [0.56, 0.99] |
+
+**Reading:**
+1. **The direction is consistent:** every client's length rises monotonically with the coefficient. D carries a shared "longer" signal; it is not noise.
+2. **The private adapter sets each client's level.** At coefficient 0 the output already sits inside the client's own data band (olympiads 0.68, cn_k12 / Logic 0.07), and D only modulates around it. Responses differ by client in **intercept** (0.07–0.68) and **slope** (span 0.12–0.56 over the trained coefficient range, against the 1.0 needed). This is the identifiability problem foreseen in the parent plan ("P_i can absorb a client's typical level").
+3. **So the calibration function is invalid out of support, in two ways:**
+   - (a) *One shared function* (shared calibration, and equally the consensus table ḡ) assumes one response curve for all clients. At equal coefficients the clients differ by up to 0.6 percentile. Peers' calibration is the wrong target, exactly as in NR-53 (the right map is h_i = r_i⁻¹). Consensus pools in-support function values from clients whose responses differ, then applies them where the client has no data; it shares the same flaw.
+   - (b) *The function class cannot reach the needed coefficients.* A high-level client (olympiads, aops_forum) needs a **negative** coefficient to go below its adapter's level. A low-level client (gsm8k, orca_math) needs coefficients **above** the shared s. With g ∈ [0, s] and fixed endpoints, neither is expressible, whatever the shape. In single-client G2 (answer-in-prompt) the gain is pinned at the clamp (4.0), the same limit seen from the other side.
+4. **Direction quality is the open part.** Whether D *can* drive olympiads down to short solutions at negative coefficients, or gsm8k up at coefficients above s, without breaking quality is untested: no client ever trains at negative coefficients, and orca_math responds weakly even in support. This is the true extrapolation question, and it cannot be read from the current evals, which only probe coefficients in [0, s].
+
+**Proposed diagnostics** (generation only, on existing checkpoints; not run):
+- **Coefficient sweep, bypassing calibration:** fix the coefficient directly, c ∈ {−3, −2, −1, −0.5, 0, 0.8, 1.5, 2.9, 4, 6, 8}. Do this per client on the E1-fed round-80 checkpoint (8 clients × 20 dev problems) and on answer-in-prompt G2. Measure the output percentile and validity (boxed, loops, accuracy) → the response curve r_i(c) beyond the trained range. Needs a small `SteerControl` override (`use_coefficient(c)`).
+- **Oracle decomposition from the sweep:**
+  - current calibration error;
+  - error with the best *shared* map c(α), unconstrained range (the best any shared / consensus calibration can do);
+  - error with the best *per-client* map c_i(α), unconstrained;
+  - the remainder, which is the direction / adapter limit.
+
+  This splits the error into "sharing one calibration", "range / shape of the function class" and "direction". Choose maps on dev, score on test.
+- **Decision rule:**
+  - If r_i(c) reaches each client's missing region at valid quality, the direction is adequate and the fix is calibration: a per-client intercept or offset with shared slope / shape, and an unclamped or signed coefficient range.
+  - If it saturates or degrades, the direction / adapter split is the problem. Then the fixes are training-side: train D on both signs (e.g. centred coefficients g = s(α − ᾱ_i)), limit how much level P_i can absorb (A2 shared adapter, or a penalty), or raise D's capacity.
+
+## MOL-21. Endpoint diagnostics launched; the α=0 fix (private offset) launched as a training pair (2026-10-07)
+
+Follows MOL-20: α=0 is the worst cell for every MOL-18 arm (~0.30 vs ~0.18 interior) and no arm
+moves it, because with gain 1, no offset and h(0) = 0 the coefficient at α=0 is exactly zero, so
+the output is the private adapter alone. Launch script
+`exp_log/launch/exp47_endpoint_diagnostics_and_offset.sh`.
+
+### Part 1: the two diagnostics (evaluation only, no training)
+
+One job per MOL-18 arm, each running both diagnostics on that arm's dev-selected snapshot:
+**11195545 (COV r100), 11195546 (PRIV r80), 11195547 (LOCAL r100)**.
+
+- **(a) `eval_direction.py --posthoc_remap`** — oracle isotonic α remap fitted on dev, applied on
+  test. Bounds how much error *any* recalibration can remove. **Prediction: ≈0 at the endpoints**,
+  since the remap only reparameterizes α inside [0,1] while h(0)=0 and h(1)=1 are fixed. If that
+  holds, the warp side is exhausted and the endpoint problem is reach, not calibration.
+- **(b) `scripts/coeff_sweep.py`** (new script) — the raw-coefficient sweep. It was needed because
+  **every nonlinear warp hard-clamps its input** (`x = alpha.float().clamp(0.0, 1.0)`,
+  `fedsteer/warp.py`), so coefficients outside [0,1] are unreachable through α and
+  `--alphas 1.5` silently reproduces α=1. The script swaps the warp for the identity (which does
+  not clamp) and sets gain 1 / offset 0, so the requested value *is* the coefficient. Sweeps
+  −0.5 … 1.5 and reports achieved percentile **and validity** per coefficient.
+  **Separately labelled, per the plan:** no calibration error is reported, because a coefficient of
+  1.25 has no correct percentile; it is a reachability-and-validity curve. Replacing the warp
+  changes calibration by construction — that is the point.
+
+New `sbatch/run_cmd_chembl.sbatch` runs an arbitrary evaluation command on a GPU from a private
+code snapshot. It includes `secondary` (4 h cap, but A100/H100/A40 nodes), so short diagnostics do
+not queue behind the 100-round runs; Turing nodes and the 16 GB V100s stay excluded.
+
+### Part 2: the α=0 fix — `lora.offset=true`, offset **private**
+
+With an offset the coefficient is o_i + s·h(α), so at α=0 it is o_i rather than 0 and the model can
+apply the direction **negatively**, below the adapter's natural level. This is the only mechanism in
+the current code that can move that endpoint. Everything else matches MOL-18 (gain fixed at 1,
+kumaraswamy_mix, warp_reg 0, pruned data, 100 rounds, seed 0, strict scorer, penalized selection),
+so **PRIV_OFF − PRIV and LOCAL_OFF − LOCAL isolate the offset**.
+
+| arm | cc | Anvil |
+|---|---|---|
+| PRIV_OFF (fedavg, private calibration + offset) | 11195548 | 21159619 |
+| LOCAL_OFF (local + offset) | 11195549 | 21159620 |
+
+Race watcher pid **949054**, spec `exp_log/launch/MOL-21_race.json`, log `sbatch/logs/race_MOL-21.log`,
+one group so both arms land on the same host.
+
+**Why the offset is private — asked by the user, and the answer is partly forced.**
+- **Forced:** there is no flag to share *only* the offset. It sits in the `"gain"` parameter group
+  (`lora.py:342`), and `shared_params` takes `groups["gain"] + groups["warp"]` only when
+  `calibration == "shared"` — so sharing the offset necessarily shares the gain and the warp too.
+  That is the configuration MOL-14 identified as its confound and as the harmful regime when
+  support widths differ, and here they range 0.40–0.94.
+- **Measured:** the α=0 endpoint sits in a strongly client-specific place. Achieved percentile at
+  α=0 per client (MOL-18 test): CHEMBL204 **0.169**, CHEMBL243 0.189, CHEMBL240 0.270,
+  CHEMBL325 0.267, CHEMBL2835 0.323, CHEMBL4078 0.325, CHEMBL2039 0.332, CHEMBL228 **0.536**
+  (PRIV arm; spread **0.367**, per-arm std ≈0.10). One shared scalar would correct eight adapters
+  that start in very different places — 0.54 of percentile for CHEMBL228 against 0.17 for CHEMBL204.
+
+⚠️ **No COV arm in this experiment:** `_check_coverage_config` rejects an offset outright
+("lora.offset must be false"), because plan §2.1 defines coverage as gain 1 + no offset + private
+warp. Extending borrowing to the offset is a method change, not a flag.
+
+**That exposes the real tension, and it is worth stating plainly.** A private offset is fitted on
+the client's own data, but the clients needing the largest low-end correction have almost none
+there: CHEMBL228 holds **12** training molecules below α 0.25 and its α=0 output sits at percentile
+0.536. So the principled target is not a *shared* offset (one scalar for eight starting points) but
+some form of **borrowed** calibration, where λ for CHEMBL228 on the low grid points is already
+0.82–0.93.
+
+**Correction (user, 2026-10-07): borrowing must act on the whole calibration function, not on o_i.**
+An earlier draft of this entry said "the coverage mechanism applied to o_i instead of the warp".
+That was wrong, and the code says so. `_update_coverage` pools `_warp_on_grid()`, i.e. the **warp
+values h_i(a_k) alone**, and `_check_coverage_config` demands gain 1 and no offset *precisely so
+that h_i is the coefficient* — that invariant is what makes the pooled table a statement about
+coefficients at all. Bolting an offset onto that while still pooling h would break it: two clients
+with identical h and different o behave differently, so the table would no longer describe
+behaviour. Only the sum g_i(α) = o_i + s_i·h_i(α) is meaningful, so an offset-bearing coverage
+mode must pool **g**.
+
+Two consequences that any such extension must handle, neither of which is a flag:
+1. **The pooled table's endpoints are pinned.** `project_monotone` hard-sets `z[0] = 0`,
+   `z[-1] = 1`. The borrowed target therefore *itself* asserts coefficient 0 at α=0 and 1 at α=1 —
+   so borrowing cannot move the endpoint under any λ. Pooling g rather than h is pointless unless
+   that constraint is relaxed and the admissible range is allowed past [0, 1].
+2. **Pooling *levels* is the wrong target even for g** (NR-53 §1), and the ChEMBL measurement is
+   sharper than Newsroom's: the *same* coefficient (exactly 0) produces percentile **0.169** on
+   CHEMBL204 and **0.536** on CHEMBL228. The correct calibration is the inverse of each client's
+   own response, g_i = r_i⁻¹; a peer's data identifies r_j⁻¹, not r_i⁻¹. So a pooled coefficient
+   value is systematically wrong for exactly the skewed clients that need it.
+
+**Design this points to** (NR-53 (ii)+(iii) made concrete; it subsumes the offset rather than
+adding to it): `g_i(α) = z(α) + δ_i(α)`, with z the pooled monotone **endpoint-free** shape table
+(borrowed) and δ_i a private deviation fitted freely in support, with its **slope** penalized
+outside the support so it extrapolates flat instead of being dragged to zero (penalize δ_i′, not
+δ_i). Then δ_i(0) ≠ 0 *is* the offset, so no separate scalar is needed. This borrows shape, which
+is plausibly common across clients, and keeps level private, which the 0.367 spread above says it
+must be.
+
+**Why that is not what is running.** It is a parameterization change plus a new regularizer plus a
+relaxed projection, and it should not be built before the coefficient sweep says whether
+coefficients outside [0, 1] reach percentile 0/1 at all and at what validity cost. If they do not,
+the limit is the direction itself and no calibration design fixes it. The offset arms above are
+therefore the minimal flag-only probe of whether level freedom moves α=0 — informative either way,
+but not the proposed design.
+
+## MATH-14. Per-layer calibration functions for math (`lora.warp_scope=module`), with and without a raised gain clamp (2026-10-07) [delta+dtai]
+
+**User request:** as on Newsroom (NR-54), give different layers their own calibration function, to improve steering capability.
+
+**What it changes:** `lora.warp_scope=module` gives each of Qwen2.5-7B's 196 adapted matrices its own warp h_l (other sessions' implementation, NR-54; 65+ tests).
+- Shared calibration averages each layer's warp across clients, and there is still one gain.
+- Per-layer shapes let layers that saturate differently bend differently. That can improve calibration **inside** the coefficient range.
+- They cannot move the endpoints (every h_l(0) = 0 and h_l(1) = 1) or the clamped gain, which MATH-13 identified as the limit at the extremes (single-client G2's gain pinned at 4.0).
+- Hence a second arm with `lora.gain_max=16`, to tell whether per-layer warps alone are held back by the clamp.
+- No Newsroom per-layer results existed yet (NR-54 / NR-56 runs pending or unanalysed), so this is untested on both tasks.
+
+**CPU smoke** (Llama-1B, answer-in-prompt `math`, `warp_scope=module`, `gain_max=16`, shared calibration):
+- After 4 short rounds the per-layer curves had already diverged (min / max spread across layers);
+- a 2-round run went through snapshot (`round_0002.pt`), the full dev eval, and `summarize_sweep` checkpoint selection without error.
+
+Imports were verified on both hosts after syncing, and `SteerLoraConfig().warp_scope` still defaults to `model`.
+
+**Jobs** (launch `exp_log/launch/MATH-14_per_layer_warps.sh`):
+- Single-client G2, answer-in-prompt, **matched to MATH-11's G2** (Delta 22703347: test pct err 0.253, Spearman 0.797, gain 4.0). Only the overrides differ.
+- **Passed as overrides, not as config defaults**, because the queued answer-in-prompt E1 pair reads `configs/math_fedavg.yaml` at start.
+- Raced on Delta (all GPU partitions) and dtai.
+
+| arm | overrides | Delta | dtai | run prefix |
+|---|---|---|---|---|
+| P | `lora.warp_scope=module` | 22718559 | 3328129 | `runs/math14_ans_g2_perlayer_qwen25_7b` |
+| PG | `lora.warp_scope=module lora.gain_max=16` | 22718560 | 3328130 | `runs/math14_ans_g2_perlayer_gmax16_qwen25_7b` |
+
+- Watcher: pid **977434**, spec `exp_log/launch/MATH-14_race.json`, log `sbatch/logs/race_MATH-14.log`. MATH-11's watcher (pid 3329925) still handles the queued E1 pair and G1.
+- **How to read the result:**
+  - P vs. MATH-11 G2 gives the effect of per-layer shapes.
+  - PG vs. P gives the effect of the clamp.
+  - Report the per-layer curve spread, the gain trajectory, test pct err, in / out of support, the per-α generated range, and `skipped_steps`.
+  - If either arm improves G2, carry the setting into E1 (fed and local).
+
+## MATH-15. Answer-in-prompt E1 ran twice (watcher bug); duplicate dtai pair cancelled; base reference done (2026-10-07, 09:40) [delta+dtai]
+
+**Duplicate E1.**
+- The MATH-11 watcher (pid 3329925, started 10-06 at 13:52) exited at 08:38:57 with "all races decided". The dtai E1 pair (3316650 / 51) had started at 08:30 / 08:33, so it was still under `--min_running_s 1200`, and the Delta twins were PENDING.
+- That is the exit-check bug fixed by another session in NR-52 (`scripts/race_watch.py`, 10-06 at 20:55): a not-yet-winning RUNNING copy plus a PENDING twin was counted as decided. **My watcher had loaded the code before the fix.**
+- Delta's pair (22703349 / 50) then started at 09:17, and all four ran.
+- **Resolved by hand** at ~09:38, following the user's failover rule (once a copy runs, cancel the others):
+  - Both pairs were healthy, with 0 nan-guard events: dtai at rounds 5–6 (~680 s per round), Delta at round 1 (~455 s per round).
+  - **Kept Delta** (~6 h earlier finish over 100 rounds) and **cancelled dtai 3316650 / 51** (RUNNING ~1 h). The pair stays on one host.
+  - Noted in `sbatch/logs/race_MATH-11.log`.
+- MATH-14's watcher (pid 977434) started on 10-07 at 00:55, after the fix, so it is not affected.
+- Observation: on these settings (micro-batch 2 × 4, eager attention), **dtai GH200 is ~1.5× slower per round than a Delta A100** (680 vs. 455 s per E1 round).
+
+**Answer-in-prompt base reference** (dtai 3316652, COMPLETED 08:37–09:02; `runs/math7_ans_base_qwen25_7b_20261007-083714_j3316652`): base Qwen2.5-7B with the answer in the prompt, `math` client, 100 test problems, 4,096 cap.
+- **Accuracy 0.96**, boxed 1.00, truncated 0.00, loop 0.03, median 572 tokens (reference median 418).
+- Without the answer (screen, first 50 problems): accuracy 0.72, median 570 tokens. The answer in the prompt does not change the base model's length.
+- **G0 on this setting (1.00, MATH-12) therefore shows no degradation vs. its matching base (0.96).**
+
+**State:**
+- RUNNING: answer-in-prompt E1-fed **Delta 22703349** and E1-local **Delta 22703350** (from 09:17; ~12.6 h of training plus evals).
+- PENDING: G1 Delta 22705844, which waits on G2 (done), so it is just queued; MATH-14 P / PG (Delta 22718559 / 60, dtai 3328129 / 30).
+
+## MOL-22. A bug in my own diagnostic script; the oracle remap confirms the endpoints are unreachable; and the offset fix gives the first federated win that survives the failure penalty (2026-10-07)
+
+### The bug (user-spotted): `scripts/coeff_sweep.py` had no `sys.path` bootstrap
+
+Both diagnostic jobs **failed** — 11195546 at 28:50, 11195547 at 56:41 — with
+`ModuleNotFoundError: No module named 'fedsteer'`, raised by the *second* stage. Cause is mine:
+`python $CODE/scripts/coeff_sweep.py` puts the **script's own directory** on `sys.path[0]`, not the
+repo root, and the cwd is not added for a path invocation. `eval_direction.py` sits at `$CODE/`, so
+its sibling `fedsteer/` resolves; a file under `$CODE/scripts/` cannot see it. **Every other script
+in `scripts/` carries `sys.path.insert(0, dirname(dirname(abspath(__file__))))`** — I omitted it,
+and my interactive check passed only because it ran from the repo root, where cwd supplies the path.
+Fixed and verified by running `--help` from `/tmp`. Resubmitted as sweep-only (the remap stage had
+already succeeded, so it is not repeated): **11202133** priv, **11202134** local. The COV diagnostic
+**11195545** was separately held with `user_env_retrieval_failed_requeued_held` and **released**; it
+snapshots the fixed code when it starts.
+
+### Diagnostic (a), oracle remap: completed, and the prediction holds exactly
+
+PRIV arm, round 80, isotonic α remap fitted on dev and applied on test:
+
+| metric | original | remap | Δ |
+|---|---:|---:|---:|
+| pct_calib_err | 0.1989 | 0.1913 | **−0.0075** |
+| pct_calib_err_penalized | 0.2072 | 0.2016 | −0.0056 |
+| in-support | 0.1639 | 0.1537 | −0.0103 |
+| out-of-support | 0.2255 | 0.2225 | −0.0030 |
+| adjacent tie rate | 0.4158 | 0.4776 | **+0.0618** |
+
+**α=0 achieved percentile moves by ≤0.004 for every client** (243 .189→.189, 204 .191→.191,
+325 .267→.268, 2835 .323→.319, 4078 .325→.325, 2039 .332→.332, 240 .270→.270, 228 .536→.537).
+
+The mapped-α grids show why: the oracle wants coefficients **below 0** and cannot have them, so it
+**clamps**. For six of eight clients α=0.25 maps to 0.0, so α=0 and α=0.25 generate the identical
+molecule; for CHEMBL228, α=0, 0.25 *and* 0.5 all map to ≈0 (0.0, 0.0, 0.008) — three requested
+levels collapsed onto the boundary, which is where the +0.062 tie rate comes from.
+
+**Conclusion: the endpoint error is a reach limit, not a calibration limit.** Total headroom from
+*any* monotone recalibration is 0.0075 (3.8%), and ~0 at the endpoints. This closes the warp side:
+no warp family, and no borrowing of warp values, can fix α=0. It also sharpens the previous entry's
+correction — pooling **g** instead of **h** is necessary but **not sufficient**, because
+`project_monotone` pins `z[0]=0, z[-1]=1`, so the borrowed target itself forbids the move.
+
+### The α=0 fix works — and only in the federated arm
+
+Both offset arms completed on Anvil (**21159619** PRIV_OFF 4 h 14 m, **21159620** LOCAL_OFF
+4 h 00 m; the cc copies were cancelled by the watcher at 03:55 when Anvil started). Configs
+verified: both `data/chembl_deco_skew_pruned`, gain fixed, `offset=true`, `offset_max=2.0`,
+kumaraswamy_mix, warp_reg 0, 100 rounds, seed 0; only `fed.mode` differs.
+
+| metric | PRIV | **PRIV_OFF** | LOCAL | LOCAL_OFF |
+|---|---:|---:|---:|---:|
+| **penalized (selection metric)** | 0.2072 | **0.1934** | 0.2066 | 0.2078 |
+| pct_calib_err | 0.1989 | **0.1877** | 0.2047 | 0.2039 |
+| out-of-support | 0.2255 | **0.2107** | 0.2385 | 0.2378 |
+| unscorable row rate | 0.0473 | 0.0303 | **0.0119** | 0.0221 |
+| achieved percentile at α=0 | 0.304 | **0.233** | 0.285 | 0.279 |
+| pct_range | 0.5401 | **0.5791** | 0.5046 | 0.5132 |
+
+Paired bootstrap: **PRIV_OFF − PRIV better on 5/8 clients, worse on 0/8** (out-of-support better
+on 5/8). **LOCAL_OFF − LOCAL better on 1/8, worse on 0/8** overall, but *worse* out-of-support on
+2/8 (CHEMBL2835 +0.037*, CHEMBL240 +0.016*). **PRIV_OFF − LOCAL_OFF better on 5/8, worse on 0/8**
+(out-of-support better on 5/8, worse on 0/8).
+
+**This is the first federated win on this task that survives the failure penalty** — 0.1934 against
+LOCAL_OFF's 0.2078 and MOL-18 LOCAL's 0.2066. Earlier: Exp45 FED lost; MOL-15 (learned gain, matched
+private calibration) lost 0/8 vs 3/8; MOL-18 tied at 0.207 across all arms. PRIV_OFF does fail
+slightly more often than LOCAL_OFF (3.0% vs 2.2%), so the margin is *not* survivorship — the
+penalized metric already charges those failures.
+
+**Learned offsets, all negative as predicted, none near the ±2.0 cap:**
+PRIV_OFF −0.252 … −0.447 (243 −.252, 204 −.288, 240 −.373, 2835 −.379, 2039 −.411, 228 −.439,
+325 −.440, 4078 −.447); LOCAL_OFF −0.089 … −0.251, i.e. roughly **half the magnitude**.
+
+**Two readings, labelled as hypotheses.**
+1. *Why federated benefits and local barely does.* With a shared direction each client needs a
+   per-client translation along it to reach its own region, and the offset supplies exactly that; in
+   local mode D_i is already client-specific, so the offset is largely redundant with what D_i does.
+   The ~2× larger offsets in the federated arm are consistent with this, but magnitudes without
+   direction norms do not establish it.
+2. *Why the offsets stopped near −0.4 instead of the cap.* The offset shifts g(α) by a constant at
+   **every** α, so lowering α=0 also lowers the interior unless the warp compensates. Observed: α=0
+   fell 0.071 while the interior moved ≤0.02 (0.382→0.363, 0.512→0.501), i.e. the warp did
+   compensate, and further offset would need a steeper h than the shape bounds allow. That coupling
+   is a direct argument for the decoupled `g_i = z + δ_i` design (shape borrowed, level private with
+   slope-penalized extrapolation), where level and shape do not fight.
+
+**Caveats.** Single seed; dev-selected rounds differ (PRIV_OFF r100, LOCAL_OFF r80, PRIV r80,
+LOCAL r100). Multiple matched seeds remain outstanding. **COV could not be given an offset** —
+`_check_coverage_config` rejects it — so the best federated configuration measured here is
+PRIV_OFF, *without* borrowing, and whether borrowing adds anything on top of an offset is untested.
+MOL-18's NORESET arm (11180423) is still RUNNING, so the optimizer-reset factor is still open.
+
+### MOL-22a. Two more bugs in the sweep diagnostic, one of them silent (2026-10-07)
+
+The resubmitted sweeps (11202133/11202134) failed in 2 m 17 s. Both causes are mine, and the second
+one matters more than the crash.
+
+**Bug A (the crash the user quoted): `KeyError: 'unknown parameter steer_control.warp.log_p'`.**
+`make_coefficient_raw` replaced `steer_control.warp` with an identity warp *inside* the per-client
+loop, so the module that owns `warp.log_p`/`log_q`/`w_logit` was gone by the next iteration.
+`load_snapshot_into` → `load_state(model, cs["gain"])` is strict about parameter names and died on
+client 2. The first client had already been swept correctly, which is why the log shows one client's
+numbers before the traceback. **Fix:** keep a reference to the original warp module and restore it
+before every `load_snapshot_into`; the identity warp is constructed once and swapped in only for
+generation.
+
+**Bug B (silent, and worse): the coefficient list was truncated to its first element.** The job log
+header reads `raw coefficients [-0.5]`, and the echoed CMD ends at `--coeffs -0.5`. Cause:
+`sbatch --export` is itself a **comma-separated** list of `key=value` pairs, so every comma inside
+the CMD value ends the variable and the remainder is dropped as bogus names. The earlier job
+11195546 shows the same truncation. Nothing errored — had Bug A not crashed the run, this would
+have produced a tidy single-column "sweep" and I would have reported a one-point reachability curve
+as if it were the real thing.
+
+**Fixes, structural rather than a re-quote.**
+- `sbatch/run_cmd_chembl.sbatch` now takes **`CMDFILE`**, a shell file it `source`s (so `$CODE` is
+  still in scope), with `CMD` kept only as a legacy path and the hazard documented in the header.
+  A command file has no `--export` parsing to fall foul of.
+- `coeff_sweep.py` accepts `:` as well as `,` as a separator and **refuses a sweep of fewer than
+  2 coefficients**, naming this exact failure mode in the error. A one-point sweep is a quoting
+  accident, not a request, and it should never again pass silently.
+- Exact submissions now live as files: `exp_log/launch/exp47_cmds/{cov,priv,local}.sh`.
+
+**Resubmitted: 11202855 (COV, both diagnostics), 11202856 (PRIV, sweep only), 11202859 (LOCAL,
+sweep only).** The pending COV job 11195545 was **cancelled** rather than released, because its
+`CMD` had been fixed at submission time and still carried the truncated coefficient list; its remap
+stage had not run, so nothing is lost. PRIV's and LOCAL's remap stages already succeeded in the
+first attempt and are not repeated.
+
+**One real data point survived Bug A**, from the single client that ran before the crash, and it is
+worth recording because it is the first evidence on the reach-vs-validity trade-off: CHEMBL243 at
+raw coefficient **−0.5** reached percentile **0.037** — against 0.189 at coefficient 0, i.e. the
+negative coefficient does drive the output almost to the bottom of the scale — but validity fell to
+**0.500**, from 0.94 at coefficient 0. So the direction *can* reach percentile ~0 when pushed below
+its trained range, and half the molecules stop being scorable when it does. If the full sweep
+confirms that shape, the endpoint is reachable but the usable range is set by validity, not by
+calibration — which is also the ceiling the learned offsets (−0.25 to −0.45, MOL-22) stopped well
+inside.
+
+## NR-57. Per-layer calibration (NR-54) and consensus λ = 0.1 (NR-56): test results (2026-10-07)
+
+**State.**
+- The NR-54/56 race was decided for **cc** at 23:58 (10-06).
+- Done, all dev-selected at round 100: A_L 11190971, B_L 11190972, C0.01_L 11190973, C0.1_L 11190974, C1_L 11190975, consensus λ = 0.1 11191900.
+- Consensus λ = 1 (11191901) has finished training and is in its test evaluation.
+- Report: `exp_log/reports/nr54_56_per_layer_test.txt` (`compare_runs.py`, 200 test articles per client, paired bootstrap over articles; one seed). Suffix `_L` = one warp per adapted matrix (`lora.warp_scope=module`); no suffix = NR-46/49 single warp.
+
+| Arm | Pct err (worst) | In-support | Out-of-support (worst) | Reach | Spearman (worst) | nypost.com | reuters.com |
+|---|---|---|---|---|---|---|---|
+| **A_L shared** | **0.150 (0.204)** | **0.134** | **0.157** (0.201) | 0.407 | 0.931 (0.881) | 0.187 | 0.204 |
+| B_L private | 0.158 (0.241) | 0.136 | 0.168 (0.269) | 0.406 | 0.926 (0.864) | 0.241 | 0.213 |
+| C0.01_L coverage | 0.159 (0.240) | 0.138 | 0.167 (0.269) | 0.400 | 0.926 (0.882) | 0.240 | 0.215 |
+| C0.1_L coverage | 0.154 (0.212) | 0.137 | 0.160 (0.221) | **0.413** | **0.932 (0.890)** | 0.201 | 0.212 |
+| C1_L coverage | 0.151 (0.213) | 0.136 | 0.157 (0.204) | 0.411 | 0.930 (0.880) | 0.187 | 0.213 |
+| Consensus λ = 0.1 | 0.158 (0.225) | 0.141 | 0.165 (0.244) | 0.389 | 0.926 (0.874) | 0.225 | 0.210 |
+| *A (single warp, NR-46)* | *0.154 (0.214)* | *0.136* | *0.166 (0.199)* | *0.391* | *0.924 (0.863)* | *0.187* | *0.214* |
+| *old method (learned shared gain), 11063910* | *0.151 (0.199)* | *0.135* | *0.161 (0.188)* | *0.387* | *0.933 (0.910)* | *0.177* | *0.199* |
+
+Quality (AlignScore, BERTScore, judge) is within noise across arms.
+
+**1. Per-layer warps help in every mode.**
+
+| Comparison | Mean error | Better on | Worse on | Main gains |
+|---|---|---|---|---|
+| A_L − A | 0.150 vs. 0.154 | 3/8 | 0/8 | reuters.com −0.011, people.com −0.008, cbc.ca −0.006; out-of-support −0.008 to −0.017 on 5 clients |
+| B_L − B | 0.158 vs. 0.167 | 5/8 | 0/8 | nypost.com −0.024; out-of-support better on 7/8 |
+| C1_L vs. C1 | 0.151 vs. 0.155 | | | |
+| C0.1_L vs. C0.1 | 0.154 vs. 0.155 | | | |
+
+- A_L vs. the old learned-gain method: they tie on 7/8 clients; A_L is worse only on nypost.com (+0.009) and better out-of-support on people.com (−0.018) and aol.com (−0.028).
+- **A_L is now the best design** with gain fixed at 1. Per-layer shapes recover most of what fixing the gain cost (reuters.com 0.214 → 0.204; old method 0.199).
+
+**2. The per-layer warps differ systematically by layer, not by client.** Round-100 snapshots, h(0.5) over the 112 warps:
+- Spread: standard deviation ≈ 0.2, range 0.04–0.999.
+- By projection: MLP gate ≈ 0.9 and up ≈ 0.8 (strongly concave, near a step); v ≈ 0.45, o and down 0.55–0.65.
+- By depth: rising, from ≈ 0.55 (blocks 0–4) to ≈ 0.78 (blocks 12–15).
+- The same pattern appears in the shared A_L warp and in every client's private warps. The gain comes from layer-specific shapes (each layer's share of the direction switches on at a different α), not from client-specific ones.
+- nypost.com's private warps (B_L) are flattened across all layers: mean h(0.5) = 0.28.
+
+**3. Coverage borrowing, per layer: same conclusion as NR-52.**
+- C1_L ≈ A_L: worse only on reuters.com (+0.009), better on no client.
+- C0.1_L is worse than A_L on 3/8 clients.
+- Both repair B_L's nypost.com failure (C1_L − B_L: −0.054; reuters.com out-of-support −0.024).
+- It repairs private warps but does not beat the shared warp.
+
+**4. Consensus λ_max = 0.1 is worse than A_L** (nypost.com +0.038, aol.com +0.007; better on none). It beats B_L only on nypost.com (−0.016) and reuters.com out-of-support, and is worse on theguardian.com and aol.com.
+- **The mechanism is the train/inference mismatch.** Inside their support the clients' warps stay close to ḡ: `support_gap` ≈ 0.01, and 0.03–0.04 for nypost.com and theguardian.com. But the response to the coefficient is steep, so this small gap moves the generated percentile a lot, in the predicted direction:
+  - nypost.com's own warps are *below* ḡ (mean h(0.5) = 0.58 vs. 0.63), so P_nypost was trained under smaller coefficients, and inference with ḡ overshoots: output percentile at α = 0.25 / 0.5 is 0.60 / 0.79, against 0.45 / 0.70 for A_L.
+  - theguardian.com's warps are *above* ḡ (0.66 vs. 0.63), so inference undershoots: α = 0.5 gives 0.41 against 0.48 for A_L.
+- A_L has no such mismatch: its forward pass uses the inference map itself.
+- Consensus can at best approach A_L as the tie becomes tight (g_i → ḡ in support). λ_max = 1 is that test.
+- The saturating table stays close to A_L's shared curve (mean ḡ at 0.25 / 0.5 / 0.75 = 0.44 / 0.63 / 0.80). The projection never acted, and no grid point was uncovered.
+
+**Jobs submitted (cc only; short eval jobs, no Anvil eval script).** `eval_direction.py --local_warp` on test (200 prompts, density, plus quality), which evaluates the consensus checkpoints with each client's OWN warps. This measures the mismatch directly.
+
+| Eval | Job | Note |
+|---|---|---|
+| consensus λ = 0.1 | 11202869 | |
+| consensus λ = 1 | 11202870 | `--dependency=afterok:11191901` |
+
+- Log `sbatch/logs/nr57_localwarp.o<jobid>`. Launch notes [NR-57_localwarp_eval.sh](launch/NR-57_localwarp_eval.sh).
+- Prediction: the local-warp eval is better than ḡ on nypost.com and theguardian.com for λ = 0.1, and the difference shrinks at λ = 1.
+
+## NR-58. Aligned calibration (`fed.calibration: aligned`): ḡ in training and inference; launched (2026-10-07)
+
+**Design (user, after NR-57's consensus mismatch).** Consensus trained each client's adapter under its own g_i but inferred with ḡ, and the small gap moved outputs by up to 0.09 percentile. Aligned uses ḡ on both sides:
+- **Training:** client i's forward pass uses, per layer, ḡ = isoproj[(Σ_{j≠i} w_jk g_jk + w_ik g_i(a_k)) / Σ_j w_jk].
+  - The other clients' values are frozen from the last round; the server sends client i only the leave-one-out sums. Client i's own values are live.
+  - Gradients reach g_i only where w_ik > 0, so each client trains the part of ḡ its data covers.
+  - Weights are saturating, c/(τ + c); K = 21.
+- **Monotonicity:** a weighted isotonic projection *inside the forward pass*, differentiable. Blocks are found without gradient and each block's weighted mean is taken with gradient. It is the identity wherever nothing violates. Uncovered points are linearly interpolated, and the endpoints are exactly 0 and 1. The same operator builds the inference table.
+- **Penalty:** a tiny tie, λ_max · c/(τ + c) · (g_i − stopgrad ḡ)² with λ_max = 0.01, applied only where the client has data. It pins the directions of g_i that ḡ does not determine: where clients overlap only their weighted average matters, so individual curves could drift apart and create dips. It does not change which ḡ is optimal.
+- **Inference:** the same operator on all final values. The training map equals the inference map exactly, except that the other clients' parts are one round stale (tested).
+
+**Why this projection and not increment pooling:** pooling slopes and accumulating them is monotone by construction, but it makes every change non-local (a change at one α shifts all values above it). The in-forward projection is non-local only inside merged blocks.
+
+**Evidence that the projection matters with per-layer warps** (recomputed from NR-54's coverage λ = 0.01 run at round 100): 37 of 112 layers needed it (none of them q or k); it acted in 70 of 95 table updates, with a largest correction of 0.079 and a weighted RMS of 0.008. Violations sit at α 0.3–0.7, on flat segments (mean client slope 0.038 against 0.100 overall) where clients disagree most (spread 0.187 against 0.097). With a single warp per client the projection never acted in any run.
+
+**Implementation.**
+- `fedsteer/coverage.py`: `isotonic_blocks`, `pool_and_project` (torch, differentiable; shared by training and the server).
+- `fedsteer/lora.py`: `SteerControl.set_live_table` (keeps gradients).
+- `fedsteer/fed.py`:
+  - The `aligned` mode shares the coverage checks.
+  - `cov["values"]` holds every client's last grid values [n_warps][K]; `_update_aligned` builds the inference table.
+  - Logs: per client `tie_loss` and `proj_adjust_max` (max over the steps); per round `disagreement` (weighted SD of the clients' curves around the pooled mean), `proj_layers`, `proj_adjust_max`, `support_gap`, and the table's mean/min/max.
+  - `load_client` and `load_snapshot_into` use the table for aligned runs, as for consensus.
+- `e2_heldout.py` and `e3_drift.py` refuse aligned runs.
+- **Tests:** 3 new.
+  - The projection is the identity with identity gradient when ḡ is already increasing; it is the exact isotonic solution with block-shared gradient when it is not; uncovered points are interpolated; endpoints are exact.
+  - A client's values get no gradient where it has no weight.
+  - End to end: the live table carries gradient during training and is cleared afterwards; the server table equals the operator on the stored values; a client's training view with final values equals the inference table; the monitor/snapshot path uses the table; resume works.
+  - Ad-hoc check: with λ = 0 the language-model loss alone trains all warp parameters through ḡ.
+  - **71/71 pass.**
+
+**Job.** NR-56 setting (Llama-3.2-1B, rotation 0, 4k per client, 100 rounds, gain 1, no offset, warp_reg 0, `lora.warp_scope=module`, K = 21, b = 0.2, τ = 100), with `fed.calibration=aligned fed.cov_lambda_max=0.01`. Launch [NR-58_aligned_calibration.sh](launch/NR-58_aligned_calibration.sh).
+- cc **11203892**, Anvil **21166756**. Race watcher pid 3730103, spec `exp_log/launch/NR-58_race.json`, log `sbatch/logs/race_NR-58.log`.
+- **Compare with** NR-54 A_L (0.150) and B_L, and NR-56 consensus (λ = 0.1: 0.158; λ = 1 pending), per client, in- and out-of-support. Also check the logged projection activity and disagreement (does the tie keep the projection rarely active?).
+
+## NR-59. Consensus λ = 1 and the own-warp diagnostic: the mismatch is confirmed, and saturating weights under-weight the copy-heavy clients (2026-10-07)
+
+**Jobs, all COMPLETED:**
+- Consensus λ = 1: 11191901, dev-selected round 100.
+- Own-warp test evals (`eval_direction.py --local_warp`, 200 prompts, density, plus quality; no judge): λ = 0.1 → 11202869, λ = 1 → 11202870.
+- Report: `exp_log/reports/nr56_consensus_ownwarp_test.txt`.
+
+| Run (test) | Inference map | Pct err (worst) | In-support | Out-of-support (worst) | reuters.com | nypost.com |
+|---|---|---|---|---|---|---|
+| A_L (NR-54) | shared warp | **0.150 (0.204)** | 0.134 | 0.157 (0.201) | 0.204 | 0.187 |
+| B_L (NR-54) | own warps | 0.158 (0.241) | 0.136 | 0.168 (0.269) | 0.213 | 0.241 |
+| Consensus λ = 0.1 | ḡ (method) | 0.158 (0.225) | 0.141 | 0.165 (0.244) | 0.210 | 0.225 |
+| Consensus λ = 0.1 | **own warps** | **0.150 (0.206)** | 0.134 | 0.159 (0.204) | 0.206 | 0.189 |
+| Consensus λ = 1 | ḡ (method) | 0.156 (0.226) | 0.141 | 0.164 (0.217) | 0.226 | 0.202 |
+| Consensus λ = 1 | own warps | 0.156 (0.226) | 0.140 | 0.163 (0.211) | 0.226 | 0.196 |
+
+**1. The train/inference mismatch of NR-57 is confirmed.**
+- At λ = 0.1, the same checkpoint scores 0.150 with the clients' own warps against 0.158 with ḡ: better on **6/8** clients and worse on none (nypost.com −0.036, theguardian.com −0.008, aol.com −0.007).
+- So training was as good as A_L, and inferring with ḡ cost 0.008.
+- At λ = 1 the tie closes the gap: own warps ≈ ḡ (only nypost.com −0.006), and in the logs every client's warps sit on the table.
+
+**2. The tight tie costs on its own: λ = 1 is worse than A_L** on reuters.com (+0.022), nypost.com (+0.015) and cbc.ca (+0.011), and better on no client. Since the own-warp eval equals the ḡ eval, this is the trained model, not the inference map.
+- **Likely cause: the saturating pooling weights.**
+  - At α = 0.8 / 0.9, nypost.com and reuters.com hold **54% / 66%** of all nearby training data (raw-count shares) but only **30% / 33%** of ḡ's weight (saturating shares). The broad clients (aol, cbc, forbes, wsj) get about 14% each.
+  - The copy-heavy clients want a lower curve there (λ = 0.1 own warps at α = 0.5 / 0.8: nypost 0.58 / 0.80 vs. table 0.63 / 0.84). Under a tight tie they must use the broad clients' curve in their own support, so their adapters compensate and their error rises.
+  - A_L's shared warp is trained by everyone's gradient, which is implicitly weighted by data, so its high-α part follows the clients that actually generate there.
+- This is the opposite failure to NR-52, where *raw* counts let collapsed private curves dominate the table. Saturating weights fixed that contamination, but they under-weight the clients who own the region.
+- AlignScore in-support is slightly higher for λ = 1 (0.798 vs. 0.781 for A_L); the other quality numbers are within noise.
+
+**3. Implication for aligned (NR-58, pending).** It removes the mismatch by construction, but it uses the same saturating weights: each client moves ḡ in proportion to its weight share, so nypost.com and reuters.com control only about a third of ḡ at high α. Prediction: aligned may repeat λ = 1's reuters.com/nypost.com cost. The decisive companion arm is **aligned with count pooling** (`fed.cov_pool=count`). It has a risk of its own: nypost.com would then own the high-α region of ḡ and could compress it locally. In B, that kind of compression came with the adapter absorbing the style, so watch nypost.com's α = 0 output.
+
+**Side result:** consensus λ = 0.1 *with own warps at inference* is a per-client, per-layer calibration (weakly tied in support) that matches A_L (0.150, worst 0.206) and repairs B_L's nypost.com failure (0.189 vs. 0.241). It is not better than A_L.
+
+### MOL-22b. Fourth failure of the same script; COV remap result; sweep put on hold (2026-10-07)
+
+**Cause 4, and it is again not scientific:** `coeff_sweep.py: error: argument --coeffs: expected
+one argument`. argparse treats a value beginning with `-` as another option unless it matches a
+bare negative number, and `-0.5,-0.25,...` does not match because of the commas. Verified
+directly: `--coeffs -0.5,-0.25,0,1` is rejected, `--coeffs=-0.5,-0.25,0,1` parses. The command
+files now use the `=` form.
+
+**Four attempts, four distinct causes, all mine:** (1) missing `sys.path.insert` boilerplate that
+every sibling script in `scripts/` carries; (2) SLURM `--export` silently eating the comma-separated
+coefficient list; (3) the warp module replaced inside the per-client loop, so client 2 died loading
+its warp parameters — *a risk identified earlier in the same session and not acted on*; (4) the
+argparse form above. None of these is a property of the problem. The process failure is uniform:
+each fix was checked with `--help` or an import test from the repo root instead of one end-to-end
+run (2 clients × 2 coefficients), which would have caught 1, 3 and 4 together in minutes, and each
+submission cost a queue wait plus up to 40 minutes of GPU.
+
+**Status: the sweep is ON HOLD, not resubmitted.** It is not load-bearing for any current claim,
+and nothing in MOL-22 depends on it:
+- the oracle remap has now run on **all three** MOL-18 arms and agrees unanimously that α=0 is
+  immovable — COV −0.000, PRIV ≤0.004 per client — which is the conclusion the sweep was built to
+  corroborate from the other direction;
+- the offset result (PRIV_OFF 0.1934 penalized vs LOCAL_OFF 0.2078, better on 5/8 clients and worse
+  on 0/8) stands on its own.
+The sweep would add the reach-vs-validity frontier outside [0, 1] — useful for the discussion, not
+for any present conclusion. Resume only on request, and then verify end to end before submitting.
+
+**New result from the attempt that did progress — COV's oracle remap (job 11202855, round 100):**
+
+| metric | COV original | COV + oracle remap | Δ |
+|---|---:|---:|---:|
+| pct_calib_err | 0.1971 | 0.1837 | **−0.0134** |
+| pct_calib_err_penalized | 0.2075 | 0.1957 | **−0.0118** |
+| out-of-support | 0.2148 | 0.2098 | −0.0050 |
+| adjacent tie rate | 0.3898 | 0.4290 | +0.0392 |
+| achieved percentile at α=0 | 0.306 | 0.306 | **−0.000** |
+
+COV has roughly twice the recalibration headroom PRIV had (−0.0134 against −0.0075), and a
+dev-fitted remap takes it to 0.1957 — close to PRIV_OFF's 0.1934 by a different route. But α=0 does
+not move at all, and the tie rate rises again from alpha levels collapsing onto the boundary. So
+borrowing leaves more on the table for a remap to recover, while the endpoint stays untouchable:
+the same conclusion as the other two arms.
+

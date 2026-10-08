@@ -1,0 +1,15 @@
+{
+ "hosts": {
+  "cc": null,
+  "anvil": "x-zchen17@anvil.rcac.purdue.edu"
+ },
+ "races": [
+  {
+   "name": "nr60-fed-aligned-soff",
+   "copies": {
+    "cc": "11209468",
+    "anvil": "21179559"
+   }
+  }
+ ]
+}

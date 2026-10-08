@@ -385,6 +385,7 @@ All methods share the backbone, the client data, the α labels, the adapter plac
 | 10-05 | **Planned calibration augmentation (§2.1):** s_i=1, no offset, existing private nonlinear warps; aggregate grid values by local evidence and regularize toward the shared table where peer coverage is useful | User design discussion; specification only, not implemented or evaluated |
 | 10-05 | **§2.1 implemented** (`fed.calibration: coverage`); arms A / B / C (λ_max 1, 10) launched on Newsroom, 1B | NR-46 |
 | 10-06 | **Per-layer calibration:** until now one warp per client was shared by all adapted layers; `lora.warp_scope` (model/block/module) added and the §2.1 suite rerun with one warp per adapted matrix | NR-54 |
+| 10-07 | **Per-layer results:** one warp per adapted matrix helps every mode; shared per-layer (A_L) best at 0.150. Consensus λ = 0.1 loses to A_L through a train/inference mismatch. **Aligned calibration** launched: ḡ (own live values + others frozen, differentiable isotonic projection) used in training and inference, tiny tie λ = 0.01 | NR-57, NR-58 |
 | 10-06 | **Consensus calibration** (user design): private per-layer warps tied to ḡ only where the client has data; ḡ pooled with saturating weights on a 21-point grid; ḡ used at inference by every client. λ_max ∈ {0.1, 1} launched | NR-56 |
 | 10-06 | **§2.1 result:** borrowing (λ_max ≥ 0.1) repairs private warps but only matches the shared warp; no in-support benefit from private shapes | NR-52 |
 | 09-29 | Plan created (local-percentile α, private gain, 2k pairs) | — |

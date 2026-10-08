@@ -111,6 +111,12 @@ class SteerControl(nn.Module):
             raise ValueError("table must be increasing with h(0) = 0 and h(1) = 1")
         self._table = (g, t)
 
+    def set_live_table(self, grid: torch.Tensor, z: torch.Tensor) -> None:
+        """Training-time table of calibration=aligned: z [n_warps, K] is built from the client's
+        own warps in this step and KEEPS its gradient (no copy, no validation: the pooling
+        operator guarantees monotone rows with endpoints 0 and 1)."""
+        self._table = (grid, z)
+
     def _table_map(self, a: torch.Tensor, warp_idx: Optional[int]) -> torch.Tensor:
         g, t = self._table
         row = t[0 if warp_idx is None else warp_idx].to(a.device)

@@ -1,0 +1,89 @@
+split test; rounds {'fed-shared': 100, 'fed-private': 100, 'fed-consensus-l1': 100, 'fed-aligned': 100}
+
+-- per-cell |pct - alpha| at alpha = 0.0
+client              fed-shared         fed-private    fed-consensus-l1         fed-aligned
+forbes                   0.155               0.152               0.172               0.169
+guardian                 0.187               0.157               0.195               0.189
+people                   0.180               0.191               0.191               0.194
+wsj                      0.220               0.211               0.227               0.212
+aol                      0.165               0.178               0.169               0.165
+cbc                      0.241               0.250               0.265               0.248
+reuters                  0.247               0.306               0.302               0.275
+nypost                   0.190               0.440               0.208               0.244
+MEAN                     0.198               0.236               0.216               0.212
+
+-- per-cell |pct - alpha| at alpha = 0.25
+client              fed-shared         fed-private    fed-consensus-l1         fed-aligned
+forbes                   0.117               0.108               0.110               0.117
+guardian                 0.101               0.100               0.107               0.105
+people                   0.120               0.119               0.113               0.109
+wsj                      0.125               0.129               0.122               0.119
+aol                      0.146               0.139               0.148               0.143
+cbc                      0.135               0.144               0.144               0.135
+reuters                  0.299               0.294               0.332               0.317
+nypost                   0.272               0.358               0.330               0.352
+MEAN                     0.165               0.174               0.176               0.175
+
+-- per-cell |pct - alpha| at alpha = 0.5
+client              fed-shared         fed-private    fed-consensus-l1         fed-aligned
+forbes                   0.146               0.170               0.163               0.172
+guardian                 0.113               0.112               0.103               0.104
+people                   0.097               0.101               0.101               0.104
+wsj                      0.134               0.134               0.140               0.136
+aol                      0.137               0.128               0.136               0.135
+cbc                      0.094               0.106               0.118               0.114
+reuters                  0.233               0.235               0.257               0.243
+nypost                   0.231               0.239               0.244               0.236
+MEAN                     0.148               0.153               0.158               0.155
+
+-- per-cell |pct - alpha| at alpha = 0.75
+client              fed-shared         fed-private    fed-consensus-l1         fed-aligned
+forbes                   0.169               0.165               0.171               0.165
+guardian                 0.117               0.106               0.115               0.106
+people                   0.144               0.132               0.135               0.137
+wsj                      0.130               0.125               0.132               0.129
+aol                      0.085               0.085               0.085               0.095
+cbc                      0.109               0.117               0.114               0.113
+reuters                  0.134               0.135               0.141               0.136
+nypost                   0.129               0.131               0.143               0.134
+MEAN                     0.127               0.124               0.129               0.127
+
+-- per-cell |pct - alpha| at alpha = 1.0
+client              fed-shared         fed-private    fed-consensus-l1         fed-aligned
+forbes                   0.042               0.036               0.036               0.036
+guardian                 0.129               0.152               0.127               0.117
+people                   0.185               0.194               0.188               0.190
+wsj                      0.088               0.099               0.083               0.074
+aol                      0.109               0.105               0.110               0.068
+cbc                      0.111               0.103               0.101               0.099
+reuters                  0.106               0.095               0.097               0.093
+nypost                   0.110               0.039               0.084               0.078
+MEAN                     0.110               0.103               0.103               0.094
+
+-- endpoint share of error: (cell(0) + cell(1)) / sum of cells, mean over clients
+fed-shared           0.419
+fed-private          0.433
+fed-consensus-l1     0.418
+fed-aligned          0.410
+
+-- output percentile at alpha = 0 (target 0) and alpha = 1 (target 1)
+client              fed-shared         fed-private    fed-consensus-l1         fed-aligned
+forbes        0.155 / 0.958        0.152 / 0.964        0.172 / 0.964        0.169 / 0.964    
+guardian      0.187 / 0.871        0.157 / 0.848        0.195 / 0.873        0.189 / 0.883    
+people        0.180 / 0.815        0.191 / 0.806        0.191 / 0.812        0.194 / 0.810    
+wsj           0.220 / 0.912        0.211 / 0.901        0.227 / 0.917        0.212 / 0.926    
+aol           0.165 / 0.891        0.178 / 0.895        0.169 / 0.890        0.165 / 0.932    
+cbc           0.241 / 0.889        0.250 / 0.897        0.265 / 0.899        0.248 / 0.901    
+reuters       0.247 / 0.894        0.306 / 0.905        0.302 / 0.903        0.275 / 0.907    
+nypost        0.190 / 0.890        0.440 / 0.961        0.208 / 0.916        0.244 / 0.922    
+
+-- learned offset o_i (from the eval file; None = no offset)
+client              fed-shared         fed-private    fed-consensus-l1         fed-aligned
+forbes                     nan                 nan                 nan                 nan
+guardian                   nan                 nan                 nan                 nan
+people                     nan                 nan                 nan                 nan
+wsj                        nan                 nan                 nan                 nan
+aol                        nan                 nan                 nan                 nan
+cbc                        nan                 nan                 nan                 nan
+reuters                    nan                 nan                 nan                 nan
+nypost                     nan                 nan                 nan                 nan

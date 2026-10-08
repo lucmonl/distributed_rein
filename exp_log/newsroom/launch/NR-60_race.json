@@ -1,0 +1,48 @@
+{
+ "hosts": {
+  "cc": null,
+  "anvil": "x-zchen17@anvil.rcac.purdue.edu"
+ },
+ "races": [
+  {
+   "name": "nr60-fed-shared-off",
+   "group": "NR60",
+   "copies": {
+    "cc": "11206103",
+    "anvil": "21174317"
+   }
+  },
+  {
+   "name": "nr60-fed-private-off",
+   "group": "NR60",
+   "copies": {
+    "cc": "11206104",
+    "anvil": "21174318"
+   }
+  },
+  {
+   "name": "nr60-local-off",
+   "group": "NR60",
+   "copies": {
+    "cc": "11206105",
+    "anvil": "21174319"
+   }
+  },
+  {
+   "name": "nr60-local",
+   "group": "NR60",
+   "copies": {
+    "cc": "11206106",
+    "anvil": "21174320"
+   }
+  },
+  {
+   "name": "nr60-local-off-reset",
+   "group": "NR60",
+   "copies": {
+    "cc": "11206107",
+    "anvil": "21174353"
+   }
+  }
+ ]
+}

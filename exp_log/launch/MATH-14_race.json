@@ -1,0 +1,5 @@
+{"hosts": {"delta": "delta-login2", "dtai": "dtai-1"},
+ "races": [
+  {"name": "G2_perlayer", "copies": {"delta": "22718559", "dtai": "3328129"}},
+  {"name": "G2_perlayer_gmax16", "copies": {"delta": "22718560", "dtai": "3328130"}}
+ ]}

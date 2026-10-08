@@ -1,0 +1,84 @@
+== Steering (test; mean over clients; worst client in brackets)
+pctErrFail1 = all-cell percentile error with penalty 1 for each unscorable output (supplementary)
+run              round    pct_calib_err      pctErrFail1   pct_err_in_sup   pct_err_out_su       reach_rate         spearman  concord_nt  nearTie endNearTie
+A_L                100    0.150 (0.204)    0.150 (0.204)    0.134 (0.222)    0.157 (0.201)    0.407            0.931 (0.881)       0.909    0.194      0.000
+B_L                100    0.158 (0.241)    0.158 (0.241)    0.136 (0.221)    0.168 (0.269)    0.406            0.926 (0.864)       0.907    0.204      0.008
+Cons01             100    0.158 (0.225)    0.158 (0.225)    0.141 (0.230)    0.165 (0.244)    0.389            0.926 (0.874)       0.904    0.195      0.002
+Cons01_own         100    0.150 (0.206)    0.150 (0.206)    0.134 (0.224)    0.159 (0.204)    0.408            0.929 (0.874)       0.909    0.193      0.002
+Cons1              100    0.156 (0.226)    0.156 (0.226)    0.141 (0.243)    0.164 (0.217)    0.400            0.926 (0.877)       0.904    0.199      0.003
+Cons1_own          100    0.156 (0.226)    0.156 (0.226)    0.140 (0.244)    0.163 (0.211)    0.405            0.926 (0.877)       0.904    0.201      0.003
+
+== Quality (test; mean over clients). gap = generated - real summaries at the same alpha
+run                    align_in      align_out   gap_align_in  gap_align_out     bert_f1_in    bert_f1_out      length_in     length_out  gap_length_in gap_length_out
+A_L                       0.781          0.730         -0.023          0.046          0.900          0.889         31.876         37.301          1.787          3.154
+B_L                       0.787          0.740         -0.017          0.057          0.901          0.891         32.354         38.283          2.265          4.136
+Cons01                    0.780          0.739         -0.024          0.056          0.901          0.891         31.978         37.667          1.889          3.520
+Cons01_own                0.787          0.738         -0.017          0.055          0.900          0.890         32.104         37.685          2.014          3.538
+Cons1                     0.798          0.740         -0.006          0.057          0.901          0.890         32.570         38.100          2.481          3.953
+Cons1_own                 0.794          0.741         -0.010          0.057          0.901          0.890         32.641         38.090          2.552          3.943
+
+== LLM judge (subsample; mean over clients)
+run                    faithful_in      faithful_out   gap_faithful_in  gap_faithful_out      relevance_in     relevance_out  gap_relevance_in gap_relevance_out      coherence_in     coherence_out
+A_L                          0.827             0.779            -0.079             0.008             3.651             3.659             0.017             0.022             4.226             4.170
+B_L                          0.844             0.788            -0.062             0.017             3.654             3.692             0.021             0.055             4.198             4.207
+Cons01                       0.827             0.782            -0.079             0.010             3.605             3.668            -0.028             0.031             4.176             4.192
+Cons1                        0.841             0.786            -0.065             0.014             3.623             3.655            -0.011             0.018             4.198             4.183
+
+== Per-client percentile error (test)
+client                 support            A_L            B_L         Cons01     Cons01_own          Cons1      Cons1_own
+forbes.com        [0.03,0.99]          0.126          0.126          0.129          0.130          0.130          0.131
+theguardian.com   [0.04,0.55]          0.129          0.125          0.135          0.127          0.129          0.129
+people.com        [0.03,0.70]          0.145          0.147          0.149          0.145          0.146          0.146
+wsj.com           [0.04,0.89]          0.139          0.140          0.141          0.139          0.141          0.141
+aol.com           [0.06,0.82]          0.129          0.127          0.135          0.128          0.130          0.127
+cbc.ca            [0.11,0.95]          0.138          0.144          0.143          0.140          0.149          0.148
+reuters.com       [0.10,0.97]          0.204          0.213          0.210          0.206          0.226          0.226
+nypost.com        [0.51,0.95]          0.187          0.241          0.225          0.189          0.202          0.196
+
+== Cons01_own - Cons01: per-client paired bootstrap (negative = Cons01_own better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.002 [-0.003,+0.006]     +0.000 [+0.000,+0.000] 
+theguardian.com      -0.008 [-0.013,-0.003]*    -0.005 [-0.010,-0.000]*
+people.com           -0.003 [-0.006,-0.001]*    -0.006 [-0.009,-0.003]*
+wsj.com              -0.002 [-0.004,+0.000]     +0.000 [+0.000,+0.000] 
+aol.com              -0.007 [-0.010,-0.005]*    +0.000 [+0.000,+0.000] 
+cbc.ca               -0.004 [-0.005,-0.002]*    +0.000 [+0.000,+0.000] 
+reuters.com          -0.004 [-0.007,-0.001]*    +0.000 [+0.000,+0.000] 
+nypost.com           -0.036 [-0.042,-0.030]*    -0.040 [-0.047,-0.033]*
+Cons01_own significantly better on 6/8 clients, worse on 0/8
+
+== Cons1_own - Cons1: per-client paired bootstrap (negative = Cons1_own better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.001 [-0.001,+0.003]     +0.000 [+0.000,+0.000] 
+theguardian.com      -0.001 [-0.004,+0.003]     -0.002 [-0.006,+0.002] 
+people.com           +0.001 [-0.001,+0.002]     -0.000 [-0.002,+0.001] 
+wsj.com              -0.000 [-0.002,+0.002]     +0.000 [+0.000,+0.000] 
+aol.com              -0.002 [-0.005,+0.000]     +0.000 [+0.000,+0.000] 
+cbc.ca               -0.000 [-0.002,+0.001]     +0.000 [+0.000,+0.000] 
+reuters.com          +0.000 [-0.001,+0.002]     +0.000 [+0.000,+0.000] 
+nypost.com           -0.006 [-0.009,-0.003]*    -0.006 [-0.009,-0.002]*
+Cons1_own significantly better on 1/8 clients, worse on 0/8
+
+== Cons1 - A_L: per-client paired bootstrap (negative = Cons1 better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.005 [-0.001,+0.010]     +0.005 [-0.004,+0.014] 
+theguardian.com      -0.000 [-0.006,+0.005]     +0.001 [-0.006,+0.008] 
+people.com           +0.000 [-0.006,+0.007]     +0.002 [-0.006,+0.011] 
+wsj.com              +0.002 [-0.003,+0.006]     +0.001 [-0.007,+0.009] 
+aol.com              +0.001 [-0.004,+0.006]     +0.003 [-0.007,+0.011] 
+cbc.ca               +0.011 [+0.005,+0.016]*    +0.007 [-0.002,+0.016] 
+reuters.com          +0.022 [+0.013,+0.030]*    +0.023 [+0.008,+0.040]*
+nypost.com           +0.015 [+0.007,+0.023]*    +0.016 [+0.006,+0.025]*
+Cons1 significantly better on 0/8 clients, worse on 3/8
+
+== Cons1 - Cons01: per-client paired bootstrap (negative = Cons1 better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.002 [-0.004,+0.006]     +0.006 [-0.002,+0.013] 
+theguardian.com      -0.005 [-0.011,+0.001]     -0.001 [-0.009,+0.006] 
+people.com           -0.003 [-0.009,+0.003]     -0.005 [-0.013,+0.002] 
+wsj.com              -0.000 [-0.005,+0.004]     +0.005 [-0.002,+0.013] 
+aol.com              -0.006 [-0.011,-0.000]*    -0.014 [-0.022,-0.005]*
+cbc.ca               +0.005 [-0.001,+0.011]     +0.008 [-0.001,+0.017] 
+reuters.com          +0.016 [+0.007,+0.026]*    +0.021 [+0.005,+0.037]*
+nypost.com           -0.023 [-0.032,-0.015]*    -0.027 [-0.038,-0.017]*
+Cons1 significantly better on 2/8 clients, worse on 1/8

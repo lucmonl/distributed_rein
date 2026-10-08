@@ -77,8 +77,12 @@ def main():
                         max_prompt_tokens=cfg.get("max_prompt_tokens", 1024),
                         max_target_tokens=cfg.get("max_target_tokens", 256))
     snap = torch.load(args.snapshot, map_location="cpu", weights_only=False)
-    if args.refit_k > 0 and cfg["fed"].get("calibration") in ("coverage", "consensus"):
+    if args.refit_k > 0 and cfg["fed"].get("calibration") in ("coverage", "consensus", "aligned"):
         raise SystemExit("--refit_k fits a gain, which calibration=coverage fixes at 1 (plan 2.1)")
+    if args.refit_k > 0 and cfg["fed"].get("private_offset") and cfg["fed"].get("calibration") == "shared":
+        # NR-60: refitting would retrain the shared gain and shape along with the private offset
+        raise SystemExit("--refit_k is not defined for fed.private_offset=true runs yet "
+                         "(it would refit the shared calibration too)")
 
     stamp = make_stamp()
     results = {(s, v): {} for s in range(args.stages + 1) for v in ("asis", "refit")}

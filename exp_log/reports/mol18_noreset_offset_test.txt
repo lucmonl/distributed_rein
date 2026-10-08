@@ -1,0 +1,62 @@
+== Steering (test; mean over clients; worst client in brackets)
+pctErrFail1 = all-cell percentile error with penalty 1 for each unscorable output (supplementary)
+run              round    pct_calib_err      pctErrFail1   pct_err_in_sup   pct_err_out_su       reach_rate         spearman  concord_nt  nearTie endNearTie
+PRIV                80    0.199 (0.279)    0.207 (0.290)    0.164 (0.226)    0.226 (0.308)    0.327            0.847 (0.629)       0.811    0.463      0.037
+NORESET             80    0.206 (0.294)    0.209 (0.296)    0.169 (0.248)    0.239 (0.305)    0.274            0.815 (0.567)       0.815    0.475      0.071
+LOCAL              100    0.205 (0.303)    0.207 (0.308)    0.167 (0.267)    0.238 (0.314)    0.279            0.840 (0.595)       0.820    0.475      0.058
+COV                100    0.197 (0.270)    0.207 (0.274)    0.174 (0.246)    0.215 (0.275)    0.367            0.848 (0.729)       0.809    0.438      0.027
+PRIV_OFF           100    0.188 (0.279)    0.193 (0.285)    0.161 (0.266)    0.211 (0.294)    0.336            0.883 (0.751)       0.843    0.417      0.020
+LOCAL_OFF           80    0.204 (0.303)    0.208 (0.310)    0.169 (0.285)    0.238 (0.308)    0.277            0.843 (0.606)       0.821    0.456      0.039
+
+== Quality (test; mean over clients). gap = generated - real summaries at the same alpha
+run                    align_in      align_out   gap_align_in  gap_align_out     bert_f1_in    bert_f1_out      length_in     length_out  gap_length_in gap_length_out
+
+== LLM judge (subsample; mean over clients)
+run                    faithful_in      faithful_out   gap_faithful_in  gap_faithful_out      relevance_in     relevance_out  gap_relevance_in gap_relevance_out      coherence_in     coherence_out
+
+== Per-client percentile error (test)
+client                 support           PRIV        NORESET          LOCAL            COV       PRIV_OFF      LOCAL_OFF
+CHEMBL243         [0.01,0.41]          0.279          0.294          0.303          0.270          0.279          0.303
+CHEMBL204         [0.03,0.92]          0.194          0.216          0.202          0.192          0.195          0.198
+CHEMBL325         [0.17,0.99]          0.164          0.180          0.178          0.168          0.160          0.180
+CHEMBL2835        [0.14,0.88]          0.202          0.214          0.213          0.211          0.177          0.225
+CHEMBL4078        [0.30,0.80]          0.173          0.185          0.165          0.187          0.163          0.161
+CHEMBL2039        [0.13,0.90]          0.174          0.173          0.175          0.174          0.160          0.169
+CHEMBL240         [0.16,0.96]          0.159          0.158          0.156          0.153          0.137          0.165
+CHEMBL228         [0.46,0.97]          0.245          0.230          0.245          0.223          0.230          0.230
+
+== PRIV - NORESET: per-client paired bootstrap (negative = PRIV better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+CHEMBL243            -0.016 [-0.032,-0.000]*    -0.014 [-0.033,+0.003] 
+CHEMBL204            -0.022 [-0.035,-0.009]*    -0.049 [-0.072,-0.026]*
+CHEMBL325            -0.012 [-0.022,-0.002]*    -0.020 [-0.037,-0.004]*
+CHEMBL2835           -0.011 [-0.021,-0.002]*    -0.013 [-0.030,+0.005] 
+CHEMBL4078           -0.009 [-0.018,-0.000]*    -0.012 [-0.023,+0.001] 
+CHEMBL2039           +0.003 [-0.007,+0.013]     -0.001 [-0.018,+0.015] 
+CHEMBL240            +0.001 [-0.009,+0.011]     -0.011 [-0.026,+0.003] 
+CHEMBL228            +0.017 [+0.005,+0.030]*    +0.032 [+0.013,+0.051]*
+PRIV significantly better on 5/8 clients, worse on 1/8
+
+== NORESET - LOCAL: per-client paired bootstrap (negative = NORESET better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+CHEMBL243            -0.008 [-0.022,+0.007]     -0.006 [-0.023,+0.011] 
+CHEMBL204            +0.014 [+0.000,+0.028]*    +0.020 [-0.003,+0.043] 
+CHEMBL325            -0.000 [-0.011,+0.011]     -0.010 [-0.029,+0.008] 
+CHEMBL2835           +0.000 [-0.011,+0.012]     -0.003 [-0.021,+0.016] 
+CHEMBL4078           +0.019 [+0.009,+0.030]*    +0.033 [+0.020,+0.046]*
+CHEMBL2039           -0.001 [-0.011,+0.010]     -0.004 [-0.020,+0.011] 
+CHEMBL240            +0.002 [-0.008,+0.013]     +0.008 [-0.008,+0.023] 
+CHEMBL228            -0.014 [-0.026,-0.002]*    -0.031 [-0.049,-0.014]*
+NORESET significantly better on 1/8 clients, worse on 2/8
+
+== PRIV_OFF - LOCAL_OFF: per-client paired bootstrap (negative = PRIV_OFF better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+CHEMBL243            -0.026 [-0.042,-0.009]*    -0.028 [-0.046,-0.009]*
+CHEMBL204            -0.002 [-0.016,+0.013]     -0.009 [-0.030,+0.012] 
+CHEMBL325            -0.022 [-0.034,-0.010]*    -0.030 [-0.047,-0.014]*
+CHEMBL2835           -0.038 [-0.051,-0.024]*    -0.076 [-0.097,-0.055]*
+CHEMBL4078           +0.002 [-0.007,+0.010]     -0.004 [-0.016,+0.008] 
+CHEMBL2039           -0.009 [-0.018,-0.000]*    -0.016 [-0.031,-0.001]*
+CHEMBL240            -0.027 [-0.039,-0.016]*    -0.060 [-0.075,-0.044]*
+CHEMBL228            -0.002 [-0.014,+0.011]     +0.010 [-0.007,+0.026] 
+PRIV_OFF significantly better on 5/8 clients, worse on 0/8

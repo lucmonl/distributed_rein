@@ -21,7 +21,8 @@ from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
 from fedsteer.data import ChatFormatter, ClientQuantiles, build_clients, collate
 from fedsteer.fed import FedConfig, FedSteerTrainer, load_snapshot_into
 from fedsteer.lora import (SteerLinear, SteerLoraConfig, average_states, direction_products,
-                           get_shared_state, inject_steer_lora, load_state, steer_layers)
+                           get_shared_state, inject_steer_lora, load_state, steer_layers,
+                           trainable_parameter_groups)
 from fedsteer.model import generate_at_alpha
 
 TOKENIZER = "meta-llama/Llama-3.2-1B-Instruct"
@@ -630,6 +631,140 @@ def test_shared_calibration_is_one_mapping_for_all_clients():
         load_snapshot_into(m, snap, "c1")
         got = {n: p for n, p in m.named_parameters() if n.startswith("steer_control.")}
         assert all(torch.allclose(got[k], tr.server[k]) for k in ctl_keys)
+
+
+def _ctl(model):
+    return {n: p.detach().clone() for n, p in model.named_parameters() if n.startswith("steer_control.")}
+
+
+def test_private_offset_with_shared_shape():
+    """NR-60: calibration=shared + private_offset keeps o per client, still averages the shape."""
+    kw = dict(calibration="shared", warp="kumaraswamy_mix", warp_scope="module", offset=True,
+              private_offset=True, fix_gain=True, warp_warmup_rounds=1, lr_warp=0.2)
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("fedavg", d, rounds=3, **kw)
+        assert all(p is not tr.control.o for p in tr.shared_params)        # not reset, not averaged
+        tr.fit()
+        assert "steer_control.o" not in tr.server
+        warp_keys = [k for k in tr.server if k.startswith("steer_control.warp.")]
+        assert warp_keys and any(tr.server[k].abs().sum().item() > 0 for k in warp_keys)   # shape trained
+        # clients hold only their offset, trained after the gain warm-up, and the offsets differ
+        assert all(set(st["gain"]) == {"steer_control.o"} for st in tr.clients.values())
+        o = {c: tr.clients[c]["gain"]["steer_control.o"].item() for c in ("c0", "c1")}
+        assert all(v != 0.0 for v in o.values()) and o["c0"] != o["c1"]
+        assert abs(tr.history[-1]["clients"]["c1"]["offset"] - o["c1"]) < 1e-6
+        # the offset's optimizer state survives the per-round reset of the shared parameters
+        tr.load_client("c0", inference=False)
+        tr._load_opt("c0")
+        assert tr.control.o in tr.opt.state and not any(p in tr.opt.state for p in tr.warp_params)
+        # loaded clients share the shape and gain, each with its own offset
+        vals = {}
+        for c in ("c0", "c1"):
+            tr.load_client(c)
+            vals[c] = _ctl(tr.model)
+            assert vals[c]["steer_control.o"].item() == o[c]
+        assert all(torch.equal(vals["c0"][k], vals["c1"][k]) for k in vals["c0"] if k != "steer_control.o")
+        assert all(torch.equal(vals["c0"][k], tr.server[k].to(vals["c0"][k].dtype)) for k in warp_keys)
+        # snapshot -> evaluation restores the shared shape and the client's own offset
+        snap = torch.load(os.path.join(d, "snapshots", "round_0003.pt"), weights_only=False)
+        for c in ("c0", "c1"):
+            m = tiny_model(warp="kumaraswamy_mix", offset=True, warp_scope="module")
+            load_snapshot_into(m, snap, c)
+            got = _ctl(m)
+            assert got["steer_control.o"].item() == o[c]
+            assert all(torch.allclose(got[k], tr.server[k]) for k in warp_keys + ["steer_control.u"])
+    # resume reproduces the uninterrupted run, offsets included
+    with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+        full = _trainer("fedavg", d1, rounds=4, **kw)
+        full.fit()
+        _trainer("fedavg", d2, rounds=2, **kw).fit()
+        resumed = _trainer("fedavg", d2, rounds=4, **kw)
+        resumed.fit()
+        for k in full.server:
+            assert torch.allclose(full.server[k], resumed.server[k], atol=1e-6), k
+        for c in full.clients:
+            assert torch.allclose(full.clients[c]["gain"]["steer_control.o"],
+                                  resumed.clients[c]["gain"]["steer_control.o"], atol=1e-6), c
+
+
+def test_private_offset_is_a_noop_where_the_offset_is_already_private():
+    """private_offset changes nothing with calibration=private or in local mode, and it needs
+    lora.offset; without it, shared calibration still shares the offset (default path)."""
+    for mode in ("fedavg", "local"):
+        runs = []
+        for flag in (False, True):
+            with tempfile.TemporaryDirectory() as d:
+                tr = _trainer(mode, d, rounds=3, calibration="private", warp="kumaraswamy_mix", offset=True,
+                              private_offset=flag, warp_warmup_rounds=1)
+                tr.fit()
+                runs.append(tr)
+        a, b = runs
+        for k in a.server:
+            assert torch.equal(a.server[k], b.server[k]), (mode, k)
+        for c in a.clients:
+            for key in ("gain", "private"):
+                for k in a.clients[c][key]:
+                    assert torch.equal(a.clients[c][key][k], b.clients[c][key][k]), (mode, c, k)
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            _trainer("fedavg", d, calibration="shared", offset=False, private_offset=True)
+        except ValueError as e:
+            assert "lora.offset" in str(e)
+        else:
+            raise AssertionError("expected ValueError")
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("fedavg", d, rounds=2, calibration="shared", offset=True)
+        tr.fit()
+        assert "steer_control.o" in tr.server and tr.server["steer_control.o"].item() != 0.0
+        assert all(st["gain"]["steer_control.o"].item() == 0.0 for st in tr.clients.values())
+
+
+def test_local_reset_opt_state_resets_only_the_direction():
+    """NR-60: local + local_reset_opt_state empties D_i's Adam state each round and keeps the
+    adapter, shape and offset states; without the flag local mode is unchanged; fedavg ignores it."""
+    kw = dict(calibration="private", warp="kumaraswamy_mix", offset=True, warp_warmup_rounds=1)
+
+    def opt_state_at_round_start(tr, cid):
+        tr.load_client(cid, inference=False)
+        tr._load_opt(cid)
+        return tr.opt.state
+
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("local", d, rounds=3, local_reset_opt_state=True, **kw)
+        n_reset = []
+        orig = tr._load_opt
+
+        def spy(cid):                                    # check the state at every round start
+            orig(cid)
+            if tr.round > 0:
+                n_reset.append(cid)
+                assert not any(p in tr.opt.state for p in tr.shared_params), (tr.round, cid)
+        tr._load_opt = spy
+        tr.fit()
+        assert len(n_reset) == 4                         # rounds 1, 2 x two clients
+        st = opt_state_at_round_start(tr, "c0")
+        groups = trainable_parameter_groups(tr.model)
+        assert all(p not in st for p in groups["shared"])
+        for name in ("private", "warp"):
+            assert all(p in st for p in groups[name]), name
+        assert tr.control.o in st
+    with tempfile.TemporaryDirectory() as d:
+        tr = _trainer("local", d, rounds=2, **kw)
+        tr.fit()
+        st = opt_state_at_round_start(tr, "c0")
+        assert all(p in st for p in trainable_parameter_groups(tr.model)["shared"])   # kept by default
+    for mode in ("fedavg", "local"):
+        runs = []
+        for flag in (False, True):
+            with tempfile.TemporaryDirectory() as d:
+                tr = _trainer(mode, d, rounds=3, local_reset_opt_state=flag, **kw)
+                tr.fit()
+                runs.append(tr)
+        a, b = runs
+        same = all(torch.equal(a.clients[c]["shared_local"][k], b.clients[c]["shared_local"][k])
+                   for c in a.clients for k in a.clients[c]["shared_local"]) if mode == "local" else \
+            all(torch.equal(a.server[k], b.server[k]) for k in a.server)
+        assert same == (mode == "fedavg"), mode          # fedavg unaffected; local reset changes D_i
 
 
 def test_shared_calibration_refused_in_local_mode():
@@ -1255,6 +1390,154 @@ def test_consensus_trains_local_warps_and_infers_with_table():
         m.steer_control.set_table([0.0, 1.0], [[0.0, 1.0]])
         load_snapshot_into(m, snap, "c0")
         assert m.steer_control._table is None
+
+
+
+# ------------------------------------------- aligned calibration (NR-58: g-bar in train & test)
+
+def test_pool_and_project_identity_gradient_and_blocks():
+    from fedsteer.calibrate import isotonic_increasing
+    from fedsteer.coverage import pool_and_project
+    den = torch.tensor([1.0, 2.0, 1.0, 3.0, 1.0])
+    m_ok = torch.tensor([[0.0, 0.2, 0.5, 0.7, 1.0]])
+    num = (m_ok * den).requires_grad_(True)
+    z, d = pool_and_project(num, den)
+    assert torch.allclose(z, m_ok) and d["proj_adjust_max"] < 1e-7 and d["proj_layers"] == 0
+    z[0, 2].backward()                                    # identity: dz_k/dnum_k = 1/den_k only
+    assert torch.allclose(num.grad[0], torch.tensor([0, 0, 1.0, 0, 0]))
+    m_bad = torch.tensor([[0.0, 0.6, 0.3, 0.7, 1.0]])     # one violation
+    num = (m_bad * den).requires_grad_(True)
+    z, d = pool_and_project(num, den)
+    ref = isotonic_increasing(m_bad[0].numpy(), den.numpy())
+    assert np.allclose(z[0].detach().numpy(), ref) and d["proj_layers"] == 1
+    z[0, 1].backward()                                    # pooled block {1, 2}: shared value
+    assert torch.allclose(num.grad[0], torch.tensor([0, 1 / 3, 1 / 3, 0, 0]), atol=1e-6)
+    den0 = torch.tensor([1.0, 1.0, 0.0, 1.0, 1.0])        # point 2 uncovered: interpolated
+    z, d = pool_and_project(torch.tensor([[0.0, 0.2, 0.0, 0.8, 1.0]]), den0)
+    assert abs(float(z[0, 2]) - 0.5) < 1e-6 and d["uncovered"] == [2]
+    assert float(z[0, 0]) == 0.0 and float(z[0, -1]) == 1.0
+
+
+def test_pool_and_project_own_gradient_only_where_client_has_weight():
+    from fedsteer.coverage import pool_and_project
+    own = torch.tensor([[0.0, 0.3, 0.5, 0.7, 1.0]], requires_grad=True)
+    own_w = torch.tensor([1.0, 1.0, 0.0, 0.0, 1.0])       # client has no data at points 2, 3
+    others = torch.tensor([[0.0, 0.2, 0.45, 0.8, 1.0]]) * 2.0
+    z, _ = pool_and_project(others + own_w * own, torch.full((5,), 2.0) + own_w)
+    z[0, 1:4].sum().backward()
+    assert own.grad[0, 1] > 0 and own.grad[0, 2] == 0 and own.grad[0, 3] == 0
+
+
+def test_aligned_trains_through_gbar_and_infers_with_the_same_map():
+    from fedsteer.coverage import pool_and_project
+    with tempfile.TemporaryDirectory() as d:
+        tr = _cov_trainer(d, rounds=3, calibration="aligned", warp_scope="module", cov_lambda_max=0.01)
+        seen = []                                         # the table each training forward used
+        orig = tr.control.set_live_table
+        tr.control.set_live_table = lambda g, z: (seen.append(z.requires_grad), orig(g, z))
+        tr.fit()
+        assert seen and any(seen)                         # live table carries gradient once warps train
+        assert tr.control._table is None                  # cleared after local training
+        n = tr.control.n_warps()
+        V = {c: torch.tensor(v, dtype=torch.float64) for c, v in tr.cov["values"].items()}
+        W = {c: torch.tensor(v, dtype=torch.float64) for c, v in tr.cov["pool_weights"].items()}
+        z_ref, _ = pool_and_project(sum(W[c] * V[c] for c in V), sum(W.values()))
+        assert np.allclose(tr.cov["z"], z_ref.numpy()) and np.asarray(tr.cov["z"]).shape == (n, 5)
+        # a client's training view with everyone's final values IS the inference table
+        loo = sum(W[c] * V[c] for c in V if c != "c0")
+        z_c0, _ = pool_and_project(loo + W["c0"] * V["c0"], sum(W[c] for c in V if c != "c0") + W["c0"])
+        assert torch.allclose(z_c0, z_ref)
+        log = tr.history[-1]
+        assert {"disagreement", "proj_layers", "support_gap"} <= set(log["coverage"])
+        assert "tie_loss" in log["clients"]["c0"] and "proj_adjust_max" in log["clients"]["c0"]
+        w0 = tr.clients["c0"]["gain"]                     # warps trained (left the identity)
+        assert any(float(w0[k]) != 0.0 for k in w0 if k.endswith("log_p"))
+        tr.load_client("c1")                              # inference: the table
+        y = torch.zeros(1, 4)
+        with tr.control.use_alpha(0.5):
+            assert abs(float(tr.control.coef_for(y, 3)) - tr.cov["z"][3][2]) < 1e-5
+        snap = torch.load(os.path.join(d, "snapshots", "round_0003.pt"), weights_only=False)
+        m = tiny_model(warp="kumaraswamy_mix", warp_scope="module")
+        load_snapshot_into(m, snap, "c1")
+        with m.steer_control.use_alpha(0.5):
+            assert abs(float(m.steer_control.coef_for(y, 3)) - tr.cov["z"][3][2]) < 1e-5
+        tr2 = _cov_trainer(d, rounds=4, calibration="aligned", warp_scope="module", cov_lambda_max=0.01)
+        assert tr2.maybe_resume() and tr2.cov["values"] == tr.cov["values"]
+
+
+def test_aligned_with_private_offset():
+    """NR-62: aligned + lora.offset: o_i stays private and adds to the pooled table
+    (coefficient = o_i + g-bar_l(alpha)); only the shapes are pooled; coverage and consensus
+    still reject an offset."""
+    with tempfile.TemporaryDirectory() as d:
+        for mode in ("coverage", "consensus"):
+            try:
+                _cov_trainer(d, calibration=mode, warp_scope="module", offset=True)
+            except ValueError as e:
+                assert "lora.offset" in str(e)
+            else:
+                raise AssertionError(f"{mode} should reject an offset")
+    with tempfile.TemporaryDirectory() as d:
+        tr = _cov_trainer(d, rounds=3, calibration="aligned", warp_scope="module", cov_lambda_max=0.01,
+                          offset=True)
+        tr.fit()
+        assert not any(k.startswith("steer_control") for k in tr.server)          # nothing pooled by FedAvg
+        o = {c: float(tr.clients[c]["gain"]["steer_control.o"]) for c in ("c0", "c1")}
+        assert all(v != 0.0 for v in o.values()) and o["c0"] != o["c1"]
+        assert "offset" in tr.history[-1]["clients"]["c0"]
+        y = torch.zeros(1, 4)
+        for c in ("c0", "c1"):
+            tr.load_client(c)                                     # inference: table + own offset
+            with tr.control.use_alpha(0.5):
+                assert abs(float(tr.control.coef_for(y, 3)) - (tr.cov["z"][3][2] + o[c])) < 1e-5
+            with tr.control.use_alpha(0.0):
+                assert abs(float(tr.control.coef_for(y, 3)) - o[c]) < 1e-6
+        snap = torch.load(os.path.join(d, "snapshots", "round_0003.pt"), weights_only=False)
+        m = tiny_model(warp="kumaraswamy_mix", warp_scope="module", offset=True)
+        load_snapshot_into(m, snap, "c1")
+        with m.steer_control.use_alpha(0.5):
+            assert abs(float(m.steer_control.coef_for(y, 3)) - (tr.cov["z"][3][2] + o["c1"])) < 1e-5
+        tr2 = _cov_trainer(d, rounds=4, calibration="aligned", warp_scope="module", cov_lambda_max=0.01,
+                           offset=True)
+        assert tr2.maybe_resume() and float(tr2.clients["c1"]["gain"]["steer_control.o"]) == o["c1"]
+
+
+def test_aligned_with_shared_offset():
+    """NR-60b: aligned + shared_offset: one offset o for all clients, averaged by the server like
+    the direction (coefficient = o + g-bar_l(alpha)); refused outside aligned/fedavg/offset."""
+    with tempfile.TemporaryDirectory() as d:
+        for kw in (dict(calibration="aligned", offset=False), dict(calibration="consensus", offset=True),
+                   dict(calibration="aligned", offset=True, mode="local")):
+            try:
+                _cov_trainer(d, warp_scope="module", shared_offset=True, **kw)
+            except ValueError as e:
+                assert "offset" in str(e) or "mode" in str(e), e
+            else:
+                raise AssertionError(f"shared_offset should be refused for {kw}")
+    with tempfile.TemporaryDirectory() as d:
+        kw = dict(calibration="aligned", warp_scope="module", cov_lambda_max=0.01, offset=True, shared_offset=True)
+        tr = _cov_trainer(d, rounds=3, **kw)
+        assert any(p is tr.control.o for p in tr.shared_params)                # reset + averaged
+        tr.fit()
+        o = float(tr.server["steer_control.o"])
+        assert o != 0.0
+        assert [k for k in tr.server if k.startswith("steer_control")] == ["steer_control.o"]
+        assert all("steer_control.o" not in st["gain"] for st in tr.clients.values())
+        # the server's o is the average of the clients' uploads: the last round's per-client values
+        last = tr.history[-1]["clients"]
+        assert abs(o - sum(v["offset"] for v in last.values()) / len(last)) < 1e-6
+        y = torch.zeros(1, 4)
+        for c in ("c0", "c1"):                                 # every client: o + table
+            tr.load_client(c)
+            with tr.control.use_alpha(0.5):
+                assert abs(float(tr.control.coef_for(y, 3)) - (tr.cov["z"][3][2] + o)) < 1e-5
+        snap = torch.load(os.path.join(d, "snapshots", "round_0003.pt"), weights_only=False)
+        m = tiny_model(warp="kumaraswamy_mix", warp_scope="module", offset=True)
+        load_snapshot_into(m, snap, "c1")
+        with m.steer_control.use_alpha(0.0):
+            assert abs(float(m.steer_control.coef_for(y, 3)) - o) < 1e-6
+        tr2 = _cov_trainer(d, rounds=4, **kw)
+        assert tr2.maybe_resume() and float(tr2.server["steer_control.o"]) == o
 
 
 if __name__ == "__main__":

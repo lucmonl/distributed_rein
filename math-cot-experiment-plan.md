@@ -189,10 +189,11 @@ Same IDs as the parent plan. B1 and B4 run on each client's own model with B^D r
 ## 10. Next steps
 
 1. 🔄 Answer-in-prompt suite (MATH-7): read G0 (format), G2 (calibration; is the range still compressed?), G1 (prompting), then E1 fed vs. local (G3).
-2. ⏳ **Range investigation** (single-client, ≈ 3 h each, can run in parallel): (a) `lora.gain_max=16`; (b) stop at ~60 rounds or use more data per client (the source pools are larger than 4k); (c) score the interior α grid on existing outputs (no training; changes how the metric is reported, so agree with the user first).
-3. ⏳ House-style metric (§5) for E1: federated vs. A2 vs. local.
-4. ⏳ E2 on rotation 0, then a rotation-1 federated run.
-5. ⏳ Optionally rerun E1-local on the original prompts to pair the kept reference E1-fed.
+2. 🔄 **Per-layer calibration** (MATH-14): `lora.warp_scope=module` on single-client G2, with and without `lora.gain_max=16`; carry into E1 if it helps.
+3. ⏳ **Range investigation** (single-client, ≈ 3 h each, can run in parallel): (a) `lora.gain_max=16`; (b) stop at ~60 rounds or use more data per client (the source pools are larger than 4k); (c) score the interior α grid on existing outputs (no training; changes how the metric is reported, so agree with the user first).
+4. ⏳ House-style metric (§5) for E1: federated vs. A2 vs. local.
+5. ⏳ E2 on rotation 0, then a rotation-1 federated run.
+6. ⏳ Optionally rerun E1-local on the original prompts to pair the kept reference E1-fed.
 
 ---
 
@@ -208,6 +209,7 @@ Same IDs as the parent plan. B1 and B4 run on each client's own model with B^D r
 | 10-05 | Every Qwen2.5-7B run NaN (SDPA backward on long batches) → eager attention + NaN guard; suite resubmitted | MATH-5 |
 | 10-05 | Qwen2.5-7B: G0 PASS; G2 0.263, range still compressed | MATH-6 |
 | 10-05 | **Answer-in-prompt becomes the main setting**; the running original-prompts E1-fed is kept as the reference | MATH-7 |
+| 10-07 | Diagnosis: per-client response levels set by the private adapter; the calibration [0, s] cannot express negative or above-clamp coefficients (MATH-13). Per-layer warps launched (MATH-14) | MATH-13, MATH-14 |
 | 10-06 | Delta copies OOMed on 40 GB A100s; runs made to fit 40 GB (micro-batching, small loss batch, SDPA generation), verified under a 39.5 GiB cap; Delta back in the race | MATH-9 … MATH-11 |
 
 ## References (task-specific)

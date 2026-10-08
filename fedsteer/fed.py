@@ -25,6 +25,10 @@ client, fitted on its own data) or ``shared`` (one for all clients, averaged by 
 server every round like the direction).  Under the global alpha scale, ``shared``
 keeps everything about the attribute shared and only house style private (P_i).
 ``shared`` is undefined in ``local`` mode (nothing is aggregated there).
+``private_offset`` (NR-60): with ``calibration=shared`` and ``lora.offset``, keep the offset o
+private (one scalar per client, never averaged; restored per client at evaluation) while the
+gain and the shape stay shared.  No-op with ``private`` calibration or in ``local`` mode, where
+the offset is private anyway.
 ``coverage`` (plan section 2.1, fedsteer/coverage.py): gain fixed at 1, no offset, a private
 nonlinear warp per client, plus a borrowing term that pulls each warp toward a server table
 of count-weighted, monotone-projected warp values on a common grid, wherever the client has
@@ -33,6 +37,20 @@ little nearby data and its peers have much.  Warp parameters are never averaged.
 where the client HAS data (weight lambda_max * c/(tau + c), none outside its support); the
 table g-bar is pooled from the clients' in-support values with saturating weights c/(tau + c);
 at inference every client uses g-bar (linear interpolation of the table), never its own warp.
+``aligned`` (NR-58) removes consensus's train/inference mismatch: client i's FORWARD PASS uses
+g-bar itself, pooled per layer from its own live warp values (trained) and the other clients'
+values frozen from the last round, then projected to be monotone with a differentiable
+isotonic projection (fedsteer/coverage.pool_and_project); inference applies the same operator
+to everyone's final values.  A tiny penalty lambda_max * c/(tau + c) (g_i - stopgrad g-bar)^2
+where the client has data only pins down the directions g-bar does not determine.
+With ``lora.offset`` (NR-62, ``fed-aligned-off``) each client adds its private offset o_i on top
+of the pooled table (coefficient = o_i + g-bar_l(alpha)); only the shapes are pooled.
+``shared_offset`` (NR-60b, ``fed-aligned-soff``) instead shares ONE offset o across clients:
+it is averaged by the server every round like the direction (coefficient = o + g-bar_l(alpha)).
+
+``local_reset_opt_state`` (NR-60): in ``local`` mode, drop the direction's optimizer state at
+the start of every round, as ``fedavg`` does with ``reset_shared_opt_state`` (the matched local
+control for fed-vs-local contrasts; MOL-23 found the reset, not the sharing, behind fed's gain).
 
 Ablation (orthogonal to mode): ``fix_gain`` (A1: s_i = 1).
 """
@@ -57,6 +75,7 @@ from .monitor import format_monitor
 from .regularize import WEIGHT, RegConfig, penalty_terms
 from .lora import (
     GAIN_KEY,
+    OFFSET_KEY,
     steer_layers,
     average_states,
     get_gain_state,
@@ -90,6 +109,9 @@ class FedConfig:
     adapter: str = "private"         # private | shared (A2) | none
     calibration: str = "private"     # private | shared | coverage (plan 2.1: private warps + borrowing)
                                      # | consensus (NR-56: tie in support, g-bar at inference)
+                                     # | aligned (NR-58: g-bar in training AND inference)
+    private_offset: bool = False     # NR-60: calibration=shared keeps the offset o per client
+    shared_offset: bool = False      # NR-60b: calibration=aligned shares one offset o (FedAvg)
     cov_grid: int = 11               # coverage: K common grid points a_k, including 0 and 1
     cov_bandwidth: float = 0.2       # coverage: triangular-kernel half-width b of the counts c_ik
     cov_lambda_max: float = 1.0      # coverage: maximum weight of the borrowing term
@@ -102,6 +124,8 @@ class FedConfig:
     aggregation: str = "uniform"     # uniform | size
     server_lr: float = 1.0           # new = old + server_lr * (avg - old)
     reset_shared_opt_state: bool = True
+    local_reset_opt_state: bool = False   # NR-60: local mode also resets the direction's Adam
+                                          # state every round, as fedavg does (no-op in fedavg)
     bf16: bool = True
     seed: int = 0
     save_every: int = 5
@@ -147,11 +171,20 @@ class FedSteerTrainer:
         if self.adapter not in ("private", "shared", "none"):
             raise ValueError(f"unknown adapter mode {cfg.adapter}")
         self.calibration = cfg.calibration
-        if self.calibration not in ("private", "shared", "coverage", "consensus"):
+        if self.calibration not in ("private", "shared", "coverage", "consensus", "aligned"):
             raise ValueError(f"unknown calibration mode {cfg.calibration}")
         if self.calibration == "shared" and cfg.mode == "local":
             raise ValueError("calibration=shared is undefined in local mode (nothing is aggregated); "
                              "local training always has per-client calibration: use calibration=private")
+        if cfg.private_offset and self.control.o is None:
+            raise ValueError("fed.private_offset=true needs lora.offset=true (there is no offset to keep private)")
+        # the offset is private while the rest of the calibration is shared (NR-60)
+        self.private_offset = cfg.private_offset and self.calibration == "shared"
+        if cfg.shared_offset and (self.control.o is None or self.calibration != "aligned"
+                                  or cfg.mode != "fedavg"):
+            raise ValueError("fed.shared_offset=true needs lora.offset=true, calibration=aligned and "
+                             "mode=fedavg (calibration=shared already shares the offset)")
+        self.shared_offset = cfg.shared_offset          # the offset is averaged like the direction
         groups = trainable_parameter_groups(model)
         if self.adapter == "none":
             with torch.no_grad():
@@ -162,6 +195,10 @@ class FedSteerTrainer:
                         p.zero_()                      # B_p = 0: the adapter contributes nothing
         self.shared_params = groups["shared"] + (groups["private"] if self.adapter == "shared" else []) \
             + (groups["gain"] + groups["warp"] if self.calibration == "shared" else [])
+        if self.private_offset:
+            self.shared_params = [p for p in self.shared_params if p is not self.control.o]
+        if self.shared_offset:
+            self.shared_params = self.shared_params + [self.control.o]
         self.opt = torch.optim.AdamW(
             [
                 {"params": groups["private"], "lr": cfg.lr_private,
@@ -184,14 +221,14 @@ class FedSteerTrainer:
         self.server = self._server_state_from_model()
         init_private = get_private_adapter_state(model) if self.adapter == "private" else {}
         self.clients: dict[str, dict] = {
-            c: {"private": copy.deepcopy(init_private), "gain": get_gain_state(model),
+            c: {"private": copy.deepcopy(init_private), "gain": self._client_gain_state(),
                 "shared_local": None, "opt": None, "steps": 0}
             for c in self.client_ids
         }
         self.round = 0
         self.history: list[dict] = []
         self.cov: Optional[dict] = None
-        if self.calibration in ("coverage", "consensus"):
+        if self.calibration in ("coverage", "consensus", "aligned"):
             self._check_coverage_config()
             self.cov = self._init_coverage(client_examples)
             with open(os.path.join(out_dir, "coverage.json"), "w") as f:
@@ -205,7 +242,9 @@ class FedSteerTrainer:
             problems.append("mode must be fedavg (local-only has no peers; use calibration=private)")
         if not cfg.fix_gain:
             problems.append("fed.fix_gain must be true (gain fixed at 1)")
-        if self.control.o is not None:
+        if self.control.o is not None and self.calibration != "aligned":
+            # aligned (NR-62) allows a private offset: coefficient = o_i + g-bar_l(alpha), with o_i
+            # kept per client like the warps and never pooled into the table
             problems.append("lora.offset must be false")
         if self.control.warp.kind == "none":
             problems.append("lora.warp must be a nonlinear warp (e.g. kumaraswamy_mix)")
@@ -225,12 +264,12 @@ class FedSteerTrainer:
         grid = cov.make_grid(cfg.cov_grid)
         counts = {c: cov.evidence_counts([e["alpha"] for e in client_examples[c]], grid, cfg.cov_bandwidth)
                   for c in self.client_ids}
-        if self.calibration == "consensus":       # tie only where the client has data
+        if self.calibration in ("consensus", "aligned"):   # tie only where the client has data
             lam = cov.saturating_weights(counts, cfg.cov_tau_local, cfg.cov_lambda_max)
         else:                                     # borrow where local data is thin, peers' rich
             lam = cov.borrow_weights(counts, cfg.cov_lambda_max, cfg.cov_tau_local, cfg.cov_tau_peer)
-        pool = cfg.cov_pool if cfg.cov_pool != "auto" else ("saturating" if self.calibration == "consensus"
-                                                           else "count")
+        pool = cfg.cov_pool if cfg.cov_pool != "auto" else (
+            "saturating" if self.calibration in ("consensus", "aligned") else "count")
         pool_w = counts if pool == "count" else cov.saturating_weights(counts, cfg.cov_tau_pool)
         n_warps = int(self.control.warp_on(torch.tensor(grid, dtype=torch.float32,
                                                         device=self.control.warp._device())).shape[0])
@@ -245,6 +284,9 @@ class FedSteerTrainer:
             "z": [grid.tolist()] * n_warps,   # server table [n_warps][K], starts at the identity
             "ready": False,              # True once a round with trainable warps has completed
             "updates": 0,                # rounds that updated z
+            # aligned: every client's last uploaded grid values [n_warps][K]; the server sends
+            # client i only the leave-one-out sums over the others
+            "values": {c: [grid.tolist()] * n_warps for c in self.client_ids},
         }
 
     def _warp_on_grid(self) -> torch.Tensor:
@@ -259,20 +301,33 @@ class FedSteerTrainer:
             st.update(get_private_adapter_state(self.model))
         if self.calibration == "shared":
             st.update(get_gain_state(self.model))      # gain u, offset o, warp parameters
+            if self.private_offset:
+                st.pop(OFFSET_KEY)                     # ... except a private offset
+        if self.shared_offset:
+            st[OFFSET_KEY] = get_gain_state(self.model)[OFFSET_KEY]
         return st
+
+    def _client_gain_state(self) -> dict[str, torch.Tensor]:
+        """The client-held part of the calibration: all of it (private calibration), only the
+        offset (shared calibration with private_offset), or nothing beyond the initial value
+        (shared calibration: it comes with the server state)."""
+        st = get_gain_state(self.model)
+        if self.shared_offset:
+            st.pop(OFFSET_KEY)                         # comes with the server state
+        return {OFFSET_KEY: st[OFFSET_KEY]} if self.private_offset else st
 
     def load_client(self, cid: str, shared: Optional[dict] = None, inference: bool = True) -> None:
         """Put client ``cid`` into the model (for training or evaluation).  With
         calibration=consensus, ``inference`` (the default: monitor, evaluation) applies the
         server table g-bar; training passes inference=False to use the client's own warps."""
         c = self.clients[cid]
-        if self.calibration == "consensus" and inference:
+        if self.calibration in ("consensus", "aligned") and inference:
             self.control.set_table(self.cov["grid"], self.cov["z"])
         else:
             self.control.set_table(None)
         if self.adapter == "private":
             load_state(self.model, c["private"])
-        if self.calibration != "shared":
+        if self.calibration != "shared" or self.private_offset:
             load_state(self.model, c["gain"])          # shared calibration comes with the server state
         if shared is None:
             shared = c["shared_local"] if (self.cfg.mode == "local" and c["shared_local"] is not None) else self.server
@@ -282,8 +337,8 @@ class FedSteerTrainer:
         c = self.clients[cid]
         if self.adapter == "private":
             c["private"] = get_private_adapter_state(self.model)
-        if self.calibration != "shared":
-            c["gain"] = get_gain_state(self.model)
+        if self.calibration != "shared" or self.private_offset:
+            c["gain"] = self._client_gain_state()
         if self.cfg.mode == "local":
             c["shared_local"] = self._server_state_from_model()
         c["opt"] = _to_cpu(self.opt.state_dict())
@@ -295,8 +350,9 @@ class FedSteerTrainer:
             self.opt.load_state_dict(saved)
             for g, lr in zip(self.opt.param_groups, self._base_lrs):
                 g["lr"] = lr
-        if self.cfg.mode == "fedavg" and self.cfg.reset_shared_opt_state:
-            for p in self.shared_params:
+        if (self.cfg.mode == "fedavg" and self.cfg.reset_shared_opt_state) or \
+                (self.cfg.mode == "local" and self.cfg.local_reset_opt_state):
+            for p in self.shared_params:               # local: the client's own direction D_i
                 self.opt.state.pop(p, None)
 
     # ---------------------------------------------------------------- training
@@ -339,7 +395,18 @@ class FedSteerTrainer:
         anchors = ([m.lora_B_d.detach().float().clone() for m in self.layers]
                    if self.reg.fedprox_mu > 0 and cfg.mode == "fedavg" else None)
         offset_active = self.control.o is not None and self.round >= cfg.gain_warmup_rounds
-        borrow_on = self.cov is not None and self.cov["ready"] and warp_trainable
+        aligned = self.calibration == "aligned"
+        borrow_on = self.cov is not None and self.cov["ready"] and warp_trainable and not aligned
+        if aligned:                                     # frozen leave-one-out sums of the others
+            dev = self.control.warp._device()
+            pw = {j: torch.tensor(v, dtype=torch.float32, device=dev) for j, v in self.cov["pool_weights"].items()}
+            vals = {j: torch.tensor(v, dtype=torch.float32, device=dev) for j, v in self.cov["values"].items()}
+            loo_num = sum(pw[j] * vals[j] for j in self.client_ids if j != cid)
+            loo_den = sum(pw[j] for j in self.client_ids if j != cid)
+            own_w = pw[cid]
+            grid_t = torch.tensor(self.cov["grid"], dtype=torch.float32, device=dev)
+            lam = torch.tensor(self.cov["lambda"][cid], dtype=torch.float32, device=dev)
+            proj_diag = []
         if borrow_on:
             dev = self.control.warp._device()
             z_target = torch.tensor(self.cov["z"], dtype=torch.float32, device=dev)   # detached, fixed this round
@@ -354,6 +421,12 @@ class FedSteerTrainer:
             for _ in range(cfg.grad_accum):
                 batch = {k: v.to(self.device) for k, v in self.streams[cid].next_batch().items()}
                 alpha = batch.pop("alpha")
+                if aligned:
+                    # g-bar for this step: own live values (gradient) + others frozen, projected
+                    own = self.control.warp_on(grid_t)
+                    gbar, pdiag = cov.pool_and_project(loo_num + own_w * own, loo_den + own_w)
+                    self.control.set_live_table(grid_t, gbar)
+                    proj_diag.append(pdiag["proj_adjust_max"])
                 with self.control.use_alpha(alpha), \
                         torch.autocast(self.device.type, dtype=torch.bfloat16, enabled=cfg.bf16):
                     loss = model(**batch).loss / cfg.grad_accum
@@ -374,6 +447,12 @@ class FedSteerTrainer:
                         borrow = (lam * (self._warp_on_grid() - z_target) ** 2).mean()
                         total = total + borrow / cfg.grad_accum
                         borrows.append(borrow.item())   # consensus: the in-support tie term
+                    if aligned and warp_trainable and cfg.cov_lambda_max > 0:
+                        # tiny tie where the client has data: pins the directions of g_i that
+                        # g-bar (a weighted average) does not determine; g-bar is a constant here
+                        tie = (lam * (own - gbar.detach()) ** 2).mean()
+                        total = total + tie / cfg.grad_accum
+                        borrows.append(tie.item())
                     if self.reg.any_penalty():
                         terms = penalty_terms(self.reg, self.layers, self.control, anchors,
                                               gain_trainable, offset_active)
@@ -397,6 +476,8 @@ class FedSteerTrainer:
             self.opt.zero_grad(set_to_none=True)
             c["steps"] += 1
             losses.append(step_loss)
+        if aligned:
+            self.control.set_table(None)
         out = {"loss": sum(losses) / len(losses) if losses else float("nan"),
                "gain": float(self.control.gain().item()),
                "skipped_steps": self.skipped_steps.get(cid, 0)}
@@ -407,8 +488,10 @@ class FedSteerTrainer:
             if penalties:
                 out["warp_penalty"] = sum(penalties) / len(penalties)
         if borrows:
-            key = "tie_loss" if self.calibration == "consensus" else "borrow_loss"
+            key = "tie_loss" if self.calibration in ("consensus", "aligned") else "borrow_loss"
             out[key] = sum(borrows) / len(borrows)                    # weighted term, as optimized
+        if aligned and proj_diag:
+            out["proj_adjust_max"] = max(proj_diag)                 # within-step projection, max
         if reg_vals:
             out["reg"] = {k: sum(v) / len(v) for k, v in reg_vals.items()}   # unweighted term values
         return out
@@ -458,7 +541,8 @@ class FedSteerTrainer:
             self.server = {k: start[k] + lr * (avg[k] - start[k]) for k in start}
             log["server_update_norm"] = float((_flat(self.server) - _flat(start)).norm())
         if self.cov is not None:
-            log["coverage"] = self._update_coverage(curves)
+            log["coverage"] = (self._update_aligned(curves) if self.calibration == "aligned"
+                               else self._update_coverage(curves))
         log["direction_norm"] = float(_flat({k: v for k, v in self.server.items() if k.endswith("lora_B_d")}).norm()) \
             if self.cfg.mode == "fedavg" else None
         self.round += 1
@@ -505,6 +589,34 @@ class FedSteerTrainer:
         self.cov["updates"] += 1
         out.update(**summary("raw", ms), **summary("z", zs), proj_adjust_max=adj_max,
                    proj_adjust_wrms=float(np.sqrt(np.mean(adj_sq))), uncovered=diag["uncovered"])
+        return out
+
+    def _update_aligned(self, curves: dict[str, np.ndarray]) -> dict:
+        """Server side of calibration=aligned: store every client's grid values (next round's
+        frozen 'others' for each client) and build the inference table g-bar with the same
+        operator the clients trained through."""
+        for c, v in curves.items():
+            self.cov["values"][c] = v.tolist()
+        V = {c: torch.tensor(v, dtype=torch.float64) for c, v in self.cov["values"].items()}
+        W = {c: torch.tensor(v, dtype=torch.float64) for c, v in self.cov["pool_weights"].items()}
+        num, den = sum(W[c] * V[c] for c in V), sum(W[c] for c in V)
+        with torch.no_grad():
+            z, diag = cov.pool_and_project(num, den)
+        self.cov["z"] = z.tolist()
+        self.cov["ready"] = True
+        self.cov["updates"] += 1
+        m = num / den.clamp_min(1e-12)
+        # disagreement of the clients' own curves around the pooled mean (weighted sd; mean over
+        # layers and grid points): what the tie penalty keeps small
+        dis = torch.sqrt(sum(W[c] * (V[c] - m) ** 2 for c in V) / den.clamp_min(1e-12)).mean()
+        sat = {c: W[c] for c in V}
+        rnd = lambda t: [round(float(x), 5) for x in t]
+        out = {"z": rnd(z.mean(0)), "z_min": rnd(z.min(0).values), "z_max": rnd(z.max(0).values),
+               "values": {c: rnd(torch.tensor(v).mean(0)) for c, v in curves.items()},
+               "proj_adjust_max": diag["proj_adjust_max"], "proj_layers": diag["proj_layers"],
+               "uncovered": diag["uncovered"], "disagreement": round(float(dis), 5),
+               "support_gap": {c: round(float(((V[c] - z).abs() * sat[c]).sum(1).mean() / sat[c].sum()), 5)
+                               for c in curves}}
         return out
 
     def fit(self) -> None:
@@ -619,10 +731,14 @@ def load_snapshot_into(model, snapshot: dict, client: str, shared: Optional[dict
                     p.zero_()
     if fc.get("calibration", "private") == "shared":
         load_state(model, {k: v for k, v in snapshot["server"].items() if k.startswith("steer_control.")})
+        if fc.get("private_offset"):                   # NR-60: the client's own offset
+            load_state(model, {OFFSET_KEY: cs["gain"][OFFSET_KEY]})
     else:
         load_state(model, cs["gain"])
+        if fc.get("shared_offset"):                    # NR-60b: the one shared offset
+            load_state(model, {OFFSET_KEY: snapshot["server"][OFFSET_KEY]})
     cov_state = snapshot.get("coverage")
-    if fc.get("calibration") == "consensus" and use_table:
+    if fc.get("calibration") in ("consensus", "aligned") and use_table:
         model.steer_control.set_table(cov_state["grid"], cov_state["z"])
     else:
         model.steer_control.set_table(None)

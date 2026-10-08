@@ -11,7 +11,11 @@
 #   /u/lucmon/rein/data/<name> -> /work/nvme/bhby/datasets/<name>
 #   HF cache: /work/nvme/bhby/lucmon/hf_home (HF_HOME)
 #
-# Usage: scripts/sync_to_delta.sh [--dry-run] [--data] [--host delta|dtai]   (--data also syncs the datasets)
+# Usage: scripts/sync_to_delta.sh [--dry-run] [--data] [--no-code] [--host delta|dtai]   (--data also syncs the datasets)
+#
+# --no-code: sync everything EXCEPT code (*.py, configs/, fedsteer/, scripts/, tests/), i.e. docs,
+# exp_log/ and the sbatch files (headers rewritten as usual).  For a shared-code hold (CONVENTIONS.md
+# section 5): pending jobs snapshot the code tree when they start, so code must not move then.
 #
 # --host dtai: DeltaAI (dtai-1 = gh-login01, aarch64 GH200, partition ghx4).  /work is SHARED with
 # Delta (runs/, datasets, HF cache are the same directories) but home is NOT: the code goes to
@@ -25,14 +29,14 @@ RUNS_TARGET=/work/nvme/bhby/lucmon/rein
 DATA_ROOT=/work/nvme/bhby/datasets
 DATASETS="newsroom chembl newsroom_fed chembl_fed newsroom_stats math_fed math_fed_ans"
 
-DRY=""; DATA=0; NEXT=""
+DRY=""; DATA=0; NOCODE=0; NEXT=""
 for a in "$@"; do
   if [ "$NEXT" = host ]; then
     case $a in delta) ;; dtai) HOST=dtai-1; ACCOUNT=bhby-dtai-gh; PARTITION=ghx4; ENV=rein-gh;;
       *) echo "unknown host $a"; exit 1;; esac
     NEXT=""; continue
   fi
-  case $a in --dry-run) DRY="--dry-run";; --data) DATA=1;; --host) NEXT=host;; esac
+  case $a in --dry-run) DRY="--dry-run";; --data) DATA=1;; --no-code) NOCODE=1;; --host) NEXT=host;; esac
 done
 
 ssh -O check $HOST 2>/dev/null || { echo "no SSH master: run 'ssh -fN $HOST' first"; exit 1; }
@@ -40,14 +44,18 @@ ssh -O check $HOST 2>/dev/null || { echo "no SSH master: run 'ssh -fN $HOST' fir
 ssh $HOST "mkdir -p $DST $DATA_ROOT $RUNS_TARGET"
 
 # --- code (data/ and runs/ are symlinks on both sides: never synced here)
+# Excluded paths are also protected from --delete, so --no-code leaves the remote code untouched.
+CODE_EXCL=()
+[ $NOCODE = 1 ] && CODE_EXCL=(--exclude='*.py' --exclude='/configs' --exclude='/fedsteer'
+                              --exclude='/scripts' --exclude='/tests')
 rsync -az $DRY --delete --itemize-changes \
   --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
-  --exclude='/runs' --exclude='/data' --exclude='/sbatch/logs' \
+  --exclude='/runs' --exclude='/data' --exclude='/sbatch/logs' "${CODE_EXCL[@]}" \
   $SRC/ $HOST:$DST/
 
 # loose files directly under data/ (e.g. toy_length.jsonl) are small: they live in the code tree
 ssh $HOST "mkdir -p $DST/data"
-rsync -a $DRY $SRC/data/*.jsonl $HOST:$DST/data/
+[ $NOCODE = 1 ] || rsync -a $DRY $SRC/data/*.jsonl $HOST:$DST/data/
 
 # --- datasets: real directories go to /work, symlinked from data/
 if [ $DATA = 1 ]; then
@@ -62,7 +70,7 @@ fi
 ssh $HOST bash -s <<EOF
 set -e
 cd $DST
-mkdir -p sbatch/logs
+mkdir -p sbatch/logs sbatch/logs/math-cot   # SLURM does not create --output dirs (CONVENTIONS.md section 2)
 # runs/ -> /work
 if [ -e runs ] && [ ! -L runs ]; then echo "runs exists and is not a symlink; leaving it"; else ln -sfn $RUNS_TARGET runs; fi
 # data/: link each dataset dir into the repo
