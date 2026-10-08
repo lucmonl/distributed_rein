@@ -54,6 +54,22 @@ C_FO=$(cc  mol24-fed-shared-off   "$OFF")
 C_LO=$(cc  mol24-local-off  "$LOC")
 echo "cc     fed-shared $C_FS  fed-shared-off $C_FO  local-off $C_LO"
 
+# --- Anvil copies: GATED OFF by default (CAL-11, 2026-10-08)
+# /anvil/scratch/x-zchen17/lucmon/envs/rein lost stdlib files to what looks like a scratch purge,
+# and every Anvil job since 03:09 dies in seconds with
+#   cannot import name '_parser' from partially initialized module 're'
+# Submitting there would burn queue slots on jobs that cannot run. The race is safe to watch even
+# so -- scripts/race_watch.py requires RUNNING past --min_running_s or COMPLETED to declare a
+# winner (lines 103-111; the FAILED-containing STARTED set at line 31 is dead code), so a failing
+# Anvil copy cannot cancel the cc copies -- but there is no reason to create them.
+# Re-enable with ANVIL=1 ONLY after the env is rebuilt and a short job completes there.
+# The rebuild is the user's call; do not touch the Anvil environment.
+ANVIL=${ANVIL:-0}
+if [ "$ANVIL" != "1" ]; then
+  echo "anvil  SKIPPED (env broken, CAL-11). cc-only race, 0 SU. Re-run with ANVIL=1 once fixed."
+  exit 0
+fi
+
 # --- Anvil copies (-A cis260796-ai can only use -p ai; no multi-partition requests)
 A="ssh -o BatchMode=yes -l x-zchen17 anvil.rcac.purdue.edu"
 $A "cd /home/x-zchen17/lucmon/rein

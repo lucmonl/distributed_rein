@@ -1,0 +1,33 @@
+classifier: runs/_style/style_clf_58467d166c.pkl
+
+real test summaries (ceiling): attribution acc 0.587, P(own) 0.388  (chance 0.125)
+
+run            round attr acc  P(own) feat gap   (in-support alphas; mean over clients)
+fed-aligned-tp3000   100    0.562   0.380    0.103
+fed-aligned-off   100    0.562   0.381    0.110
+fed-shared-off   100    0.572   0.387    0.105
+fed-shared-soff   100    0.578   0.387    0.105
+local-off         60    0.570   0.378    0.120
+ctx_fed-shared   100    0.566   0.382    0.107
+A2_shared         70    0.409   0.295    0.190
+
+per-client attribution accuracy (in-support)
+run            forbes.com theguardia people.com    wsj.com    aol.com     cbc.ca reuters.co nypost.com
+real test           0.520      0.578      0.595      0.405      0.545      0.640      0.705      0.705
+fed-aligned-tp3000      0.510      0.569      0.607      0.395      0.443      0.663      0.613      0.695
+fed-aligned-off      0.510      0.569      0.637      0.405      0.453      0.670      0.613      0.635
+fed-shared-off      0.507      0.569      0.635      0.408      0.482      0.642      0.657      0.675
+fed-shared-soff      0.535      0.556      0.615      0.395      0.477      0.680      0.688      0.675
+local-off           0.448      0.525      0.645      0.413      0.477      0.662      0.722      0.665
+ctx_fed-shared      0.510      0.558      0.630      0.407      0.452      0.648      0.622      0.705
+A2_shared           0.352      0.294      0.490      0.345      0.383      0.622      0.538      0.250
+
+attribution accuracy by target alpha (all clients; checks that it does not track extractiveness)
+run               0.00    0.25    0.50    0.75    1.00
+fed-aligned-tp3000   0.512   0.525   0.535   0.555   0.556
+fed-aligned-off   0.538   0.529   0.541   0.553   0.565
+fed-shared-off   0.531   0.527   0.541   0.573   0.564
+fed-shared-soff   0.543   0.543   0.581   0.556   0.568
+local-off        0.532   0.545   0.557   0.551   0.555
+ctx_fed-shared   0.527   0.525   0.534   0.560   0.566
+A2_shared        0.379   0.360   0.409   0.422   0.420

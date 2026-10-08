@@ -1,0 +1,35 @@
+== fed-aligned-off - fed-shared: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.004 [-0.002,+0.010]     +0.001 [-0.008,+0.009] 
+theguardian.com      -0.004 [-0.010,+0.002]     -0.006 [-0.013,+0.002] 
+people.com           -0.003 [-0.009,+0.003]     -0.001 [-0.010,+0.008] 
+wsj.com              -0.005 [-0.010,+0.000]     -0.006 [-0.015,+0.003] 
+aol.com              -0.005 [-0.011,+0.001]     -0.003 [-0.012,+0.007] 
+cbc.ca               +0.005 [-0.001,+0.011]     -0.006 [-0.015,+0.003] 
+reuters.com          -0.005 [-0.014,+0.004]     -0.010 [-0.025,+0.005] 
+nypost.com           -0.012 [-0.020,-0.005]*    -0.017 [-0.026,-0.008]*
+fed-aligned-off significantly better on 1/8 clients, worse on 0/8
+
+== fed-aligned-off - local: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.005 [-0.002,+0.012]     +0.018 [+0.008,+0.028]*
+theguardian.com      -0.009 [-0.017,-0.002]*    -0.017 [-0.028,-0.007]*
+people.com           -0.009 [-0.017,-0.002]*    -0.006 [-0.018,+0.005] 
+wsj.com              +0.005 [-0.001,+0.012]     +0.012 [-0.000,+0.024] 
+aol.com              -0.006 [-0.012,+0.000]     +0.002 [-0.009,+0.012] 
+cbc.ca               -0.008 [-0.014,-0.002]*    -0.008 [-0.018,+0.000] 
+reuters.com          +0.005 [-0.004,+0.014]     +0.024 [+0.010,+0.040]*
+nypost.com           -0.070 [-0.081,-0.059]*    -0.090 [-0.103,-0.078]*
+fed-aligned-off significantly better on 4/8 clients, worse on 0/8
+
+== fed-private-off - local: per-client paired bootstrap (negative = fed-private-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.008 [+0.001,+0.015]*    +0.022 [+0.012,+0.032]*
+theguardian.com      -0.012 [-0.019,-0.005]*    -0.017 [-0.027,-0.008]*
+people.com           -0.004 [-0.012,+0.004]     -0.000 [-0.011,+0.010] 
+wsj.com              +0.012 [+0.005,+0.019]*    +0.018 [+0.007,+0.030]*
+aol.com              +0.001 [-0.006,+0.006]     +0.016 [+0.006,+0.027]*
+cbc.ca               -0.004 [-0.009,+0.002]     +0.003 [-0.006,+0.013] 
+reuters.com          -0.004 [-0.012,+0.005]     +0.029 [+0.015,+0.044]*
+nypost.com           -0.053 [-0.063,-0.042]*    -0.067 [-0.080,-0.054]*
+fed-private-off significantly better on 2/8 clients, worse on 2/8

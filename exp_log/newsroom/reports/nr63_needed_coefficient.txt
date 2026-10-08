@@ -1,0 +1,116 @@
+run nr60-fed-shared-off_20261007-165434_j11206103, round 100; gain s = 1.000
+mean_l h_l(alpha): [0.    0.437 0.643 0.826 1.   ]  (sd over layers: [0.    0.256 0.186 0.103 0.   ] )
+
+== forbes.com  support [0.03,0.99]  o_i = -0.166
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c    -0.166   0.271   0.477   0.660   0.834
+output pct p    0.161   0.266   0.523   0.850   0.953
+needed c*     -0.834x   0.206   0.458   0.604  0.914x
+fit over 3 pts:  (a) o=-0.212 rmse 0.020 | (b) o=-0.494 rmse 0.083 | (c) a=-0.230 b=1.027 rmse 0.020
+
+== theguardian.com  support [0.04,0.55]  o_i = -0.020
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c    -0.020   0.417   0.622   0.806   0.980
+output pct p    0.187   0.294   0.516   0.776   0.885
+needed c*     -0.780x   0.236   0.608   0.787  1.164x
+fit over 3 pts:  (a) o=-0.092 rmse 0.077 | (b) o=-0.279 rmse 0.046 | (c) a=-0.362 b=1.426 rmse 0.038
+
+== people.com  support [0.03,0.70]  o_i = -0.139
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c    -0.139   0.298   0.503   0.687   0.861
+output pct p    0.192   0.277   0.493   0.666   0.783
+needed c*     -1.127x   0.158   0.511   0.812  1.183x
+fit over 3 pts:  (a) o=-0.142 rmse 0.108 | (b) o=-0.435 rmse 0.043 | (c) a=-0.575 b=1.682 rmse 0.003
+
+== wsj.com  support [0.04,0.89]  o_i = -0.097
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c    -0.097   0.340   0.546   0.729   0.903
+output pct p    0.211   0.320   0.594   0.821   0.903
+needed c*     -0.942x   0.061   0.475   0.672  1.108x
+fit over 3 pts:  (a) o=-0.233 rmse 0.102 | (b) o=-0.629 rmse 0.044 | (c) a=-0.601 b=1.581 rmse 0.043
+
+== aol.com  support [0.06,0.82]  o_i = -0.143
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c    -0.143   0.294   0.499   0.682   0.857
+output pct p    0.172   0.312   0.589   0.752   0.855
+needed c*     -0.678x   0.099   0.433   0.681  1.099x
+fit over 3 pts:  (a) o=-0.231 rmse 0.080 | (b) o=-0.611 rmse 0.023 | (c) a=-0.547 b=1.497 rmse 0.012
+
+== cbc.ca  support [0.11,0.95]  o_i = -0.173
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c    -0.173   0.264   0.470   0.653   0.827
+output pct p    0.237   0.353   0.562   0.800   0.894
+needed c*     -1.060x  -0.122   0.409   0.615  1.023x
+fit over 3 pts:  (a) o=-0.335 rmse 0.159 | (b) o=-0.916 rmse 0.066 | (c) a=-0.912 b=1.909 rmse 0.066
+
+== reuters.com  support [0.10,0.97]  o_i = -0.376
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c    -0.376   0.061   0.266   0.450   0.624
+output pct p    0.240   0.506   0.718   0.816   0.884
+needed c*     -0.772x  -0.360   0.051   0.326  0.920x
+fit over 3 pts:  (a) o=-0.629 rmse 0.124 | (b) o=-1.573 rmse 0.141 | (c) a=-1.118 b=1.768 rmse 0.023
+
+== nypost.com  support [0.51,0.95]  o_i = -0.663
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c    -0.663  -0.226  -0.020   0.163   0.337
+output pct p    0.171   0.380   0.710   0.838   0.876
+needed c*     -1.021x  -0.498  -0.151   0.037  0.917x
+fit over 3 pts:  (a) o=-0.839 rmse 0.068 | (b) o=-1.995 rmse 0.281 | (c) a=-1.081 b=1.381 rmse 0.030
+run nr54_layer_shared_20261006-233527_j11190971, round 100; gain s = 1.000
+mean_l h_l(alpha): [0.    0.463 0.65  0.824 1.   ]  (sd over layers: [0.    0.287 0.205 0.118 0.   ] )
+
+== forbes.com  support [0.03,0.99]  o_i = +0.000
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c     0.000   0.463   0.650   0.824   1.000
+output pct p    0.155   0.272   0.515   0.851   0.958
+needed c*     -0.617x   0.377   0.638   0.772  1.070x
+fit over 3 pts:  (a) o=-0.050 rmse 0.030 | (b) o=-0.135 rmse 0.028 | (c) a=-0.112 b=1.096 rmse 0.027
+
+== theguardian.com  support [0.04,0.55]  o_i = +0.000
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c     0.000   0.463   0.650   0.824   1.000
+output pct p    0.187   0.290   0.485   0.746   0.871
+needed c*     -0.848x   0.283   0.660   0.830  1.181x
+fit over 3 pts:  (a) o=-0.055 rmse 0.089 | (b) o=-0.209 rmse 0.067 | (c) a=-0.391 b=1.520 rmse 0.045
+
+== people.com  support [0.03,0.70]  o_i = +0.000
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c     0.000   0.463   0.650   0.824   1.000
+output pct p    0.180   0.287   0.501   0.662   0.815
+needed c*     -0.780x   0.304   0.649   0.925  1.212x
+fit over 3 pts:  (a) o=-0.020 rmse 0.107 | (b) o=-0.154 rmse 0.091 | (c) a=-0.486 b=1.722 rmse 0.012
+
+== wsj.com  support [0.04,0.89]  o_i = +0.000
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c     0.000   0.463   0.650   0.824   1.000
+output pct p    0.220   0.333   0.585   0.817   0.912
+needed c*     -0.903x   0.124   0.587   0.774  1.161x
+fit over 3 pts:  (a) o=-0.151 rmse 0.133 | (b) o=-0.482 rmse 0.079 | (c) a=-0.672 b=1.807 rmse 0.060
+
+== aol.com  support [0.06,0.82]  o_i = +0.000
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c     0.000   0.463   0.650   0.824   1.000
+output pct p    0.165   0.325   0.585   0.761   0.891
+needed c*     -0.476x   0.246   0.589   0.814  1.148x
+fit over 3 pts:  (a) o=-0.096 rmse 0.088 | (b) o=-0.316 rmse 0.047 | (c) a=-0.467 b=1.574 rmse 0.023
+
+== cbc.ca  support [0.11,0.95]  o_i = +0.000
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c     0.000   0.463   0.650   0.824   1.000
+output pct p    0.241   0.338   0.531   0.798   0.889
+needed c*     -1.146x   0.043   0.620   0.793  1.213x
+fit over 3 pts:  (a) o=-0.160 rmse 0.184 | (b) o=-0.547 rmse 0.125 | (c) a=-0.864 b=2.090 rmse 0.090
+
+== reuters.com  support [0.10,0.97]  o_i = +0.000
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c     0.000   0.463   0.650   0.824   1.000
+output pct p    0.247   0.505   0.707   0.800   0.894
+needed c*     -0.443x   0.006   0.455   0.730  1.197x
+fit over 3 pts:  (a) o=-0.249 rmse 0.153 | (b) o=-0.748 rmse 0.055 | (c) a=-0.902 b=2.011 rmse 0.035
+
+== nypost.com  support [0.51,0.95]  o_i = +0.000
+alpha            0.00    0.25    0.50    0.75    1.00
+coef used c     0.000   0.463   0.650   0.824   1.000
+output pct p    0.190   0.451   0.702   0.825   0.890
+needed c*     -0.339x   0.106   0.500   0.718  1.299x
+fit over 3 pts:  (a) o=-0.204 rmse 0.109 | (b) o=-0.595 rmse 0.040 | (c) a=-0.656 b=1.699 rmse 0.037

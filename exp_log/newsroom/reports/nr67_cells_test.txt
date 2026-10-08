@@ -1,0 +1,91 @@
+split test; rounds {'fed-aligned': 100, 'tp300': 100, 'tp1000': 100, 'tp3000': 100, 'fed-aligned-off': 100, 'fed-shared-soff': 100}
+
+-- per-cell |pct - alpha| at alpha = 0.0
+client             fed-aligned               tp300              tp1000              tp3000     fed-aligned-off     fed-shared-soff
+forbes                   0.169               0.169               0.159               0.164               0.167               0.168
+guardian                 0.189               0.196               0.190               0.190               0.203               0.189
+people                   0.194               0.178               0.187               0.185               0.176               0.192
+wsj                      0.212               0.215               0.216               0.207               0.208               0.209
+aol                      0.165               0.168               0.176               0.168               0.159               0.168
+cbc                      0.248               0.241               0.245               0.247               0.246               0.244
+reuters                  0.275               0.262               0.282               0.254               0.229               0.286
+nypost                   0.244               0.171               0.206               0.191               0.168               0.194
+MEAN                     0.212               0.200               0.208               0.201               0.195               0.206
+
+-- per-cell |pct - alpha| at alpha = 0.25
+client             fed-aligned               tp300              tp1000              tp3000     fed-aligned-off     fed-shared-soff
+forbes                   0.117               0.113               0.112               0.120               0.113               0.111
+guardian                 0.105               0.106               0.112               0.106               0.109               0.106
+people                   0.109               0.112               0.114               0.107               0.110               0.114
+wsj                      0.119               0.127               0.121               0.123               0.121               0.118
+aol                      0.143               0.154               0.142               0.143               0.135               0.127
+cbc                      0.135               0.143               0.150               0.137               0.142               0.135
+reuters                  0.317               0.303               0.314               0.297               0.283               0.336
+nypost                   0.352               0.271               0.288               0.257               0.240               0.251
+MEAN                     0.175               0.166               0.169               0.161               0.157               0.162
+
+-- per-cell |pct - alpha| at alpha = 0.5
+client             fed-aligned               tp300              tp1000              tp3000     fed-aligned-off     fed-shared-soff
+forbes                   0.172               0.162               0.157               0.186               0.167               0.178
+guardian                 0.104               0.111               0.108               0.106               0.104               0.102
+people                   0.104               0.106               0.097               0.109               0.097               0.105
+wsj                      0.136               0.143               0.143               0.143               0.127               0.121
+aol                      0.135               0.147               0.126               0.133               0.120               0.134
+cbc                      0.114               0.127               0.129               0.115               0.119               0.115
+reuters                  0.243               0.246               0.235               0.236               0.239               0.257
+nypost                   0.236               0.220               0.238               0.242               0.228               0.218
+MEAN                     0.155               0.158               0.154               0.159               0.150               0.154
+
+-- per-cell |pct - alpha| at alpha = 0.75
+client             fed-aligned               tp300              tp1000              tp3000     fed-aligned-off     fed-shared-soff
+forbes                   0.165               0.177               0.163               0.170               0.172               0.175
+guardian                 0.106               0.110               0.112               0.113               0.101               0.107
+people                   0.137               0.127               0.139               0.128               0.134               0.130
+wsj                      0.129               0.127               0.123               0.126               0.127               0.123
+aol                      0.095               0.085               0.080               0.085               0.091               0.088
+cbc                      0.113               0.114               0.117               0.114               0.113               0.114
+reuters                  0.136               0.130               0.141               0.137               0.138               0.139
+nypost                   0.134               0.123               0.121               0.128               0.137               0.129
+MEAN                     0.127               0.124               0.124               0.125               0.127               0.126
+
+-- per-cell |pct - alpha| at alpha = 1.0
+client             fed-aligned               tp300              tp1000              tp3000     fed-aligned-off     fed-shared-soff
+forbes                   0.036               0.030               0.029               0.029               0.032               0.038
+guardian                 0.117               0.113               0.106               0.113               0.112               0.141
+people                   0.190               0.170               0.177               0.158               0.195               0.207
+wsj                      0.074               0.074               0.078               0.074               0.087               0.111
+aol                      0.068               0.091               0.101               0.073               0.110               0.122
+cbc                      0.099               0.099               0.089               0.093               0.095               0.097
+reuters                  0.093               0.107               0.094               0.085               0.104               0.090
+nypost                   0.078               0.112               0.107               0.102               0.100               0.114
+MEAN                     0.094               0.100               0.098               0.091               0.104               0.115
+
+-- endpoint share of error: (cell(0) + cell(1)) / sum of cells, mean over clients
+fed-aligned          0.410
+tp300                0.407
+tp1000               0.412
+tp3000               0.403
+fed-aligned-off      0.416
+fed-shared-soff      0.430
+
+-- output percentile at alpha = 0 (target 0) and alpha = 1 (target 1)
+client             fed-aligned               tp300              tp1000              tp3000     fed-aligned-off     fed-shared-soff
+forbes        0.169 / 0.964        0.169 / 0.970        0.159 / 0.971        0.164 / 0.971        0.167 / 0.968        0.168 / 0.962    
+guardian      0.189 / 0.883        0.196 / 0.887        0.190 / 0.894        0.190 / 0.887        0.203 / 0.888        0.189 / 0.859    
+people        0.194 / 0.810        0.178 / 0.830        0.187 / 0.823        0.185 / 0.842        0.176 / 0.805        0.192 / 0.793    
+wsj           0.212 / 0.926        0.215 / 0.926        0.216 / 0.922        0.207 / 0.926        0.208 / 0.913        0.209 / 0.889    
+aol           0.165 / 0.932        0.168 / 0.909        0.176 / 0.899        0.168 / 0.927        0.159 / 0.890        0.168 / 0.878    
+cbc           0.248 / 0.901        0.241 / 0.901        0.245 / 0.911        0.247 / 0.907        0.246 / 0.905        0.244 / 0.903    
+reuters       0.275 / 0.907        0.262 / 0.893        0.282 / 0.906        0.254 / 0.915        0.229 / 0.896        0.286 / 0.910    
+nypost        0.244 / 0.922        0.171 / 0.888        0.206 / 0.893        0.191 / 0.898        0.168 / 0.900        0.194 / 0.886    
+
+-- learned offset o_i (from the eval file; None = no offset)
+client             fed-aligned               tp300              tp1000              tp3000     fed-aligned-off     fed-shared-soff
+forbes                     nan                 nan                 nan                 nan              -0.149              -0.026
+guardian                   nan                 nan                 nan                 nan              -0.021              -0.026
+people                     nan                 nan                 nan                 nan              -0.133              -0.026
+wsj                        nan                 nan                 nan                 nan              -0.097              -0.026
+aol                        nan                 nan                 nan                 nan              -0.125              -0.026
+cbc                        nan                 nan                 nan                 nan              -0.151              -0.026
+reuters                    nan                 nan                 nan                 nan              -0.381              -0.026
+nypost                     nan                 nan                 nan                 nan              -0.618              -0.026

@@ -1,0 +1,34 @@
+MATH-20  E1 answer-in-prompt, test (100 problems/client, alpha in {0,.25,.5,.75,1}), checkpoint round 100 (dev-selected, both arms)
+fed   = fed-shared-gain-1shape  Delta 22703349  runs/math7_ans_e1_fed_qwen25_7b_20261007-091715_j22703349   g_i(a) = s*h(a), s and h shared
+local = local-gain-1shape       Delta 22703350  runs/math7_ans_e1_local_qwen25_7b_20261007-091715_j22703350 g_i(a) = s_i*h_i(a)
+Both: Qwen2.5-7B-Instruct, private adapter P_i, no offset, gain clamp 4, warp_reg 0.01, 100 rounds.
+
+client                     support         pct err fed/local (diff)    in-supp fed/local   out-supp fed/local   spearman fed/local   range fed/local   reach fed/local   s fed/local
+cn_k12/Logic and Puzzles   [0.012,0.618]   0.218 / 0.260 (-0.042)      0.145 / 0.142       0.266 / 0.340        0.931 / 0.750        0.488 / 0.361     0.183 / 0.197     3.17 / 4.00
+gsm8k                      [0.103,0.603]   0.259 / 0.239 (+0.021)      0.140 / 0.133       0.339 / 0.309        0.801 / 0.832        0.294 / 0.370     0.183 / 0.300     3.17 / 4.00
+orca_math/Algebra          [0.042,0.742]   0.320 / 0.306 (+0.014)      0.203 / 0.180       0.398 / 0.390        0.493 / 0.646        0.098 / 0.137     0.083 / 0.073     3.17 / 2.10
+cn_k12/Inequalities        [0.046,0.819]   0.196 / 0.218 (-0.021)      0.163 / 0.173       0.247 / 0.284        0.902 / 0.812        0.506 / 0.431     0.150 / 0.135     3.17 / 4.00
+cn_k12/Geometry            [0.039,0.891]   0.196 / 0.214 (-0.018)      0.163 / 0.184       0.246 / 0.259        0.891 / 0.813        0.507 / 0.482     0.120 / 0.130     3.17 / 4.00
+math                       [0.178,0.870]   0.273 / 0.283 (-0.010)      0.218 / 0.227       0.355 / 0.367        0.745 / 0.717        0.290 / 0.267     0.140 / 0.160     3.17 / 4.00
+olympiads                  [0.544,0.984]   0.315 / 0.323 (-0.008)      0.123 / 0.132       0.363 / 0.371        0.757 / 0.705        0.249 / 0.228     0.200 / 0.210     3.17 / 4.00
+aops_forum                 [0.557,0.989]   0.262 / 0.214 (+0.048)      0.122 / 0.141       0.297 / 0.232        0.794 / 0.829        0.532 / 0.713     0.295 / 0.403     3.17 / 4.00
+MEAN                                       0.255 / 0.257               0.160 / 0.164       0.314 / 0.319        0.789 / 0.763        0.370 / 0.374     0.169 / 0.201
+WORST                                      0.320 / 0.323
+(penalized = plain pct err: unscorable 0, no-effect <= 0.01)
+
+Mean output percentile by alpha (target = alpha):
+client                     fed                                local
+cn_k12/Logic and Puzzles   .089 .189 .333 .467 .577           .028 .246 .365 .370 .389
+gsm8k                      .204 .295 .371 .438 .498           .136 .307 .397 .453 .506
+orca_math/Algebra          .380 .414 .435 .471 .477           .363 .388 .427 .454 .501
+cn_k12/Inequalities        .199 .311 .459 .591 .706           .162 .361 .508 .542 .593
+cn_k12/Geometry            .212 .329 .483 .621 .720           .145 .382 .534 .610 .627
+math                       .471 .519 .622 .671 .760           .415 .530 .641 .664 .682
+olympiads                  .603 .686 .759 .815 .852           .615 .672 .777 .839 .843
+aops_forum                 .331 .643 .778 .828 .863           .173 .507 .790 .856 .886
+mean over clients          .311 .423 .530 .613 .682           .255 .424 .555 .599 .628
+mean |pct - alpha|         .311 .189 .135 .173 .318           .255 .175 .133 .200 .372
+
+Shapes: fed shared h: h(.1,.25,.5,.75,.9) = .105 .261 .517 .766 .910 (near identity).
+        local h_i example (Logic and Puzzles): .426 .732 .923 .976 .991 (saturates by alpha ~ .5).
+Math quality (all clients x alphas): accuracy fed 0.942 (worst cell 0.86) / local 0.945 (0.88); boxed 0.992 / 0.989; truncated 0.006 / 0.005; loop 0.005 / 0.005; mean tokens 406 / 394.

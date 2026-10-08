@@ -1,0 +1,23 @@
+Response gap (test): signed mean output percentile - alpha, per client and alpha; '.' = alpha outside the client's support
+
+-- fed-shared
+client              0.00    0.25    0.50    0.75    1.00   in-support mean |gap|
+forbes.com             .  +0.022  +0.015  +0.101       .   0.046
+theguardian.com        .  +0.040  -0.015       .       .   0.027
+people.com             .  +0.037  +0.001       .       .   0.019
+wsj.com                .  +0.083  +0.085  +0.067       .   0.078
+aol.com                .  +0.075  +0.085  +0.011       .   0.057
+cbc.ca                 .  +0.088  +0.031  +0.048       .   0.056
+reuters.com            .  +0.255  +0.207  +0.050       .   0.171
+nypost.com             .       .       .  +0.075       .   0.075
+
+-- fed-shared-off
+client              0.00    0.25    0.50    0.75    1.00   in-support mean |gap|
+forbes.com             .  +0.016  +0.023  +0.100       .   0.046
+theguardian.com        .  +0.044  +0.016       .       .   0.030
+people.com             .  +0.027  -0.007       .       .   0.017
+wsj.com                .  +0.070  +0.094  +0.071       .   0.078
+aol.com                .  +0.062  +0.089  +0.002       .   0.051
+cbc.ca                 .  +0.103  +0.062  +0.050       .   0.072
+reuters.com            .  +0.256  +0.218  +0.066       .   0.180
+nypost.com             .       .       .  +0.088       .   0.088

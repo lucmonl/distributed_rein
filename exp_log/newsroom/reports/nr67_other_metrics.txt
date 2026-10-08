@@ -1,0 +1,48 @@
+
+== Steering beyond pct err (test; mean over clients)
+run                      spearman  spear_worst   concord_nt  adj_incr_nt   endpt_incr  near_no_eff        reach    pct_range   unscorable    test_loss
+fed-shared                  0.931          nan        0.909        0.719        0.999        0.000        0.407        0.692        0.000            —
+fed-shared-off              0.928          nan        0.909        0.710        0.999        0.001        0.393        0.683        0.000            —
+fed-shared-soff             0.926          nan        0.904        0.707        0.998        0.003        0.397        0.679        0.000            —
+fed-private                 0.926          nan        0.907        0.714        0.996        0.007        0.406        0.662        0.000            —
+fed-private-off             0.928          nan        0.908        0.712        0.998        0.004        0.393        0.676        0.000            —
+fed-aligned                 0.927          nan        0.907        0.718        0.998        0.005        0.421        0.694        0.000            —
+fed-aligned-tp300           0.931          nan        0.909        0.720        0.999        0.001        0.417        0.700        0.000            —
+fed-aligned-tp1000          0.930          nan        0.908        0.722        0.999        0.001        0.418        0.694        0.000            —
+fed-aligned-tp3000          0.933          nan        0.912        0.731        1.000        0.001        0.435        0.708        0.000            —
+fed-aligned-off             0.929          nan        0.910        0.720        0.999        0.001        0.425        0.701        0.000            —
+fed-aligned-soff            0.931          nan        0.909        0.717        0.998        0.003        0.405        0.698        0.000            —
+local                       0.912          nan        0.897        0.692        0.996        0.010        0.396        0.681        0.000            —
+local-off                   0.886          nan        0.874        0.639        0.991        0.019        0.365        0.620        0.000            —
+
+== Quality (test; mean over clients; gap = generated - real summary at the same alpha)
+run                      align_in    align_out    gap_al_in   gap_al_out      bert_in     bert_out   gap_len_in  gap_len_out     rep3_out    empty_out
+fed-shared                  0.781        0.730       -0.023        0.046        0.900        0.889        1.787        3.154        0.006        0.000
+fed-shared-off              0.787        0.734       -0.017        0.050        0.901        0.889        1.845        2.233        0.006        0.000
+fed-shared-soff             0.782        0.730       -0.023        0.046        0.902        0.890        2.199        2.825        0.005        0.000
+fed-private                 0.787        0.740       -0.017        0.057        0.901        0.891        2.265        4.136        0.005        0.000
+fed-private-off             0.787        0.732       -0.018        0.049        0.900        0.889        1.702        2.211        0.004        0.000
+fed-aligned                 0.791        0.737       -0.013        0.053        0.901        0.890        2.407        4.899        0.007        0.000
+fed-aligned-tp300           0.785        0.735       -0.019        0.051        0.902        0.889        1.623        3.849        0.006        0.000
+fed-aligned-tp1000          0.795        0.740       -0.009        0.056        0.902        0.890        1.560        3.939        0.006        0.000
+fed-aligned-tp3000          0.788        0.729       -0.016        0.045        0.901        0.889        2.251        5.086        0.006        0.000
+fed-aligned-off             0.786        0.731       -0.018        0.047        0.900        0.888        2.424        3.385        0.005        0.000
+fed-aligned-soff            0.778        0.736       -0.027        0.053        0.901        0.890        2.313        3.837        0.006        0.000
+local                       0.786        0.722       -0.018        0.039        0.901        0.889        2.389        1.429        0.005        0.000
+local-off                   0.806        0.761        0.002        0.077        0.902        0.890        3.421        4.348        0.012        0.000
+
+== LLM judge (Qwen2.5-7B; 25 summaries per client per alpha; in/out of each client's support)
+run                      faith_in    faith_out     relev_in    relev_out     coher_in    coher_out
+fed-shared                  0.837        0.780        3.652        3.654        4.232        4.166
+fed-shared-off              0.840        0.797        3.608        3.664        4.232        4.208
+fed-shared-soff             0.850        0.789        3.632        3.642        4.224        4.154
+fed-private                 0.851        0.789        3.650        3.682        4.198        4.202
+fed-private-off             0.830        0.787        3.628        3.644        4.224        4.162
+fed-aligned                 0.833        0.811        3.650        3.686        4.216        4.198
+fed-aligned-tp300           0.847        0.804        3.620        3.670        4.204        4.190
+fed-aligned-tp1000          0.840        0.791        3.634        3.656        4.210        4.198
+fed-aligned-tp3000          0.846        0.772        3.640        3.634        4.236        4.206
+fed-aligned-off             0.837        0.787        3.620        3.664        4.200        4.174
+fed-aligned-soff            0.822        0.789        3.624        3.654        4.216        4.206
+local                       0.837        0.780        3.646        3.594        4.246        4.164
+local-off                   0.857        0.806        3.654        3.668        4.226        4.190

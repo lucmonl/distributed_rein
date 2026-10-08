@@ -171,6 +171,182 @@ The main backbone is Llama-3.2-1B-Instruct.
 We replicate the participant comparison on Qwen3-8B, with thinking disabled.
 Both use identical data and hyperparameters.
 
+% Source: exp_log/EXPERIMENT_LOG.md NR-58; fedsteer/coverage.py (pool_and_project,
+% isotonic_blocks, evidence_counts, saturating_weights); fedsteer/fed.py (calibration=aligned).
+% Arm label fed-aligned: lora.warp_scope=module fed.fix_gain=true lora.offset=false
+% fed.warp_reg=0 fed.calibration=aligned fed.cov_grid=21 fed.cov_pool=saturating
+% fed.cov_lambda_max=0.01 (cov_bandwidth 0.2, cov_tau_pool = cov_tau_local = 100).
+\subsection{Aligned calibration}
+\label{sec:setup-aligned}
+
+A calibration shared by parameter averaging fits one curve for all clients, yet a client contributes useful evidence only where it has data.
+A per-client calibration uses that evidence but must extrapolate outside the client's support, where it fails for skewed clients (Section~\ref{sec:results-calibration}).
+\emph{Aligned calibration} keeps one calibration curve per client and layer, but every forward pass, in training and at inference, uses a single pooled curve.
+In this pooled curve, each region of the $\alpha$ axis is determined by the clients that have data there.
+
+\paragraph{Per-layer shapes.}
+The gain is fixed at $s=1$ and there is no offset.
+Client $i$ has its own monotone shape $h_{i,l}$ of the form above for every adapted matrix $l$, with $h_{i,l}(0)=0$ and $h_{i,l}(1)=1$.
+Shape parameters are never averaged.
+Instead, the server pools their \emph{values} on a common grid $a_k=\frac{k-1}{K-1}$, $k=1,\dots,K$.
+
+\paragraph{Evidence weights.}
+Client $i$'s evidence at grid point $a_k$ is a triangular-kernel count of its training labels,
+\begin{equation}
+  c_{ik} = \sum_{(x,y)\in S_i} \max\Bigl(0,\, 1-\frac{\lvert \alpha(y)-a_k\rvert}{b}\Bigr),
+\end{equation}
+computed once from the client's training subset.
+It enters the pool through the saturating weight
+\begin{equation}
+  \omega_{ik} = \frac{c_{ik}}{\tau + c_{ik}} \in [0,1).
+\end{equation}
+The weight approaches 1 wherever the client has much nearby data and is 0 where it has none.
+A dense client therefore cannot dominate a pooled value, in keeping with the equal-weight reference $F$.
+
+\paragraph{Pooled curve.}
+For layer $l$, the pooled value at $a_k$ is the evidence-weighted mean of the clients' curves,
+\begin{equation}
+  m_{l,k} = \frac{1}{\Omega_k}\sum_{j} \omega_{jk}\, h_{j,l}(a_k),
+  \qquad
+  \Omega_k = \sum_{j} \omega_{jk} .
+  \label{eq:pooled-mean}
+\end{equation}
+$\Omega_k$ is the \emph{total evidence weight} at $a_k$: the sum of all participants' saturating weights there.
+It depends only on the counts $c_{jk}$, which are fixed before training, so it is the same for every client and every layer, and it is a constant in all gradients below.
+We call $a_k$ \emph{covered} if $\Omega_k>0$, i.e.\ if at least one client has data within distance $b$ of it.
+The covered grid points, in increasing order, form the set $\mathcal{C}=\{k:\Omega_k>0\}=\{k_1<k_2<\dots<k_n\}$.
+The pooled calibration is the monotone projection $\bar g_l = \Pi(m_l)$ of these values:
+\begin{itemize}
+  \item on the covered points, $\Pi$ is the weighted isotonic regression
+  \begin{equation}
+    \bigl(\bar g_l(a_k)\bigr)_{k\in\mathcal{C}} = \operatorname*{arg\,min}_{z} \sum_{k\in\mathcal{C}} \Omega_k\,\bigl(z_k-m_{l,k}\bigr)^2
+    \label{eq:isotonic}
+  \end{equation}
+  subject to $z_{k_1}\le z_{k_2}\le\dots\le z_{k_n}$, so a pooled value backed by more evidence moves less when monotonicity has to be restored;
+  \item at a grid point no client covers ($\Omega_k=0$), the pooled mean is undefined, so $\Pi$ \emph{defines} the value by linear interpolation between the nearest covered points $a_{k^-}<a_k<a_{k^+}$ (value 0 or 1 if there is no covered point on one side);
+  \item endpoints set exactly to $\bar g_l(0)=0$ and $\bar g_l(1)=1$.
+\end{itemize}
+Between grid points, $\bar g_l(\alpha)$ is the piecewise-linear interpolation of the table.
+The coefficient on the direction in layer $l$ of Equation~\ref{eq:steerlinear} is then $\bar g_l(\alpha)$ for every client.
+This pools function values, not parameters.
+Where only one client has data, $\bar g_l$ follows that client's curve.
+Where several overlap, $\bar g_l$ is their weighted average.
+
+\paragraph{Training through the pooled curve.}
+To use the same map in training and at inference, client $i$ trains \emph{through} $\bar g$.
+In each local step it rebuilds the pooled curve from its own current shape values, which carry gradients, and the other clients' values from the end of the previous round, $\tilde h_{j,l}$, which are held fixed:
+\begin{align}
+  m^{(i)}_{l,k} &= \frac{\omega_{ik}\, h_{i,l}(a_k) + \sum_{j\neq i} \omega_{jk}\, \tilde h_{j,l}(a_k)}{\sum_{j} \omega_{jk}}, \\
+  \bar g^{(i)}_l &= \Pi\bigl(m^{(i)}_l\bigr).
+\end{align}
+The server sends client $i$ only the leave-one-out sums $\sum_{j\neq i} \omega_{jk}\tilde h_{j,l}(a_k)$ and $\sum_{j\neq i} \omega_{jk}$.
+After a round, clients upload their grid values $h_{i,l}(a_k)$.
+The server stores them as the next round's $\tilde h$ and builds the inference table by applying the same operator to all clients' final values.
+The map a client trains through thus equals the inference map, except that the other clients' contributions are one round old.
+
+\paragraph{Gradient through the pooled curve.}
+In client $i$'s step, the other clients' values $\tilde h_{j,l}$ are constants.
+Only client $i$'s shape parameters $\psi_{i,l}=(w_{i,l},p_{i,l},q_{i,l})$ receive gradient through $\bar g$.
+The adapter and the direction receive their usual gradients, with $\bar g^{(i)}_l(\alpha)$ acting as a multiplier.
+The pooled curve is rebuilt from the current $\psi_{i,l}$ before every forward pass.
+The gradient of the loss with respect to $\psi_{i,l}$ is the composition of four steps, listed from the loss backwards.
+
+\emph{(1) Interpolation.}
+A training pair with level $\alpha\in[a_k,a_{k+1}]$ uses
+$\bar g^{(i)}_l(\alpha)=(1-\rho)\,\bar g^{(i)}_l(a_k)+\rho\,\bar g^{(i)}_l(a_{k+1})$, where $\rho=(\alpha-a_k)(K-1)$.
+The coefficient's gradient, $\partial\ell/\partial\bar g^{(i)}_l(\alpha)=\sum_t\langle\partial\ell/\partial y_t,\,B^{D}A^{D}x_t\rangle$ summed over token positions $t$, is split between the two neighbouring grid values with weights $1-\rho$ and $\rho$.
+Summed over the batch, this gives $G_{l,k}=\partial\mathcal{L}_i/\partial\bar g^{(i)}_l(a_k)$.
+At a grid point that no client covers, $\Pi$ sets the value to $(1-t)\,\bar g^{(i)}_l(a_{k^-})+t\,\bar g^{(i)}_l(a_{k^+})$, with $t=(a_k-a_{k^-})/(a_{k^+}-a_{k^-})$.
+This is part of the definition of $\Pi$, not an approximation, and the inference table uses the same rule.
+The value is a fixed linear function of its two neighbours, so it passes its gradient to them with weights $1-t$ and $t$.
+Any value between the two neighbours keeps $\bar g$ monotone; linear interpolation additionally makes $\bar g$ a single straight line between $a_{k^-}$ and $a_{k^+}$, as if the uncovered points were absent from the grid.
+On Newsroom no grid point is uncovered: every $a_k$ has a total smoothed count above 3{,}000.
+The endpoints are the constants 0 and 1 and pass none.
+
+\emph{(2) Projection.}
+The solution of Equation~\ref{eq:isotonic} has a block structure, which defines $B(k)$.
+A \emph{block} is a set of covered points that are consecutive in $\mathcal{C}$, $B=\{k_r,k_{r+1},\dots,k_s\}$; it may span uncovered grid points, which carry no weight.
+A block's weight and weighted mean are
+\begin{equation}
+  \Omega_B=\sum_{k\in B}\Omega_k,
+  \qquad
+  \mu(B)=\frac{1}{\Omega_B}\sum_{k\in B}\Omega_k\, m^{(i)}_{l,k} .
+\end{equation}
+The pool-adjacent-violators algorithm partitions $\mathcal{C}$ into blocks $B_1,\dots,B_r$, ordered from left to right.
+It starts with every covered point as its own block.
+Scanning from left to right, whenever a block's mean is strictly greater than the mean of the block to its right, it merges the two, and it repeats the check with the merged block's left neighbour.
+It stops when $\mu(B_1)\le\mu(B_2)\le\dots\le\mu(B_r)$.
+$B(k)$ denotes the block that contains grid point $k$, and the solution assigns every point of a block the block's mean:
+\begin{equation}
+  \bar g^{(i)}_l(a_k) = \mu\bigl(B(k)\bigr) = \frac{1}{\Omega_{B(k)}}\sum_{k'\in B(k)} \Omega_{k'}\, m^{(i)}_{l,k'} .
+\end{equation}
+The partition depends on the current pooled values, so it is recomputed for every layer and every forward pass.
+We drop the indices $i$ and $l$ from $B$ for readability.
+When the endpoints are covered (as on Newsroom), each forms a single-point block.
+Every shape satisfies $h(0)=0$ and $h(1)=1$, so $m_{l,1}=0$ and $m_{l,K}=1$ are the smallest and largest of the pooled values, and a strict violation involving them cannot occur.
+The partition is a function of the pooled values, $B=B\bigl(m^{(i)}_l\bigr)$, but a discrete one.
+It is piecewise constant in $m^{(i)}_l$ and changes only where the means of two adjacent groups of points cross.
+Its derivative is therefore zero wherever it exists, and it needs no gradient.
+On each region where the partition is fixed, the projection is linear, $\bar g^{(i)}_l = A_{B}\, m^{(i)}_l$, where $A_B$ is the block-averaging matrix.
+We therefore compute the partition from the current values without gradient, and differentiate the block means with the partition held fixed:
+\begin{equation}
+  \frac{\partial \bar g^{(i)}_l(a_k)}{\partial m^{(i)}_{l,k'}} = \mathbb{1}\bigl[k'\in B(k)\bigr]\,\frac{\Omega_{k'}}{\Omega_{B(k)}} .
+  \label{eq:proj-jacobian}
+\end{equation}
+This is the exact Jacobian of weighted isotonic regression wherever the partition does not change under small perturbations of $m^{(i)}_l$.
+That holds everywhere except on a measure-zero set of pooled values, where two adjacent groups of points have exactly equal weighted means \citep[cf.\ the unweighted case in][]{blondel-etal-2020-fast}.
+At such a point the projection is still continuous.
+Equation~\ref{eq:isotonic} has a unique solution, which is a projection onto the monotone cone under the $\Omega$-weighted norm and hence 1-Lipschitz in $m^{(i)}_l$.
+Merging the two tied groups or not gives the same values, and only the one-sided Jacobians differ.
+Our strict-merging rule returns one of them, which is an element of the Clarke generalized Jacobian.
+Two cases follow.
+If $m^{(i)}_l$ is already increasing, every block is a single point and the Jacobian is the identity.
+If a block has merged several points, the gradient arriving at any of them is shared among all members in proportion to their weights.
+This is the only place where the projection is non-local.
+
+\emph{(3) Pooling.}
+By the definition of $m^{(i)}_{l,k}$, $\partial m^{(i)}_{l,k}/\partial h_{i,l}(a_k)=\omega_{ik}/\Omega_k$.
+Combined with Equation~\ref{eq:proj-jacobian}, $\Omega_{k'}$ cancels:
+\begin{equation}
+  \frac{\partial \bar g^{(i)}_l(a_k)}{\partial h_{i,l}(a_{k'})} = \mathbb{1}\bigl[k'\in B(k)\bigr]\,\frac{\omega_{ik'}}{\Omega_{B(k)}} .
+\end{equation}
+Client $i$'s value at $a_{k'}$ therefore receives gradient only if $\omega_{ik'}>0$, that is, only where the client has data.
+Its share is its evidence relative to the total evidence of the block.
+Where several clients overlap, each moves the pooled value in proportion to its weight.
+
+\emph{(4) Shape.}
+The gradient reaches $\psi_{i,l}$ through the closed-form derivative of the Kumaraswamy mixture $h_{i,l}(a_{k'})$, computed by automatic differentiation.
+In total,
+\begin{equation}
+  \nabla_{\psi_{i,l}}\mathcal{L}_i
+  = \sum_{k} G_{l,k} \sum_{k'\in B(k)} \frac{\omega_{ik'}}{\Omega_{B(k)}}\,
+    \nabla_{\psi_{i,l}} h_{i,l}(a_{k'}) ,
+  \label{eq:aligned-grad}
+\end{equation}
+where $k$ runs over the covered grid points, and $G_{l,k}$ includes the gradient passed on by interpolated neighbours.
+The shape is parametric, so a step on $\psi_{i,l}$ also changes $h_{i,l}$ where the client has no data.
+Those values carry zero weight in $\bar g$, so they affect neither training nor inference.
+The projection is applied separately to each layer, so the loss at layer $l$ trains only that layer's shapes.
+
+\paragraph{Tie penalty.}
+Where clients overlap, $\bar g$ depends only on the weighted average of their values.
+The individual curves are therefore not fully determined and could drift apart, creating dips that the projection must flatten.
+A small penalty, applied only where the client has data, ties each client's curve to the pooled one:
+\begin{equation}
+  R_i = \frac{\lambda_{\max}}{LK}\sum_{l=1}^{L}\sum_{k=1}^{K} \omega_{ik}\bigl(h_{i,l}(a_k) - \mathrm{sg}\bigl[\bar g^{(i)}_l(a_k)\bigr]\bigr)^2,
+\end{equation}
+where $\mathrm{sg}$ stops the gradient and $L$ is the number of adapted matrices.
+The pooled curve is a constant in this term, so its gradient goes to the client's own values only:
+$\partial R_i/\partial h_{i,l}(a_k) = \tfrac{2\lambda_{\max}}{LK}\,\omega_{ik}\bigl(h_{i,l}(a_k)-\bar g^{(i)}_l(a_k)\bigr)$.
+The local objective becomes $\mathcal{L}_i + R_i$, and the shape parameters receive the sum of Equation~\ref{eq:aligned-grad} and this term.
+They are updated with AdamW together with the adapter and the direction.
+
+\paragraph{Settings.}
+We use $K=21$ grid points, bandwidth $b=0.2$, $\tau=100$ and $\lambda_{\max}=0.01$, with one shape per adapted matrix ($L=112$ on Llama-3.2-1B) and no penalty toward the identity.
+The direction is averaged uniformly as before.
+Until round~5 the shapes are frozen at the identity, so $\bar g$ is the identity.
+The results in Section~\ref{sec:results} use the shared calibration of Section~\ref{sec:setup-model}.
+
 \subsection{Compared methods}
 \label{sec:setup-baselines}
 

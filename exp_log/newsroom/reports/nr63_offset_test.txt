@@ -1,0 +1,83 @@
+== Steering (test; mean over clients; worst client in brackets)
+pctErrFail1 = all-cell percentile error with penalty 1 for each unscorable output (supplementary)
+run              round    pct_calib_err      pctErrFail1   pct_err_in_sup   pct_err_out_su       reach_rate         spearman  concord_nt  nearTie endNearTie
+fed-shared         100    0.150 (0.204)    0.150 (0.204)    0.134 (0.222)    0.157 (0.201)    0.407            0.931 (0.881)       0.909    0.194      0.000
+fed-shared-off     100    0.150 (0.205)    0.150 (0.205)    0.134 (0.223)    0.158 (0.184)    0.393            0.928 (0.890)       0.909    0.200      0.001
+fed-private        100    0.158 (0.241)    0.158 (0.241)    0.136 (0.221)    0.168 (0.269)    0.406            0.926 (0.864)       0.907    0.204      0.008
+fed-private-off    100    0.150 (0.192)    0.150 (0.192)    0.133 (0.202)    0.160 (0.208)    0.393            0.928 (0.888)       0.908    0.198      0.003
+fed-aligned        100    0.153 (0.213)    0.153 (0.213)    0.138 (0.232)    0.157 (0.228)    0.421            0.927 (0.873)       0.907    0.193      0.003
+
+== Quality (test; mean over clients). gap = generated - real summaries at the same alpha
+run                    align_in      align_out   gap_align_in  gap_align_out     bert_f1_in    bert_f1_out      length_in     length_out  gap_length_in gap_length_out
+fed-shared                0.781          0.730         -0.023          0.046          0.900          0.889         31.876         37.301          1.787          3.154
+fed-shared-off            0.787          0.734         -0.017          0.050          0.901          0.889         31.934         36.379          1.845          2.233
+fed-private               0.787          0.740         -0.017          0.057          0.901          0.891         32.354         38.283          2.265          4.136
+fed-private-off           0.787          0.732         -0.018          0.049          0.900          0.889         31.791         36.358          1.702          2.211
+fed-aligned               0.791          0.737         -0.013          0.053          0.901          0.890         32.496         39.046          2.407          4.899
+
+== LLM judge (subsample; mean over clients)
+run                    faithful_in      faithful_out   gap_faithful_in  gap_faithful_out      relevance_in     relevance_out  gap_relevance_in gap_relevance_out      coherence_in     coherence_out
+fed-shared                   0.827             0.779            -0.079             0.008             3.651             3.659             0.017             0.022             4.226             4.170
+fed-shared-off               0.835             0.802            -0.071             0.030             3.610             3.685            -0.023             0.049             4.223             4.217
+fed-private                  0.844             0.788            -0.062             0.017             3.654             3.692             0.021             0.055             4.198             4.207
+fed-private-off              0.819             0.790            -0.087             0.019             3.620             3.653            -0.013             0.017             4.212             4.163
+fed-aligned                  0.823             0.815            -0.083             0.043             3.644             3.705             0.011             0.069             4.198             4.200
+
+== Per-client percentile error (test)
+client                 support     fed-shared fed-shared-off    fed-private fed-private-off    fed-aligned
+forbes.com        [0.03,0.99]          0.126          0.129          0.126          0.133          0.132
+theguardian.com   [0.04,0.55]          0.129          0.124          0.125          0.123          0.124
+people.com        [0.03,0.70]          0.145          0.153          0.147          0.147          0.147
+wsj.com           [0.04,0.89]          0.139          0.141          0.140          0.141          0.134
+aol.com           [0.06,0.82]          0.129          0.133          0.127          0.130          0.121
+cbc.ca            [0.11,0.95]          0.138          0.141          0.144          0.147          0.142
+reuters.com       [0.10,0.97]          0.204          0.205          0.213          0.190          0.213
+nypost.com        [0.51,0.95]          0.187          0.172          0.241          0.192          0.209
+
+== fed-shared-off - fed-shared: per-client paired bootstrap (negative = fed-shared-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.003 [-0.003,+0.009]     +0.005 [-0.002,+0.013] 
+theguardian.com      -0.006 [-0.012,+0.000]     -0.009 [-0.017,-0.002]*
+people.com           +0.008 [+0.002,+0.015]*    +0.013 [+0.005,+0.021]*
+wsj.com              +0.001 [-0.004,+0.006]     +0.000 [-0.008,+0.008] 
+aol.com              +0.005 [-0.001,+0.010]     +0.021 [+0.011,+0.031]*
+cbc.ca               +0.003 [-0.003,+0.008]     -0.005 [-0.014,+0.005] 
+reuters.com          +0.001 [-0.007,+0.009]     +0.002 [-0.014,+0.017] 
+nypost.com           -0.015 [-0.023,-0.007]*    -0.017 [-0.026,-0.008]*
+fed-shared-off significantly better on 1/8 clients, worse on 1/8
+
+== fed-private-off - fed-private: per-client paired bootstrap (negative = fed-private-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.007 [+0.001,+0.012]*    +0.010 [+0.002,+0.018]*
+theguardian.com      -0.003 [-0.008,+0.003]     +0.001 [-0.007,+0.008] 
+people.com           -0.000 [-0.006,+0.006]     +0.002 [-0.006,+0.010] 
+wsj.com              +0.001 [-0.004,+0.007]     -0.001 [-0.010,+0.007] 
+aol.com              +0.002 [-0.003,+0.008]     +0.008 [-0.001,+0.017] 
+cbc.ca               +0.003 [-0.002,+0.009]     +0.006 [-0.003,+0.015] 
+reuters.com          -0.023 [-0.031,-0.015]*    -0.029 [-0.044,-0.014]*
+nypost.com           -0.049 [-0.061,-0.038]*    -0.061 [-0.075,-0.048]*
+fed-private-off significantly better on 2/8 clients, worse on 1/8
+
+== fed-shared-off - fed-private-off: per-client paired bootstrap (negative = fed-shared-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.005 [-0.010,+0.001]     +0.000 [-0.008,+0.009] 
+theguardian.com      +0.001 [-0.004,+0.006]     -0.004 [-0.010,+0.003] 
+people.com           +0.006 [+0.001,+0.012]*    +0.008 [+0.001,+0.015]*
+wsj.com              -0.000 [-0.006,+0.005]     -0.000 [-0.008,+0.008] 
+aol.com              +0.004 [-0.001,+0.008]     +0.010 [+0.001,+0.017]*
+cbc.ca               -0.007 [-0.011,-0.002]*    -0.011 [-0.019,-0.003]*
+reuters.com          +0.015 [+0.007,+0.023]*    +0.007 [-0.010,+0.023] 
+nypost.com           -0.020 [-0.028,-0.013]*    -0.024 [-0.034,-0.015]*
+fed-shared-off significantly better on 2/8 clients, worse on 2/8
+
+== fed-shared-off - fed-aligned: per-client paired bootstrap (negative = fed-shared-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.003 [-0.008,+0.002]     +0.001 [-0.007,+0.009] 
+theguardian.com      -0.001 [-0.005,+0.004]     -0.002 [-0.008,+0.004] 
+people.com           +0.007 [-0.000,+0.013]     +0.009 [-0.001,+0.019] 
+wsj.com              +0.007 [+0.001,+0.012]*    +0.011 [+0.002,+0.020]*
+aol.com              +0.012 [+0.007,+0.017]*    +0.042 [+0.033,+0.051]*
+cbc.ca               -0.001 [-0.007,+0.005]     -0.002 [-0.011,+0.007] 
+reuters.com          -0.008 [-0.015,-0.000]*    -0.006 [-0.020,+0.008] 
+nypost.com           -0.037 [-0.046,-0.029]*    -0.044 [-0.055,-0.033]*
+fed-shared-off significantly better on 2/8 clients, worse on 2/8

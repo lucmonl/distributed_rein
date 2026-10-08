@@ -98,6 +98,6 @@ How the shape is learned (fed only; local is always private):
 - Changes must be **opt-in**: a new flag whose default reproduces the current behaviour exactly.
 - `python tests/test_fedsteer.py` must pass in full before any job is submitted with the change.
 - Record the change in your own LOG.md under a "Shared code change" heading, and message the coordinator with the file list.
-- Only the session the coordinator names may edit a shared file at a time. Current grants: **none**. Closed: NR-60b (`fed.shared_offset` for aligned, 76/76); NR-60 (`fed.private_offset`, `fed.local_reset_opt_state`, 74/74); NR-62 (aligned accepts `lora.offset`, 75/75; made at the user's direct request and recorded afterwards). Ask the coordinator before editing shared code.
+- Only the session the coordinator names may edit a shared file at a time. Current grants: **newsroom-iter1: `e2_heldout.py`, `fedsteer/adapt.py`, `tests/test_fedsteer.py` (NR-68, E2 for aligned / private-offset / fixed-gain runs; opened 2026-10-08)**. Closed: NR-60b (`fed.shared_offset` for aligned, 76/76); NR-60 (`fed.private_offset`, `fed.local_reset_opt_state`, 74/74); NR-62 (aligned accepts `lora.offset`, 75/75; made at the user's direct request and recorded afterwards). Ask the coordinator before editing shared code.
 - Before syncing code to another cluster, make sure the full test suite passes on cc; jobs run from a code snapshot, so running jobs are never affected.
 - Never `git commit` (user rule); list changed files instead.

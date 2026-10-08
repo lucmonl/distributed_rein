@@ -262,3 +262,54 @@ design decision treats as already fair, so the question these jobs were launched
 answered: **with a learned gain and one shape per client, the shared direction loses to a private
 one on pruned ChEMBL.** Single seed, and `compare_runs.py` gives no paired bootstrap, so 6-of-8 is a
 direction and not a significance claim.
+
+### MOL-24b. Anvil gated off; expected arm change pending (2026-10-08)
+
+**Anvil is unusable** (CAL-11): `/anvil/scratch/x-zchen17/lucmon/envs/rein` has lost stdlib files,
+apparently to a scratch purge, and every Anvil job since 03:09 dies in seconds with `cannot import
+name '_parser' from partially initialized module 're'`. The Anvil half of
+[MOL-24.sh](launch/MOL-24.sh) is now **gated behind `ANVIL=1`** and off by default, so MOL-24 is a
+cc-only race at **0 SU** until the environment is rebuilt and a short job completes there. The
+rebuild is the user's call; the environment has not been touched from here. Anvil's *code* is still
+md5-identical to cc on 27 shared files — only the conda env is damaged.
+
+Incidentally this removes the one-race-group *reason*: the group existed because cc has rdkit
+2025.09.6 and Anvil 2026.03.6, so a split would confound the arms with the scorer version. Cc-only,
+all arms share one scorer regardless. The group is kept in the spec for when Anvil returns.
+
+**`scripts/race_watch.py` is safe against the failing copies, contrary to a warning in CAL-11**
+(since corrected there). The `STARTED` set at line 31, which contains `FAILED`, is **dead code,
+referenced nowhere**. The live decision at lines 103–111 requires `RUNNING`/`COMPLETING` past
+`--min_running_s`, or `COMPLETED`, with the comment "a copy that FAILED early must not win". Traced
+for this case — Anvil `FAILED`, cc `PENDING` — no copy wins, the race holds only one `LIVE` copy, so
+`live_races` is 0 and the watcher exits without cancelling; cc proceeds. The residual risk is the
+opposite and milder: the watcher stops watching, so Anvil copies starting later would not be
+cancelled.
+
+**Shared code re-verified after newsroom-iter1's `fed.shared_offset` edit:** 76/76 tests pass on cc,
+and the three staged arms still resolve with `shared_offset` defaulting to `False`, so nothing
+MOL-24 depends on moved. (Two earlier failures were cc-login1 exhausting its process budget with
+threads unpinned — `OpenBLAS blas_thread_init: pthread_create failed`, `libgomp: Thread creation
+failed` — not code. `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1` is the workaround on the login node.)
+
+**Expected arm change (CAL-11), not yet applied.** Newsroom's best design is `fed-aligned-off`,
+g_{i,l}(α) = o_i + h̄_l(α), which beat `fed-shared` and `local` there and was worse on no client. The
+coordinator expects MOL-24 to become `fed-shared`, `fed-aligned-off`, `local`, and possibly
+`local-off` (on ChEMBL `local-off` ≈ `local` in MOL-22, whereas on Newsroom `local-off` misbehaved
+with o_i drifting to +0.78). All four resolve off-GPU on this config, so the change is runnable:
+
+| arm | calibration | overrides beyond the reference |
+|---|---|---|
+| `fed-shared` | g_{i,l}(α) = h_l(α) | — |
+| `fed-aligned-off` | g_{i,l}(α) = o_i + h̄_l(α) | `fed.calibration=aligned fed.cov_grid=21 fed.cov_pool=saturating fed.cov_lambda_max=0.01 lora.offset=true` |
+| `local` | g_{i,l}(α) = h_{i,l}(α) | `fed.mode=local fed.calibration=private` |
+| `local-off` | g_{i,l}(α) = o_i + h_{i,l}(α) | `fed.mode=local fed.calibration=private lora.offset=true` |
+
+⚠️ **`fed-aligned-off` must not pass `fed.private_offset=true`.** Under `calibration=aligned`,
+`lora.offset=true` already gives a private o_i (`fedsteer/fed.py:246`), and `private_offset` is
+gated on `calibration == "shared"` (`fed.py:177`), so adding it is a silent no-op — there is a test
+named `test_private_offset_is_a_noop_where_the_offset_is_already_private`. CAL-1's constraint that
+`coverage`/`consensus`/`aligned` reject `lora.offset=true` is **superseded for aligned** by NR-62.
+
+**Status: still nothing submitted**, on the user's launch hold. The final spec arrives with the
+release; the arms table in MOL-24 above is superseded by whatever it says.

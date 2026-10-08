@@ -1,0 +1,89 @@
+split test; rounds {'fed-shared': 100, 'fed-shared-off': 100, 'fed-private': 100, 'fed-private-off': 100}
+
+-- per-cell |pct - alpha| at alpha = 0.0
+client              fed-shared      fed-shared-off         fed-private     fed-private-off
+forbes                   0.155               0.161               0.152               0.168
+guardian                 0.187               0.187               0.157               0.182
+people                   0.180               0.192               0.191               0.180
+wsj                      0.220               0.211               0.211               0.214
+aol                      0.165               0.172               0.178               0.172
+cbc                      0.241               0.237               0.250               0.256
+reuters                  0.247               0.240               0.306               0.222
+nypost                   0.190               0.171               0.440               0.275
+MEAN                     0.198               0.196               0.236               0.209
+
+-- per-cell |pct - alpha| at alpha = 0.25
+client              fed-shared      fed-shared-off         fed-private     fed-private-off
+forbes                   0.117               0.109               0.108               0.108
+guardian                 0.101               0.110               0.100               0.098
+people                   0.120               0.114               0.119               0.109
+wsj                      0.125               0.122               0.129               0.126
+aol                      0.146               0.133               0.139               0.138
+cbc                      0.135               0.138               0.144               0.145
+reuters                  0.299               0.284               0.294               0.256
+nypost                   0.272               0.213               0.358               0.244
+MEAN                     0.165               0.153               0.174               0.153
+
+-- per-cell |pct - alpha| at alpha = 0.5
+client              fed-shared      fed-shared-off         fed-private     fed-private-off
+forbes                   0.146               0.158               0.170               0.180
+guardian                 0.113               0.102               0.112               0.099
+people                   0.097               0.106               0.101               0.104
+wsj                      0.134               0.142               0.134               0.140
+aol                      0.137               0.132               0.128               0.130
+cbc                      0.094               0.113               0.106               0.115
+reuters                  0.233               0.249               0.235               0.227
+nypost                   0.231               0.227               0.239               0.214
+MEAN                     0.148               0.154               0.153               0.151
+
+-- per-cell |pct - alpha| at alpha = 0.75
+client              fed-shared      fed-shared-off         fed-private     fed-private-off
+forbes                   0.169               0.167               0.165               0.170
+guardian                 0.117               0.103               0.106               0.109
+people                   0.144               0.138               0.132               0.128
+wsj                      0.130               0.132               0.125               0.131
+aol                      0.085               0.085               0.085               0.083
+cbc                      0.109               0.110               0.117               0.112
+reuters                  0.134               0.135               0.135               0.124
+nypost                   0.129               0.122               0.131               0.128
+MEAN                     0.127               0.124               0.124               0.123
+
+-- per-cell |pct - alpha| at alpha = 1.0
+client              fed-shared      fed-shared-off         fed-private     fed-private-off
+forbes                   0.042               0.047               0.036               0.039
+guardian                 0.129               0.115               0.152               0.125
+people                   0.185               0.217               0.194               0.214
+wsj                      0.088               0.097               0.099               0.094
+aol                      0.109               0.145               0.105               0.126
+cbc                      0.111               0.106               0.103               0.108
+reuters                  0.106               0.116               0.095               0.121
+nypost                   0.110               0.124               0.039               0.098
+MEAN                     0.110               0.121               0.103               0.116
+
+-- endpoint share of error: (cell(0) + cell(1)) / sum of cells, mean over clients
+fed-shared           0.419
+fed-shared-off       0.430
+fed-private          0.433
+fed-private-off      0.436
+
+-- output percentile at alpha = 0 (target 0) and alpha = 1 (target 1)
+client              fed-shared      fed-shared-off         fed-private     fed-private-off
+forbes        0.155 / 0.958        0.161 / 0.953        0.152 / 0.964        0.168 / 0.961    
+guardian      0.187 / 0.871        0.187 / 0.885        0.157 / 0.848        0.182 / 0.875    
+people        0.180 / 0.815        0.192 / 0.783        0.191 / 0.806        0.180 / 0.786    
+wsj           0.220 / 0.912        0.211 / 0.903        0.211 / 0.901        0.214 / 0.906    
+aol           0.165 / 0.891        0.172 / 0.855        0.178 / 0.895        0.172 / 0.874    
+cbc           0.241 / 0.889        0.237 / 0.894        0.250 / 0.897        0.256 / 0.892    
+reuters       0.247 / 0.894        0.240 / 0.884        0.306 / 0.905        0.222 / 0.879    
+nypost        0.190 / 0.890        0.171 / 0.876        0.440 / 0.961        0.275 / 0.902    
+
+-- learned offset o_i (from the eval file; None = no offset)
+client              fed-shared      fed-shared-off         fed-private     fed-private-off
+forbes                     nan              -0.166                 nan              -0.202
+guardian                   nan              -0.020                 nan              -0.041
+people                     nan              -0.139                 nan              -0.147
+wsj                        nan              -0.097                 nan              -0.087
+aol                        nan              -0.143                 nan              -0.104
+cbc                        nan              -0.173                 nan              -0.136
+reuters                    nan              -0.376                 nan              -0.437
+nypost                     nan              -0.663                 nan              -0.510
