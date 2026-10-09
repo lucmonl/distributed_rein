@@ -333,3 +333,48 @@ Analysis only; a proposal, not yet decided by the user. Notation as in CONVENTIO
   - `local-off` means: held-out clients train *local* models with the offset (local_D with offset, gain 1, per-layer shapes), as already planned.
   - Final arm set: fed-aligned-tp3000, fed-aligned-off, fed-shared-off, fed-shared-soff, plus the local-off reference. Plain local_D (no offset) is dropped.
   - E2 needs the `private_offset` path as well: frozen h_l from the server; the new client trains P and its own o_i from 0, with u fixed. `fed-shared-soff` uses the existing shared path, with the server's o frozen.
+- **NR-68 code landed:**
+  - Files: `e2_heldout.py`, `fedsteer/adapt.py`, tests; 79/79 pass. Installed atomically at 15:52.
+  - Existing shared/private E2 paths are bit-identical, except the private-calibration plugin, which is pinned by a unit test only.
+  - Real-snapshot loads checked. Grant closed; code syncs released.
+- **E2 jobs (cc):** fed-aligned-off 11222319–23 (frozen_D + local-off reference + plugin); fed-shared-off 11222324/25; fed-aligned-tp3000 11222326/27; fed-shared-soff 11222329/30. prompt is reused from 11088050–53.
+- **House style (test)**, attribution / feature gap:
+  - tp3000 0.562 / 0.103; aligned-off 0.562 / 0.110; shared-off 0.572 / 0.105; shared-soff 0.578 / 0.105; local-off 0.570 / 0.120.
+  - Ceiling 0.587; A2 floor 0.409 / 0.190.
+  - All keep the house style, with differences within about 2 SE. Flag: aligned-off's nypost feature gap is 0.158 vs about 0.10 for the others; cause not established.
+- Housekeeping: four 10-01 smoke-test E2 adapter caches (`*_n16_w0-0.4_steps3_*`) were deleted by a broad glob. They rebuild on demand; no real adapter was affected.
+- **NR-68 follow-up 1:** fed-aligned-off's nypost style gap sits **inside** nypost's support.
+  - At α = 0.75: 0.158 (attribution 0.64) vs 0.099–0.116 (0.67–0.71) for the other arms. At α = 1: 0.171 vs 0.107–0.134.
+  - Below support all arms are 0.16–0.27.
+  - The offset alone doesn't explain it: fed-shared-off has the same nypost o_i and a normal gap.
+  - Hypothesis: with saturating weights (τ = 100), nypost has little weight in h̄_l, so its in-support behaviour is shaped by the other clients' curve. Cheap test (CPU style_eval) once NR-66 finishes: fed-aligned-off-tp3000 gives nypost more pool weight. If its nypost gap returns to ≈ 0.10, the weights explain it.
+- Anvil code is stale on exactly NR-68's three files (`e2_heldout.py`, `fedsteer/adapt.py`, tests; molecule-iter1 md5 check). The other 24 shared files match. No impact while the Anvil environment is broken. **Rule:** the first step after any Anvil environment rebuild is a full `setup_anvil.sh --code-only` plus an md5 check, done by newsroom-iter1.
+- math-cot-iter1 synced NR-68 code to Delta and dtai (MATH-22; 79/79 on cc, imports OK on both hosts). The MATH-21 s = 1 check is drafted (`exp_log/math-cot/launch/MATH-21.sh`, dtai only, arms `local-wr0p01` and `local`) and waits on the user.
+- **User: hold the math s = 1 check (MATH-21).** Nothing is launched on math.
+- **NR-66 (3 of 4 arms) and the style test:**
+  - With a private o_i, τ_pool does not move steering: test pct err 0.146 / 0.146 / 0.145 / 0.146 at τ = 100 / 300 / 1000 / 3000. Without an offset the same sweep goes 0.153 → 0.147 (NR-64).
+  - So **re-weighting and o_i are substitutes**: once o_i sets each client's level, the pooling weights stop mattering for the mean. That makes fed-aligned-off robust to its one pooling hyperparameter (count arm pending).
+  - nypost style gap at α = 0.75 across τ: 0.158 / 0.121 / 0.092 / 0.133, not monotone (reference 0.104). The pooling hypothesis is not confirmed; it reads as single-cell noise (≈ ±0.03). Don't use the style gap to choose τ; the seed-1 replicate decides whether 0.158 repeats.
+
+## CAL-17. NR-69: full τ grid — with o_i the pooling weight does not matter; count pooling is the hyperparameter-free choice (2026-10-08)
+
+- Test pct err, mean (worst client), at τ = 100 / 300 / 1000 / 3000 / count:
+  - fed-aligned: 0.153 (0.213) / 0.150 / 0.151 / 0.147 / 0.147 (0.207).
+  - fed-aligned-off: 0.146 (0.199) / 0.146 / 0.145 / 0.146 (0.191) / **0.143 (0.191)**.
+- With o_i, no τ is worse than τ = 100 on any client, and the means lie within 0.003. o_i is identical across τ.
+- o_i is still needed at every τ for reuters: its α = 0 output percentile is 0.282 with re-weighting alone vs 0.214–0.257 with o_i.
+- Quality, judge, Spearman and reach are flat.
+- **Coordinator recommendation:** fix the pooling to **count** (data-proportional) in the final design.
+  - It removes τ as a hyperparameter.
+  - It matches the implicit data weighting of FedAvg on the shape.
+  - It is nominally best, and safe given the insensitivity.
+  - Caveat: the count arms ran on ccc0390 (A100-80GB). The seed-1 replicate should be count on ccc0284.
+- E2: 3/11 jobs done (aligned-off n16/64/256).
+- **NR-70 E2 interim** (fed-aligned-off, n = 16 / 64 / 256 / 1024, ccc0284). Mean pct err:
+  - frozen_D 0.174 / 0.167 / 0.145 / 0.141, the same curve as the archive method (0.179 / 0.170 / 0.146 / 0.139).
+  - local-off reference 0.315 / 0.294 / 0.277 / 0.231; its o_i drifts +0.23 → +1.6, as in NR-65.
+  - frozen_D beats local-off on 4/4 clients at every n.
+  - plugin 0.198 / 0.183 / 0.178 / 0.196: one fitted o_i repairs most of the anchor shift (archive plugin 0.34–0.37 frozen).
+  - Held-out o_i is learnable from 16 pairs and stable: −0.06 to +0.06, near 0, because rotation 0's held-out clients are broad.
+  - ⚠️ **Weak-baseline risk:** local-off (the user's chosen reference) is weaker than the archive's local_D (0.295 / 0.260 / 0.225 / 0.192). frozen_D still beats the archive local_D by 0.05–0.12, so the claim survives against the strongest local baseline measured. Report both.
+  - **Untested:** a copy-heavy newcomer that needs o_i ≈ −0.6 (rotation 2 or `--alpha_window`). This is C2's coverage case.

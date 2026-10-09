@@ -21,8 +21,8 @@ from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
 from fedsteer.data import ChatFormatter, ClientQuantiles, build_clients, collate
 from fedsteer.fed import FedConfig, FedSteerTrainer, load_snapshot_into
 from fedsteer.lora import (SteerLinear, SteerLoraConfig, average_states, direction_products,
-                           get_shared_state, inject_steer_lora, load_state, steer_layers,
-                           trainable_parameter_groups)
+                           get_gain_state, get_private_adapter_state, get_shared_state, inject_steer_lora,
+                           load_state, steer_layers, trainable_parameter_groups)
 from fedsteer.model import generate_at_alpha
 
 TOKENIZER = "meta-llama/Llama-3.2-1B-Instruct"
@@ -1538,6 +1538,129 @@ def test_aligned_with_shared_offset():
             assert abs(float(m.steer_control.coef_for(y, 3)) - o) < 1e-6
         tr2 = _cov_trainer(d, rounds=4, **kw)
         assert tr2.maybe_resume() and float(tr2.server["steer_control.o"]) == o
+
+
+def _e2_setup(model, snap, plan, init_private):
+    """Put a new E2 client into ``model`` the way e2_heldout.py's frozen_D does."""
+    load_state(model, init_private)
+    load_state(model, {k: v for k, v in snap["server"].items() if k.endswith("lora_B_d")})
+    load_state(model, plan["frozen_control"])
+    if plan["frozen_table"] is not None:
+        model.steer_control.set_table(*plan["frozen_table"])
+    else:
+        model.steer_control.set_table(None)
+
+
+def test_e2_aligned_new_client_gets_table_and_own_offset():
+    """NR-68: an aligned frozen_D client gets exactly the run's inference table and fits only
+    P and its own o_i (u stays 0, warps untouched, D frozen); plugin fits only o_i."""
+    from e2_heldout import e2_plan
+    from fedsteer.adapt import fit_calibration, train_steered
+    with tempfile.TemporaryDirectory() as d:
+        tr = _cov_trainer(d, rounds=3, calibration="aligned", warp_scope="module", cov_lambda_max=0.01,
+                          offset=True)
+        tr.fit()
+        snap = torch.load(os.path.join(d, "snapshots", "round_0003.pt"), weights_only=False)
+    m = tiny_model(warp="kumaraswamy_mix", warp_scope="module", offset=True, seed=3)
+    init_private, init_control = get_private_adapter_state(m), get_gain_state(m)
+    plan = e2_plan(snap["fed_config"], {"offset": True}, snap, init_control)
+    assert plan["frozen"] == ("private", "offset") and plan["plugin"] == ("offset",)
+    assert plan["local"] == ("private", "shared", "offset", "warp")
+    ex, _ = build_clients(toy_records(), ["c0"], alpha_mode="global")
+    lrs = {"private": 5e-3, "shared": 5e-3, "gain": 5e-2, "warp": 1e-2}
+    fmt = ChatFormatter(tokenizer())
+    _e2_setup(m, snap, plan, init_private)
+    ctl = m.steer_control
+    warp0 = {n: p.detach().clone() for n, p in m.named_parameters() if n.startswith("steer_control.warp.")}
+    train_steered(m, fmt, ex["c0"][:8], 6, plan["frozen"], lrs, 4, 1, seed=0, bf16=False)
+    grid, table = ctl._table
+    assert torch.equal(table, torch.tensor(snap["coverage"]["z"], dtype=torch.float32))
+    assert torch.equal(grid, torch.tensor(snap["coverage"]["grid"], dtype=torch.float32))
+    assert float(ctl.u) == 0.0 and float(ctl.gain()) == 1.0                  # s = 1
+    o = float(ctl.offset())
+    assert o != 0.0                                                          # own offset fitted
+    assert all(torch.equal(p, warp0[n]) for n, p in m.named_parameters() if n in warp0)
+    D = {k: v for k, v in snap["server"].items() if k.endswith("lora_B_d")}
+    got = {n: p.detach().cpu() for n, p in m.named_parameters() if n.endswith("lora_B_d")}
+    assert all(torch.equal(got[k], D[k]) for k in D)                          # direction frozen
+    assert any(not torch.equal(p.detach().cpu(), init_private[n])
+               for n, p in m.named_parameters() if n in init_private)         # adapter trained
+    y = torch.zeros(1, 4)
+    with ctl.use_alpha(0.5):
+        assert abs(float(ctl.coef_for(y, 3)) - (snap["coverage"]["z"][3][2] + o)) < 1e-5
+    # plugin: only o moves
+    _e2_setup(m, snap, plan, init_private)
+    before = {n: p.detach().clone() for n, p in m.named_parameters()}
+    fit_calibration(m, fmt, ex["c0"][:8], steps=4, lr=5e-2, batch_size=4, bf16=False, components=plan["plugin"])
+    changed = [n for n, p in m.named_parameters() if not torch.equal(p, before[n])]
+    assert changed == ["steer_control.o"], changed
+
+
+def test_e2_private_offset_and_shared_offset_runs():
+    """NR-68: fed-shared-off (shared h_l, private o_i): a new client gets the server's frozen
+    shape and gain, starts o_i at 0 and fits it with u fixed; plugin fits only o_i.
+    fed-shared-soff (shared o): the server's o is frozen at the run's value; only P trains."""
+    from e2_heldout import e2_plan
+    from fedsteer.adapt import fit_calibration, train_steered
+    kw = dict(calibration="shared", warp="kumaraswamy_mix", warp_scope="module", offset=True,
+              fix_gain=True, warp_warmup_rounds=1, lr_warp=0.2)
+    ex, _ = build_clients(toy_records(), ["c0"], alpha_mode="global")
+    lrs = {"private": 5e-3, "shared": 5e-3, "gain": 5e-2, "warp": 1e-2}
+    fmt = ChatFormatter(tokenizer())
+    for private_offset in (True, False):
+        with tempfile.TemporaryDirectory() as d:
+            _trainer("fedavg", d, rounds=3, private_offset=private_offset, **kw).fit()
+            snap = torch.load(os.path.join(d, "snapshots", "round_0003.pt"), weights_only=False)
+        m = tiny_model(warp="kumaraswamy_mix", warp_scope="module", offset=True, seed=3)
+        init_private, init_control = get_private_adapter_state(m), get_gain_state(m)
+        plan = e2_plan(snap["fed_config"], {"offset": True}, snap, init_control)
+        server_ctl = {k: v for k, v in snap["server"].items() if k.startswith("steer_control.")}
+        _e2_setup(m, snap, plan, init_private)
+        if private_offset:
+            assert "steer_control.o" not in server_ctl
+            assert plan["frozen"] == ("private", "offset") and plan["plugin"] == ("offset",)
+            assert float(m.steer_control.o) == 0.0                                # o_i starts at 0
+        else:
+            assert plan["frozen"] == ("private",) and plan["plugin"] == ()
+            assert float(m.steer_control.o) == float(server_ctl["steer_control.o"]) != 0.0   # run's shared o
+        train_steered(m, fmt, ex["c0"][:8], 6, plan["frozen"], lrs, 4, 1, seed=0, bf16=False)
+        got = {n: p.detach().cpu() for n, p in m.named_parameters() if n.startswith("steer_control.")}
+        for k, v in server_ctl.items():                                          # shape, gain (+ shared o) frozen
+            assert torch.equal(got[k], v.to(got[k].dtype)), k
+        assert float(m.steer_control.u) == 0.0
+        if private_offset:
+            assert float(m.steer_control.o) != 0.0                                # own o_i fitted
+            _e2_setup(m, snap, plan, init_private)
+            before = {n: p.detach().clone() for n, p in m.named_parameters()}
+            fit_calibration(m, fmt, ex["c0"][:8], steps=4, lr=5e-2, batch_size=4, bf16=False,
+                            components=plan["plugin"])
+            assert [n for n, p in m.named_parameters() if not torch.equal(p, before[n])] == ["steer_control.o"]
+
+
+def test_e2_plan_keeps_existing_runs_and_gain_rule():
+    """Existing private/shared runs get exactly the components the old code trained; the gain
+    group splits into u + offset; --respect_fix_gain never trains u."""
+    from e2_heldout import e2_plan
+    from fedsteer.adapt import component_groups, train_steered
+    m = tiny_model(warp="kumaraswamy_mix", offset=True)
+    init_control = get_gain_state(m)
+    g = component_groups(m)
+    assert g["u"] == [m.steer_control.u] and g["offset"] == [m.steer_control.o]
+    assert len(g["gain"]) == 2 and all(any(p is q for q in g["u"] + g["offset"]) for p in g["gain"])
+    assert component_groups(tiny_model())["offset"] == []
+    snap = {"server": {"steer_control.u": torch.tensor(0.3)}}
+    priv = e2_plan({"calibration": "private", "fix_gain": True}, {"offset": True}, snap, init_control)
+    assert priv["frozen"] == ("private", "gain", "warp") and priv["plugin"] == ("gain", "warp")
+    assert priv["local"] == ("private", "shared", "gain", "warp") and priv["frozen_table"] is None
+    sh = e2_plan({"calibration": "shared"}, {"offset": True}, snap, init_control)
+    assert sh["frozen"] == ("private",) and sh["plugin"] == () and sh["frozen_control"] == snap["server"]
+    fixed = e2_plan({"calibration": "private", "fix_gain": True}, {"offset": True}, snap, init_control,
+                    respect_fix_gain=True)
+    assert fixed["frozen"] == ("private", "offset", "warp") and fixed["local"] == ("private", "shared", "offset", "warp")
+    ex, _ = build_clients(toy_records(), ["c0"], alpha_mode="global")
+    lrs = {"private": 5e-3, "shared": 5e-3, "gain": 5e-2, "warp": 1e-2}
+    train_steered(m, ChatFormatter(tokenizer()), ex["c0"][:8], 4, fixed["local"], lrs, 4, 1, bf16=False)
+    assert float(m.steer_control.u) == 0.0 and float(m.steer_control.o) != 0.0
 
 
 if __name__ == "__main__":

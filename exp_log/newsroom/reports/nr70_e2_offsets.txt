@@ -1,0 +1,26 @@
+participants' o_i (fed-aligned-off, r100): range -0.618 .. -0.021, mean -0.209
+held-out clients' learned o_i (E2; frozen_D / plugin / local_D) and the client's data median alpha
+
+telegraph.co.uk
+  n=   16  frozen_D -0.015   plugin -0.369   local_D +0.277
+  n=   64  frozen_D +0.020   plugin -0.537   local_D +0.444
+  n=  256  frozen_D +0.013   plugin -0.440   local_D +1.025
+  n= 1024  frozen_D +0.058   plugin -0.324   local_D +1.632
+
+bbc.com
+  n=   16  frozen_D -0.044   plugin -0.418   local_D +0.267
+  n=   64  frozen_D -0.032   plugin -0.454   local_D +0.478
+  n=  256  frozen_D -0.019   plugin -0.444   local_D +0.962
+  n= 1024  frozen_D +0.015   plugin -0.422   local_D +1.528
+
+mashable.com
+  n=   16  frozen_D -0.046   plugin -0.451   local_D +0.271
+  n=   64  frozen_D -0.033   plugin -0.496   local_D +0.392
+  n=  256  frozen_D -0.030   plugin -0.464   local_D +0.789
+  n= 1024  frozen_D -0.004   plugin -0.448   local_D +0.809
+
+latimes.com
+  n=   16  frozen_D -0.063   plugin -0.357   local_D +0.227
+  n=   64  frozen_D -0.059   plugin -0.559   local_D +0.365
+  n=  256  frozen_D -0.062   plugin -0.562   local_D +0.653
+  n= 1024  frozen_D -0.025   plugin -0.519   local_D +1.050

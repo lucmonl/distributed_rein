@@ -1,0 +1,15 @@
+nypost.com (support [0.51, 0.95]); per target alpha: feature gap / attribution acc / n summaries; in = inside support
+keys: ('0.0', {'acc': 0.335, 'p_own': 0.2781244112119918, 'feature_gap': 0.2050875651358127, 'in_support': False})
+fed-aligned-tp3000   in-support gap 0.106 | a=0.0: gap 0.205 acc 0.335 n=None | a=0.25: gap 0.198 acc 0.4 n=None | a=0.5: gap 0.221 acc 0.54 n=None | a=0.75: gap 0.106 acc 0.695 n=None | a=1.0: gap 0.132 acc 0.635 n=None
+fed-aligned-off      in-support gap 0.158 | a=0.0: gap 0.268 acc 0.44 n=None | a=0.25: gap 0.234 acc 0.4 n=None | a=0.5: gap 0.234 acc 0.56 n=None | a=0.75: gap 0.158 acc 0.635 n=None | a=1.0: gap 0.171 acc 0.61 n=None
+fed-shared-off       in-support gap 0.104 | a=0.0: gap 0.239 acc 0.38 n=None | a=0.25: gap 0.161 acc 0.365 n=None | a=0.5: gap 0.197 acc 0.525 n=None | a=0.75: gap 0.104 acc 0.675 n=None | a=1.0: gap 0.107 acc 0.675 n=None
+fed-shared-soff      in-support gap 0.099 | a=0.0: gap 0.264 acc 0.42 n=None | a=0.25: gap 0.227 acc 0.465 n=None | a=0.5: gap 0.248 acc 0.615 n=None | a=0.75: gap 0.099 acc 0.675 n=None | a=1.0: gap 0.113 acc 0.655 n=None
+local-off            in-support gap 0.116 | a=0.0: gap 0.22 acc 0.375 n=None | a=0.25: gap 0.18 acc 0.465 n=None | a=0.5: gap 0.213 acc 0.53 n=None | a=0.75: gap 0.116 acc 0.665 n=None | a=1.0: gap 0.134 acc 0.67 n=None
+ctx_fed-shared       in-support gap 0.108 | a=0.0: gap 0.24 acc 0.375 n=None | a=0.25: gap 0.16 acc 0.4 n=None | a=0.5: gap 0.226 acc 0.54 n=None | a=0.75: gap 0.108 acc 0.705 n=None | a=1.0: gap 0.118 acc 0.665 n=None
+
+NR-66 pooling test: nypost.com feature gap (attribution acc) at alpha 0.75 / 1.0
+fed-aligned-off (tau100)   0.75: 0.158 (0.635)   1.0: 0.171 (0.610)
+fed-aligned-off-tp300      0.75: 0.121 (0.655)   1.0: 0.156 (0.590)
+fed-aligned-off-tp1000     0.75: 0.092 (0.680)   1.0: 0.128 (0.655)
+fed-aligned-off-tp3000     0.75: 0.133 (0.630)   1.0: 0.189 (0.575)
+fed-shared-off (ref)       0.75: 0.104 (0.675)   1.0: 0.107 (0.675)

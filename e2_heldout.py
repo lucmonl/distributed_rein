@@ -21,6 +21,16 @@ reference), so they need running once per rotation.
 
 --alpha_window LO HI keeps only the client's pairs with alpha in [LO, HI] (a client with a
 skewed attribute distribution; its support then comes from those pairs).
+
+fed.private_offset runs (shared h_l + private o_i, NR-68): the new client gets the server's frozen
+shape and gain and fits its own o_i from 0 (frozen_D: P + o_i; plugin: o_i only).
+calibration=aligned runs (NR-68): the new client gets the run's frozen inference table h-bar_l
+(exactly as load_snapshot_into sets it) and, with lora.offset, fits its own offset o_i from 0;
+the gain stays at s = 1 (u is never trained) and the warps are not used (the table replaces
+them).  So frozen_D trains P + o_i; plugin fits only o_i after the SFT adapter; local_D trains
+P + D_i + its own per-layer warps (+ o_i), gain fixed.  --respect_fix_gain applies the same
+"gain fixed" rule to private/shared runs with fed.fix_gain (opt-in; off = the original
+behaviour, which trains the whole gain group u + o).
 Writes <run>/evals/eval_round_XXXX_e2_{setting}_n{n}[_wLO-HI]__<stamp>.json (standard format).
 """
 
@@ -51,6 +61,46 @@ from fedsteer.runinfo import make_stamp, provenance  # noqa: E402
 SETTINGS = ("frozen_D", "local_D", "plugin", "prompt")
 
 
+def e2_plan(fc: dict, lora: dict, snap: dict, init_control: dict, respect_fix_gain: bool = False) -> dict:
+    """What a new client trains in each setting, and the frozen calibration it starts from.
+
+    Returns {"frozen_control", "frozen_table" (grid, z) or None, "frozen": components,
+    "local": components, "plugin": calibration components fitted after the SFT adapter
+    (() = none), "calibration": description}.  Components are fedsteer.adapt keys."""
+    cal = fc.get("calibration", "private")
+    aligned = cal == "aligned"
+    priv_off = cal == "shared" and bool(fc.get("private_offset", False))   # NR-60: shared h_l, own o_i
+    fix_u = (respect_fix_gain or aligned or priv_off) and bool(fc.get("fix_gain", False))
+    offset = bool(lora.get("offset", False))
+
+    def calib(with_warp):                              # the client's own calibration parameters
+        if fix_u:
+            return (("offset",) if offset else ()) + (("warp",) if with_warp else ())
+        return ("gain", "warp") if with_warp else ("gain",)
+
+    local = ("private", "shared") + calib(True)
+    if aligned:
+        cov = snap.get("coverage")
+        if not cov or "z" not in cov:
+            raise SystemExit("calibration=aligned snapshot has no coverage table")
+        return {"frozen_control": init_control, "frozen_table": (cov["grid"], cov["z"]),
+                "frozen": ("private",) + calib(False), "local": local, "plugin": calib(False),
+                "calibration": "aligned (frozen table h-bar_l" + (", own offset o_i trained)" if offset else ")")}
+    if cal == "shared":
+        ctl = {k: v for k, v in snap["server"].items() if k.startswith("steer_control.")}
+        if priv_off:
+            # the server holds the shared shape and gain but no offset: the new client starts its
+            # own o_i at the initial value (0) and fits it, like a participant
+            ctl = dict(ctl, **{k: v for k, v in init_control.items() if k == "steer_control.o"})
+            return {"frozen_control": ctl, "frozen_table": None, "frozen": ("private", "offset"),
+                    "local": local, "plugin": ("offset",),
+                    "calibration": "shared (frozen h_l), own offset o_i trained"}
+        return {"frozen_control": ctl, "frozen_table": None, "frozen": ("private",), "local": local,
+                "plugin": (), "calibration": "shared (frozen)"}
+    return {"frozen_control": init_control, "frozen_table": None, "frozen": ("private",) + calib(True),
+            "local": local, "plugin": calib(True), "calibration": "private (trained)"}
+
+
 def split_list(s):
     return [x for x in re.split(r"[,+]", s) if x]
 
@@ -71,6 +121,8 @@ def main():
     ap.add_argument("--max_new_tokens", type=int, default=128)
     ap.add_argument("--batch_size", type=int, default=16)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--respect_fix_gain", action="store_true",
+                    help="private/shared runs with fed.fix_gain: never train u (opt-in; always on for aligned)")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(os.path.join(args.run, "config.yaml")))
@@ -88,15 +140,10 @@ def main():
     assert not set(held) & set(cfg["clients"]), "held-out clients must not be participants"
     settings = split_list(args.settings)
     assert set(settings) <= set(SETTINGS), settings
-    shared_cal = fc.get("calibration", "private") == "shared"
-    if fc.get("calibration") in ("coverage", "consensus", "aligned"):
+    if fc.get("calibration") in ("coverage", "consensus"):
         # plan 2.1: the server table is not a new client's warp, and the private-calibration path
         # here would also train the gain, which coverage fixes at 1
         raise SystemExit("calibration=coverage runs need their own held-out-client protocol (plan 2.1)")
-    if fc.get("private_offset") and shared_cal:
-        # NR-60: a new client would need its own offset next to the frozen shared shape
-        raise SystemExit("fed.private_offset=true runs need their own held-out-client protocol "
-                         "(a new client has no offset of its own); not implemented yet")
     bs = fc["batch_size"]
     max_steps = args.max_steps or fc["rounds"] * fc["local_steps"]
     lrs = {"private": fc["lr_private"], "shared": fc["lr_shared"], "gain": fc.get("lr_gain", 1e-2),
@@ -136,18 +183,21 @@ def main():
     zero_dir = {n: torch.zeros_like(p).cpu() for n, p in model.named_parameters() if n.endswith("lora_B_d")}
     snap = torch.load(args.snapshot, map_location="cpu", weights_only=False)
     direction = {k: v for k, v in snap["server"].items() if k.endswith("lora_B_d")}
-    run_control = ({k: v for k, v in snap["server"].items() if k.startswith("steer_control.")}
-                   if shared_cal else init_control)
+    plan = e2_plan(fc, cfg["lora"], snap, init_control, args.respect_fix_gain)
+    run_control = plan["frozen_control"]
+    print(f"E2 plan: calibration {plan['calibration']}; frozen_D trains {plan['frozen']}, local_D "
+          f"{plan['local']}, plugin fits {plan['plugin'] or 'nothing'}", flush=True)
     tag_model = re.sub(r"[^A-Za-z0-9.-]+", "_", cfg["model_name"])
     cache_dir = os.path.join("runs", "_e2_adapters")
     os.makedirs(cache_dir, exist_ok=True)
     stamp = make_stamp()
     out_dir = os.path.join(args.run, "evals")
 
-    def reset(direction_state, control):
+    def reset(direction_state, control, table=None):
         load_state(model, init_private)
         load_state(model, direction_state)
         load_state(model, control)
+        model.steer_control.set_table(*table) if table is not None else model.steer_control.set_table(None)
 
     def eval_loaded(c, support):
         model.eval()
@@ -171,9 +221,8 @@ def main():
                   flush=True)
 
             if "frozen_D" in res:
-                reset(direction, run_control)
-                comps = ("private",) if shared_cal else ("private", "gain", "warp")
-                losses = train_steered(model, fmt, ex, steps, comps, lrs, bs, warmup, seed=args.seed)
+                reset(direction, run_control, plan["frozen_table"])
+                losses = train_steered(model, fmt, ex, steps, plan["frozen"], lrs, bs, warmup, seed=args.seed)
                 r = eval_loaded(c, support)
                 r.update(control_state(model))
                 r["train"] = train_info(len(ex), steps, losses)
@@ -182,8 +231,7 @@ def main():
 
             if "local_D" in res:
                 reset(zero_dir, init_control)
-                losses = train_steered(model, fmt, ex, steps, ("private", "shared", "gain", "warp"), lrs, bs,
-                                       warmup, seed=args.seed)
+                losses = train_steered(model, fmt, ex, steps, plan["local"], lrs, bs, warmup, seed=args.seed)
                 r = eval_loaded(c, support)
                 r.update(control_state(model))
                 r["train"] = train_info(len(ex), steps, losses)
@@ -205,11 +253,11 @@ def main():
                     torch.save(sft, path)
                     sft_info = train_info(len(ex), steps, losses)
                 if "plugin" in res:
-                    reset(direction, run_control)
+                    reset(direction, run_control, plan["frozen_table"])
                     load_state(model, sft)
-                    if not shared_cal:
+                    if plan["plugin"]:
                         fit_calibration(model, fmt, ex, steps=args.cal_steps, lr=lrs["gain"],
-                                        batch_size=min(8, len(ex)), seed=args.seed)
+                                        batch_size=min(8, len(ex)), seed=args.seed, components=plan["plugin"])
                     r = eval_loaded(c, support)
                     r.update(control_state(model))
                     r["train"] = sft_info
@@ -233,7 +281,9 @@ def main():
                 continue
             out = assemble(rr, alphas, "test", args.snapshot, snap["round"])
             out["e2"] = {"setting": s, "n": n, "alpha_window": args.alpha_window, "held_out": held,
-                         "calibration": "shared (frozen)" if shared_cal else "private (trained)",
+                         "calibration": plan["calibration"],
+                         "components": {"frozen_D": plan["frozen"], "local_D": plan["local"],
+                                        "plugin": plan["plugin"]},
                          "args": vars(args)}
             out["provenance"] = provenance(args=vars(args))
             path = os.path.join(out_dir, f"eval_round_{snap['round']:04d}_e2_{s}_n{n}{wtag}__{stamp}.json")

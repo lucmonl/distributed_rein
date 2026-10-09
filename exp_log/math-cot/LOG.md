@@ -146,3 +146,14 @@ Runs `runs/math7_ans_e1_{fed,local}_qwen25_7b_20261007-091715_j2270334{9,50}`; l
 1. Even with s ≈ 3–4, one direction spans only ~37 % of the range. At s = 1, D must grow ≥ 3× on its own, so the single-client s = 1 check is needed before any federated s = 1 arm.
 2. The α = 0 level differs by client (.03–.62), so the offset o_i is the expected lever here, as on Newsroom.
 3. Per-layer shapes added range at the top in MATH-18. A one-shape design (both E1 arms) leaves that unused.
+
+## MATH-22. Code sync after the NR-68 release (E2 support in `e2_heldout.py`, `fedsteer/adapt.py`); MATH-21 drafted, not submitted (2026-10-08) [cc+delta+dtai]
+
+- `python tests/test_fedsteer.py` on cc: **79/79**. The first attempt printed no summary line (a capture glitch in the background shell); the rerun with full output passed.
+- `scripts/sync_to_delta.sh` to Delta and dtai. Code moved: `e2_heldout.py`, `fedsteer/adapt.py`, `tests/test_fedsteer.py` (+ `CONVENTIONS.md`, docs). Training code is untouched. A dry run afterwards is empty apart from sbatch headers. Imports OK on both hosts.
+- G1 (Delta 22705844) is still PENDING and will copy this tree.
+- **MATH-21 drafted, not submitted:** `exp_log/math-cot/launch/MATH-21.sh`. It is the s = 1 check (CAL-12/14): two dtai-only single-client arms, matched to MATH-14 P (`local-gain`, test 0.213):
+  - `local-wr0p01`: g_l(α) = h_l(α), s = 1, warp_reg 0.01; isolates s.
+  - `local`: s = 1, warp_reg 0; the reference design.
+  It waits for the user's answer, relayed by the coordinator.
+- **MATH-21 on HOLD (user, relayed by the coordinator, 2026-10-08):** do not submit; the launch file stays as drafted.

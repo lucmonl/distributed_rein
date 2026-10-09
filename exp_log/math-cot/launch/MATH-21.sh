@@ -1,5 +1,5 @@
 #!/bin/bash
-# DRAFT (2026-10-08), NOT SUBMITTED: waits for the user's answer, relayed by the coordinator (CAL-14).
+# DRAFT (2026-10-08), NOT SUBMITTED: ON HOLD by the user (relayed by the coordinator, 2026-10-08). Do not run until released.
 # MATH-21: does a fixed gain s = 1 (CAL-12) cost single-client math anything?
 # Matched to MATH-14 P (dtai 3328129, `local-gain`: g_l(a) = s*h_l(a), 196 per-layer shapes, s learned and
 # clamped at 4; test pct err 0.213). Same BASE/EXP as exp_log/launch/MATH-14_per_layer_warps.sh; only the

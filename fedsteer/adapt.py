@@ -13,6 +13,10 @@
                             chosen set of components with everything else frozen: E2's
                             new client joining with the frozen direction (P [+ private
                             calibration]) or training its own (P + D + calibration).
+
+Components are the keys of ``trainable_parameter_groups`` (private / shared / gain / warp) plus
+two opt-in finer keys that split ``gain`` (NR-68): ``u`` (the gain parameter alone) and
+``offset`` (the offset o alone), so a client can fit o_i with the gain fixed at s = 1.
 """
 
 from __future__ import annotations
@@ -102,11 +106,23 @@ def train_adapter_sft(model, fmt, examples, steps, lr=2e-4, batch_size=8, steeri
     return _train(model, fmt, examples, params, steps, lr, batch_size, fixed_alpha, seed, bf16)
 
 
-def fit_calibration(model, fmt, labelled, steps=100, lr=1e-2, batch_size=8, seed: int = 0,
-                    bf16: bool = True) -> list[float]:
-    """Fit gain/offset/warp on labelled examples (each with 'alpha'); P and D frozen."""
+def component_groups(model) -> dict[str, list]:
+    """trainable_parameter_groups plus the opt-in split of the "gain" group into "u" (gain
+    parameter) and "offset" (o; empty without lora.offset)."""
     g = trainable_parameter_groups(model)
-    return _train(model, fmt, labelled, g["gain"] + g["warp"], steps, lr, batch_size, None, seed, bf16)
+    ctl = model.steer_control
+    g["u"] = [p for p in g["gain"] if p is ctl.u]
+    g["offset"] = [p for p in g["gain"] if ctl.o is not None and p is ctl.o]
+    return g
+
+
+def fit_calibration(model, fmt, labelled, steps=100, lr=1e-2, batch_size=8, seed: int = 0,
+                    bf16: bool = True, components=("gain", "warp")) -> list[float]:
+    """Fit the calibration on labelled examples (each with 'alpha'); P and D frozen.  By
+    default gain/offset/warp; ``components=("offset",)`` fits only o (NR-68)."""
+    g = component_groups(model)
+    params = [p for c in components for p in g[c]]
+    return _train(model, fmt, labelled, params, steps, lr, batch_size, None, seed, bf16)
 
 
 def train_local_direction(model, fmt, labelled, steps=100, lr=2e-4, lr_calibration=1e-2, batch_size=8,
@@ -123,9 +139,10 @@ def train_local_direction(model, fmt, labelled, steps=100, lr=2e-4, lr_calibrati
 def train_steered(model, fmt, examples, steps, components=("private",), lrs=None, batch_size=8,
                   warmup_steps: int = 0, seed: int = 0, bf16: bool = True) -> list[float]:
     """Alpha-conditioned training (alpha per example, steering on) of ``components`` (keys of
-    trainable_parameter_groups: private / shared / gain / warp), each at ``lrs[component]``."""
-    g = trainable_parameter_groups(model)
-    groups = [{"params": g[c], "lr": lrs[c]} for c in components if g[c]]
+    trainable_parameter_groups: private / shared / gain / warp, or the finer u / offset), each at
+    ``lrs[component]``; u and offset fall back to ``lrs["gain"]``."""
+    g = component_groups(model)
+    groups = [{"params": g[c], "lr": lrs[c] if c in lrs else lrs["gain"]} for c in components if g[c]]
     return _train(model, fmt, examples, groups, steps, groups[0]["lr"], batch_size, None, seed, bf16,
                   warmup_steps=warmup_steps)
 
