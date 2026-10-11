@@ -71,6 +71,7 @@ How the shape is learned (fed only; local is always private):
 | **borrow** | private shapes pulled toward a coverage-weighted table out of support (plan §2.1) | `fed.calibration=coverage` |
 | **consensus** | private shapes in training, tied in support; pooled table at inference | `fed.calibration=consensus` |
 | **aligned** | pooled table in both training and inference | `fed.calibration=aligned` |
+| **linear** | no learned shape: h(α) = α for every client (ablation) | `lora.warp=none` |
 
 **Reference calibration (the default every new arm is compared against):** gain fixed at 1, per-layer shape, shared shape, no offset. On Newsroom that is NR-54 `A_L`.
 
@@ -83,7 +84,7 @@ How the shape is learned (fed only; local is always private):
 **Arm label:** `<mode>-<shape>[-<deviation>…]`, lowercase, hyphen-separated.
 - `<mode>`: `fed` or `local`. For `local` omit `<shape>` (always private).
 - `<shape>`: `shared`, `private`, `borrow`, `consensus`, `aligned`.
-- `<deviation>` only for what differs from the reference: `off` (private offset), `soff` (shared offset), `gain` (learned gain), `1shape` (one shape per client), hyperparameters as `l0p1` (λ = 0.1), `cnt` (count pooling), `reset` (local run that resets its direction's Adam state every round, as fed does; `fed.local_reset_opt_state=true`), `noreset` (fed run that keeps it) — both only for reading old runs: the per-round reset is part of FedAvg and is not controlled for (user decision, CAL-6), `s1` (seed 1; seed 0 is implicit).
+- `<deviation>` only for what differs from the reference: `off` (private offset), `soff` (shared offset), `gain` (learned gain), `1shape` (one shape per client), hyperparameters as `l0p1` (λ = 0.1), `cnt` (count pooling), `sadapter` (adapter shared by FedAvg instead of private: non-personalized), `reset` (local run that resets its direction's Adam state every round, as fed does; `fed.local_reset_opt_state=true`), `noreset` (fed run that keeps it) — both only for reading old runs: the per-round reset is part of FedAvg and is not controlled for (user decision, CAL-6), `s1` (seed 1; seed 0 is implicit).
 - Examples: `fed-shared` (the reference), `fed-shared-off`, `fed-private-off`, `local-off`, `local`, `fed-aligned-cnt`, `fed-borrow-l0p1-1shape`.
 
 **SLURM job name:** `<id>-<arm>` with the ID lowercased and its hyphen dropped: `nr60-fed-shared-off`, `mol23-local-off`, `math16-fed-shared`. Same name on every cluster of a race (the job ID tells the copies apart).
@@ -94,10 +95,11 @@ How the shape is learned (fed only; local is always private):
 
 ## 5. Shared code
 
-`fedsteer/`, `train_fed.py`, `eval_direction.py`, `e2_heldout.py`, `e3_drift.py`, `scripts/compare_runs.py`, `scripts/race_watch.py`, `tests/` are used by all three datasets.
+`fedsteer/`, `train_fed.py`, `eval_direction.py`, `e2_heldout.py`, `e3_drift.py`, `eval_baselines.py`, `scripts/compare_runs.py`, `scripts/race_watch.py`, `tests/` are used by all three datasets.
 - Changes must be **opt-in**: a new flag whose default reproduces the current behaviour exactly.
 - `python tests/test_fedsteer.py` must pass in full before any job is submitted with the change.
 - Record the change in your own LOG.md under a "Shared code change" heading, and message the coordinator with the file list.
-- Only the session the coordinator names may edit a shared file at a time. Current grants: **none**. Closed: NR-68 (E2 for aligned / private-offset / fixed-gain runs, 79/79); NR-60b (`fed.shared_offset` for aligned, 76/76); NR-60 (`fed.private_offset`, `fed.local_reset_opt_state`, 74/74); NR-62 (aligned accepts `lora.offset`, 75/75; made at the user's direct request and recorded afterwards). Ask the coordinator before editing shared code.
+- Only the session the coordinator names may edit a shared file at a time. Current grants: **none**. Closed: MOL-26a (molecule B1 template, `--caa_select`, compare_runs None guard, 83/83); CAL-20 (`format_monitor` crash fix, 80/80); NR-68 (E2 for aligned / private-offset / fixed-gain runs, 79/79); NR-60b (`fed.shared_offset` for aligned, 76/76); NR-60 (`fed.private_offset`, `fed.local_reset_opt_state`, 74/74); NR-62 (aligned accepts `lora.offset`, 75/75; made at the user's direct request and recorded afterwards). Ask the coordinator before editing shared code.
 - Before syncing code to another cluster, make sure the full test suite passes on cc; jobs run from a code snapshot, so running jobs are never affected.
 - Never `git commit` (user rule); list changed files instead.
+- `pct_calib_err` (and other conditional metrics) is **None** whenever no output of a client is scorable. Treat it as nullable at every use site; where one number must exist (selection, ranking), use `pct_calib_err_penalized`.

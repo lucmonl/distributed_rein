@@ -70,7 +70,13 @@ def molecule_level_instruction(alpha: float) -> str:
             f"means they are as lipophilic as possible (they raise it as much as possible).")
 
 
-def prompt_with_level_molecule(rec: dict, alpha: float, shots: Sequence[dict]) -> str:
+def _prompt_with_level_molecule_legacy(rec: dict, alpha: float, shots: Sequence[dict]) -> str:
+    """The pre-2026-10-03 whole-molecule template: a bare scaffold, answer as one SMILES string.
+
+    Kept only for records WITHOUT ``core_attached`` (the old whole-molecule data), so archive
+    baseline results stay reproducible. Do not use it for decoration data -- see
+    ``prompt_with_level_molecule``.
+    """
     parts = [f"Design a ligand for {rec['target_name']}.",
              f"Decorate this core scaffold: {rec['scaffold']}",
              molecule_level_instruction(alpha)]
@@ -80,6 +86,38 @@ def prompt_with_level_molecule(rec: dict, alpha: float, shots: Sequence[dict]) -
             parts.append(f"Core: {s['scaffold']}\nLigand: {s['target']}")
         parts.append("Now decorate the requested core at the target lipophilicity.")
     parts.append("Answer with one SMILES string.")
+    return "\n\n".join(parts)
+
+
+def prompt_with_level_molecule(rec: dict, alpha: float, shots: Sequence[dict]) -> str:
+    """B1's molecule prompt, built from the record's OWN training prompt (CAL-26).
+
+    The template this replaced predated the decoration format: it showed ``rec['scaffold']`` (bare,
+    no attachment points) and asked for "one SMILES string", while every training prompt shows
+    ``rec['core_attached']`` with ``[n*]`` points and closes with "Answer with the decorations only,
+    as [n*]-labelled fragments joined by '.'". B1 was therefore asking the trained client models a
+    question they had never been trained on, which is why MOL-26 measured 1.000 unscorable at every
+    k -- a stale template, not a finding about prompting.
+
+    Built like ``prompt_with_level_math``: the record's own text, the level instruction, the shots,
+    and the record's own closing output contract LAST. Order matters -- in training the format
+    instruction is the final line, and a trailing instruction is what the model follows, so the
+    level instruction is inserted BEFORE it rather than after.
+    """
+    if not rec.get("core_attached"):
+        return _prompt_with_level_molecule_legacy(rec, alpha, shots)
+    lines = [ln for ln in rec["prompt"].strip().split("\n") if ln.strip()]
+    # the closing line is the output contract ("Answer with the decorations only, ...")
+    closing = lines[-1] if lines and lines[-1].lstrip().startswith("Answer with") else ""
+    body = "\n".join(lines[:-1] if closing else lines)
+    parts = [body, molecule_level_instruction(alpha)]
+    if shots:
+        parts.append("Here are example decorations for this target at about this level:")
+        for s in shots:
+            parts.append(f"Core: {s.get('core_attached') or s['scaffold']}\nDecorations: {s['target']}")
+        parts.append("Now decorate the requested core at the target lipophilicity.")
+    if closing:
+        parts.append(closing)
     return "\n\n".join(parts)
 
 

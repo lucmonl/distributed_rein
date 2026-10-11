@@ -1,0 +1,83 @@
+rounds {'fed-aligned-off': 100, 'fed-shared-off': 100, 'fed-linear-off': 100, 'sadapter': 70, 'A2': 70}
+
+-- per-cell |pct - alpha| at alpha = 0.0
+client       fed-aligned-off    fed-shared-off    fed-linear-off          sadapter                A2
+forbes                 0.167             0.161             0.171             0.249             0.197
+guardian               0.203             0.187             0.201             0.267             0.219
+people                 0.176             0.192             0.189             0.230             0.194
+wsj                    0.208             0.211             0.219             0.261             0.208
+aol                    0.159             0.172             0.174             0.267             0.219
+cbc                    0.246             0.237             0.245             0.290             0.239
+reuters                0.229             0.240             0.234             0.248             0.187
+nypost                 0.168             0.171             0.174             0.241             0.178
+MEAN                   0.195             0.196             0.201             0.257             0.205
+
+-- per-cell |pct - alpha| at alpha = 0.25
+client       fed-aligned-off    fed-shared-off    fed-linear-off          sadapter                A2
+forbes                 0.113             0.109             0.110             0.170             0.153
+guardian               0.109             0.110             0.109             0.172             0.155
+people                 0.110             0.114             0.103             0.159             0.149
+wsj                    0.121             0.122             0.121             0.186             0.163
+aol                    0.135             0.133             0.128             0.184             0.167
+cbc                    0.142             0.138             0.142             0.208             0.183
+reuters                0.283             0.284             0.258             0.233             0.218
+nypost                 0.240             0.213             0.208             0.181             0.169
+MEAN                   0.157             0.153             0.147             0.186             0.170
+
+-- per-cell |pct - alpha| at alpha = 0.5
+client       fed-aligned-off    fed-shared-off    fed-linear-off          sadapter                A2
+forbes                 0.167             0.158             0.159             0.199             0.197
+guardian               0.104             0.102             0.098             0.213             0.210
+people                 0.097             0.106             0.097             0.130             0.128
+wsj                    0.127             0.142             0.127             0.214             0.210
+aol                    0.120             0.132             0.138             0.210             0.210
+cbc                    0.119             0.113             0.122             0.251             0.245
+reuters                0.239             0.249             0.233             0.275             0.270
+nypost                 0.228             0.227             0.225             0.192             0.188
+MEAN                   0.150             0.154             0.150             0.211             0.207
+
+-- per-cell |pct - alpha| at alpha = 0.75
+client       fed-aligned-off    fed-shared-off    fed-linear-off          sadapter                A2
+forbes                 0.172             0.167             0.172             0.167             0.171
+guardian               0.101             0.103             0.096             0.159             0.159
+people                 0.134             0.138             0.134             0.118             0.125
+wsj                    0.127             0.132             0.131             0.161             0.165
+aol                    0.091             0.085             0.082             0.140             0.146
+cbc                    0.113             0.110             0.116             0.153             0.148
+reuters                0.138             0.135             0.137             0.160             0.155
+nypost                 0.137             0.122             0.128             0.156             0.163
+MEAN                   0.127             0.124             0.125             0.152             0.154
+
+-- per-cell |pct - alpha| at alpha = 1.0
+client       fed-aligned-off    fed-shared-off    fed-linear-off          sadapter                A2
+forbes                 0.032             0.047             0.035             0.025             0.030
+guardian               0.112             0.115             0.124             0.027             0.033
+people                 0.195             0.217             0.216             0.164             0.186
+wsj                    0.087             0.097             0.105             0.021             0.030
+aol                    0.110             0.145             0.129             0.058             0.072
+cbc                    0.095             0.106             0.098             0.046             0.050
+reuters                0.104             0.116             0.111             0.037             0.049
+nypost                 0.100             0.124             0.102             0.031             0.037
+MEAN                   0.104             0.121             0.115             0.051             0.061
+
+-- output percentile at alpha = 0 / alpha = 1
+client       fed-aligned-off    fed-shared-off    fed-linear-off          sadapter                A2
+forbes        0.167/0.968      0.161/0.953      0.171/0.965      0.249/0.975      0.197/0.970  
+guardian      0.203/0.888      0.187/0.885      0.201/0.876      0.267/0.973      0.219/0.967  
+people        0.176/0.805      0.192/0.783      0.189/0.784      0.230/0.836      0.194/0.814  
+wsj           0.208/0.913      0.211/0.903      0.219/0.895      0.261/0.979      0.208/0.970  
+aol           0.159/0.890      0.172/0.855      0.174/0.871      0.267/0.942      0.219/0.928  
+cbc           0.246/0.905      0.237/0.894      0.245/0.902      0.290/0.954      0.239/0.950  
+reuters       0.229/0.896      0.240/0.884      0.234/0.889      0.248/0.963      0.187/0.951  
+nypost        0.168/0.900      0.171/0.876      0.174/0.898      0.241/0.969      0.178/0.963  
+
+-- learned offset o (nan = none)
+client       fed-aligned-off    fed-shared-off    fed-linear-off          sadapter                A2
+forbes                -0.149            -0.166            -0.188             0.284               nan
+guardian              -0.021            -0.020            -0.031             0.284               nan
+people                -0.133            -0.139            -0.141             0.284               nan
+wsj                   -0.097            -0.097            -0.111             0.284               nan
+aol                   -0.125            -0.143            -0.133             0.284               nan
+cbc                   -0.151            -0.173            -0.158             0.284               nan
+reuters               -0.381            -0.376            -0.405             0.284               nan
+nypost                -0.618            -0.663            -0.689             0.284               nan

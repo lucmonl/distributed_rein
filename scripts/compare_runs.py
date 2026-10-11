@@ -138,8 +138,12 @@ def main():
     print(f"{'client':17s} {'support':>12s} " + " ".join(f"{n:>14s}" for n in runs))
     for c in clients:
         sup = next(iter(runs.values()))["eval"]["clients"][c].get("support", [0, 1])
-        print(f"{c:17s} [{sup[0]:.2f},{sup[1]:.2f}] " + " ".join(
-            f"{runs[n]['eval']['clients'][c]['pct_calib_err']:14.3f}" for n in runs))
+        # pct_calib_err is None when no cell of that client scored (CONVENTIONS: it is nullable
+        # everywhere); print n/a rather than crashing the whole table on a fully-failing arm.
+        def _cell(n, c=c):
+            v = runs[n]["eval"]["clients"].get(c, {}).get("pct_calib_err")
+            return f"{v:14.3f}" if isinstance(v, (int, float)) else f"{'n/a':>14s}"
+        print(f"{c:17s} [{sup[0]:.2f},{sup[1]:.2f}] " + " ".join(_cell(n) for n in runs))
 
     for pair in args.pair:
         a, b = pair.split(":")

@@ -1,0 +1,36 @@
+== nr62-fed-aligned-off_20261007-231639_j11209264  round 100  mode=aligned pool=saturating tau_pool=100.0 lambda_max=0.01
+   clients=8  layers=112  grid points=21
+   unrestricted disagreement 0.02336  logged 0.02336 (log round 99)  MATCH
+   RESTRICTED disagreement   0.02336   (21 of 21 grid points keep >= 2 clients at >= 5% weight)
+   dilution factor           1.00x  (restricted / unrestricted)
+   clients per grid point (relative weight >= floor):
+     alpha  0.00  0.05  0.10  0.15  0.20  0.25  0.30  0.35  0.40  0.45  0.50  0.55  0.60  0.65  0.70  0.75  0.80  0.85  0.90  0.95  1.00
+     nclnt     8     8     8     7     7     7     7     8     8     8     8     8     8     8     8     8     7     7     7     7     7
+     kept    yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes
+   per-client support_gap (weighted |own curve - pooled table|) and kept-point gap:
+     aol.com                all 0.01508   kept-points 0.01508   points at >= floor: 21/21
+     cbc.ca                 all 0.01179   kept-points 0.01179   points at >= floor: 21/21
+     forbes.com             all 0.01715   kept-points 0.01715   points at >= floor: 21/21
+     nypost.com             all 0.03301   kept-points 0.03301   points at >= floor: 17/21
+     people.com             all 0.01643   kept-points 0.01643   points at >= floor: 21/21
+     reuters.com            all 0.01787   kept-points 0.01787   points at >= floor: 21/21
+     theguardian.com        all 0.03457   kept-points 0.03457   points at >= floor: 16/21
+     wsj.com                all 0.01342   kept-points 0.01342   points at >= floor: 21/21
+== nr58_aligned_l0p01_20261007-120652_j11203892  round 100  mode=aligned pool=saturating tau_pool=100.0 lambda_max=0.01
+   clients=8  layers=112  grid points=21
+   unrestricted disagreement 0.02841  logged 0.02841 (log round 99)  MATCH
+   RESTRICTED disagreement   0.02841   (21 of 21 grid points keep >= 2 clients at >= 5% weight)
+   dilution factor           1.00x  (restricted / unrestricted)
+   clients per grid point (relative weight >= floor):
+     alpha  0.00  0.05  0.10  0.15  0.20  0.25  0.30  0.35  0.40  0.45  0.50  0.55  0.60  0.65  0.70  0.75  0.80  0.85  0.90  0.95  1.00
+     nclnt     8     8     8     7     7     7     7     8     8     8     8     8     8     8     8     8     7     7     7     7     7
+     kept    yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes   yes
+   per-client support_gap (weighted |own curve - pooled table|) and kept-point gap:
+     aol.com                all 0.01568   kept-points 0.01568   points at >= floor: 21/21
+     cbc.ca                 all 0.01356   kept-points 0.01356   points at >= floor: 21/21
+     forbes.com             all 0.01736   kept-points 0.01736   points at >= floor: 21/21
+     nypost.com             all 0.05131   kept-points 0.05131   points at >= floor: 17/21
+     people.com             all 0.01740   kept-points 0.01740   points at >= floor: 21/21
+     reuters.com            all 0.01561   kept-points 0.01561   points at >= floor: 21/21
+     theguardian.com        all 0.04533   kept-points 0.04533   points at >= floor: 16/21
+     wsj.com                all 0.01382   kept-points 0.01382   points at >= floor: 21/21

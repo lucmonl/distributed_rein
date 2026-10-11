@@ -1,0 +1,47 @@
+o_i vs support floor (5th percentile of the client's data on the global alpha scale); test eval at the selected round
+
+== fed-aligned-off (NR-62, tau 100)  round 100:  Spearman -0.571  Pearson -0.894   | without nypost.com (n=7): Spearman -0.357  Pearson -0.609
+   forbes.com       floor 0.029   o_i -0.149
+   people.com       floor 0.033   o_i -0.133
+   wsj.com          floor 0.036   o_i -0.097
+   theguardian.com  floor 0.045   o_i -0.021
+   aol.com          floor 0.062   o_i -0.125
+   reuters.com      floor 0.100   o_i -0.381
+   cbc.ca           floor 0.106   o_i -0.151
+   nypost.com       floor 0.506   o_i -0.618
+
+== fed-shared-off (NR-60)  round 100:  Spearman -0.643  Pearson -0.913   | without nypost.com (n=7): Spearman -0.464  Pearson -0.631
+   forbes.com       floor 0.029   o_i -0.166
+   people.com       floor 0.033   o_i -0.139
+   wsj.com          floor 0.036   o_i -0.097
+   theguardian.com  floor 0.045   o_i -0.020
+   aol.com          floor 0.062   o_i -0.143
+   reuters.com      floor 0.100   o_i -0.376
+   cbc.ca           floor 0.106   o_i -0.173
+   nypost.com       floor 0.506   o_i -0.663
+
+== local-off (NR-60, r60)  round 60:  Spearman -0.500  Pearson -0.481   | without nypost.com (n=7): Spearman -0.250  Pearson -0.339
+   forbes.com       floor 0.029   o_i +0.471
+   people.com       floor 0.033   o_i +0.523
+   wsj.com          floor 0.036   o_i +0.457
+   theguardian.com  floor 0.045   o_i +1.101
+   aol.com          floor 0.062   o_i +0.624
+   reuters.com      floor 0.100   o_i +0.302
+   cbc.ca           floor 0.106   o_i +0.463
+   nypost.com       floor 0.506   o_i +0.242
+
+== fed-aligned-off-tp3000 (NR-66, cross-check)  round 100:  Spearman -0.429  Pearson -0.908   | without nypost.com (n=7): Spearman -0.143  Pearson -0.613
+   forbes.com       floor 0.029   o_i -0.158
+   people.com       floor 0.033   o_i -0.133
+   wsj.com          floor 0.036   o_i -0.097
+   theguardian.com  floor 0.045   o_i -0.034
+   aol.com          floor 0.062   o_i -0.123
+   reuters.com      floor 0.100   o_i -0.367
+   cbc.ca           floor 0.106   o_i -0.157
+   nypost.com       floor 0.506   o_i -0.623
+
+-- o_i vs the client's MEDIAN alpha (its own training data on the global scale)
+fed-aligned-off (NR-62): Spearman -0.786  Pearson -0.854 | without nypost.com: Spearman -0.679  Pearson -0.742
+   theguardian 0.27/-0.02  forbes 0.28/-0.15  people 0.32/-0.13  wsj 0.47/-0.10  aol 0.55/-0.13  cbc 0.57/-0.15  reuters 0.72/-0.38  nypost 0.85/-0.62
+fed-shared-off (NR-60): Spearman -0.833  Pearson -0.851 | without nypost.com: Spearman -0.750  Pearson -0.749
+   theguardian 0.27/-0.02  forbes 0.28/-0.17  people 0.32/-0.14  wsj 0.47/-0.10  aol 0.55/-0.14  cbc 0.57/-0.17  reuters 0.72/-0.38  nypost 0.85/-0.66

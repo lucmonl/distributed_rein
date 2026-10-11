@@ -1,0 +1,36 @@
+== o_i vs two descriptors of where the client sits on the global percentile scale
+   (negative = o_i goes more negative as the descriptor rises)
+arm                        round   n | floor rho  floor r |  med rho   med r |  mean o_i      min      max
+fed-aligned-off              100   8 |    -0.571   -0.894 |   -0.786  -0.854 |   -0.2094  -0.6176  -0.0214
+fed-shared-off               100   8 |    -0.643   -0.913 |   -0.833  -0.851 |   -0.2222  -0.6630  -0.0202
+local-off                     60   8 |    -0.500   -0.481 |   -0.786  -0.681 |   +0.5227  +0.2416  +1.1009
+
+-- fed-aligned-off, sorted by support floor
+   forbes.com             support [0.03,0.99]  median a 0.283  o_i -0.1492
+   people.com             support [0.03,0.70]  median a 0.317  o_i -0.1329
+   wsj.com                support [0.04,0.89]  median a 0.468  o_i -0.0973
+   theguardian.com        support [0.04,0.55]  median a 0.271  o_i -0.0214
+   aol.com                support [0.06,0.82]  median a 0.553  o_i -0.1250
+   reuters.com            support [0.10,0.97]  median a 0.720  o_i -0.3810
+   cbc.ca                 support [0.11,0.95]  median a 0.569  o_i -0.1511
+   nypost.com             support [0.51,0.95]  median a 0.847  o_i -0.6176
+
+-- fed-shared-off, sorted by support floor
+   forbes.com             support [0.03,0.99]  median a 0.283  o_i -0.1661
+   people.com             support [0.03,0.70]  median a 0.317  o_i -0.1393
+   wsj.com                support [0.04,0.89]  median a 0.468  o_i -0.0967
+   theguardian.com        support [0.04,0.55]  median a 0.271  o_i -0.0202
+   aol.com                support [0.06,0.82]  median a 0.553  o_i -0.1435
+   reuters.com            support [0.10,0.97]  median a 0.720  o_i -0.3762
+   cbc.ca                 support [0.11,0.95]  median a 0.569  o_i -0.1726
+   nypost.com             support [0.51,0.95]  median a 0.847  o_i -0.6630
+
+-- local-off, sorted by support floor
+   forbes.com             support [0.03,0.99]  median a 0.283  o_i +0.4706
+   people.com             support [0.03,0.70]  median a 0.317  o_i +0.5225
+   wsj.com                support [0.04,0.89]  median a 0.468  o_i +0.4572
+   theguardian.com        support [0.04,0.55]  median a 0.271  o_i +1.1009
+   aol.com                support [0.06,0.82]  median a 0.553  o_i +0.6242
+   reuters.com            support [0.10,0.97]  median a 0.720  o_i +0.3020
+   cbc.ca                 support [0.11,0.95]  median a 0.569  o_i +0.4626
+   nypost.com             support [0.51,0.95]  median a 0.847  o_i +0.2416

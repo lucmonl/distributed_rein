@@ -1,0 +1,31 @@
+held-out clients' o_i under frozen_D (mean over the 4 clients; range)
+fed-aligned-off  n16: -0.042 [-0.063,-0.015] | n64: -0.026 [-0.059,+0.020] | n256: -0.025 [-0.062,+0.013] | n1024: +0.011 [-0.025,+0.058] | nall: +0.024 [-0.009,+0.076]
+fed-shared-off   n16: -0.045 [-0.066,-0.017] | n64: -0.031 [-0.061,+0.011] | n256: -0.027 [-0.060,+0.010] | n1024: +0.005 [-0.033,+0.050] | nall: +0.018 [-0.018,+0.075]
+fed-shared-soff  n16: -0.026 [-0.026,-0.026] | n64: -0.026 [-0.026,-0.026] | n256: -0.026 [-0.026,-0.026] | n1024: -0.026 [-0.026,-0.026] | nall: -0.026 [-0.026,-0.026]
+
+quality / judge (frozen_D; mean over clients): gapAlignIn gapAlignOut gapLenOut | faithIn faithOut relevGapOut
+n=16    fed-aligned-off       -0.029   0.055   10.2 |    —      —       —  
+n=16    fed-shared-off        -0.039   0.046    9.6 |    —      —       —  
+n=16    fed-shared-soff       -0.014   0.061   12.8 |    —      —       —  
+n=16    fed-aligned-tp3000    -0.008   0.057   12.9 |    —      —       —  
+n=16    local-off (ref)       -0.025   0.057    4.1 |    —      —       —  
+n=64    fed-aligned-off        0.030   0.087    5.4 |    —      —       —  
+n=64    fed-shared-off         0.021   0.085    5.2 |    —      —       —  
+n=64    fed-shared-soff        0.013   0.085    6.3 |    —      —       —  
+n=64    fed-aligned-tp3000     0.017   0.084    9.7 |    —      —       —  
+n=64    local-off (ref)        0.017   0.144    2.0 |    —      —       —  
+n=256   fed-aligned-off       -0.001   0.053    4.8 |    —      —       —  
+n=256   fed-shared-off         0.012   0.067    5.6 |    —      —       —  
+n=256   fed-shared-soff       -0.002   0.069    6.8 |    —      —       —  
+n=256   fed-aligned-tp3000    -0.005   0.088    7.0 |    —      —       —  
+n=256   local-off (ref)       -0.015   0.094    2.7 |    —      —       —  
+n=1024  fed-aligned-off        0.005   0.067    4.6 |    —      —       —  
+n=1024  fed-shared-off         0.007   0.070    5.8 |    —      —       —  
+n=1024  fed-shared-soff        0.003   0.066    5.2 |    —      —       —  
+n=1024  fed-aligned-tp3000    -0.000   0.062    8.1 |    —      —       —  
+n=1024  local-off (ref)        0.001   0.137    0.9 |    —      —       —  
+n=all   fed-aligned-off        0.006   0.061    5.0 |    —      —       —  
+n=all   fed-shared-off        -0.003   0.055    4.3 |    —      —       —  
+n=all   fed-shared-soff        0.009   0.056    4.7 |    —      —       —  
+n=all   fed-aligned-tp3000    -0.000   0.055    5.7 |    —      —       —  
+n=all   local-off (ref)       -0.026   0.083    5.6 |    —      —       —  

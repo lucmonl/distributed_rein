@@ -378,3 +378,258 @@ Analysis only; a proposal, not yet decided by the user. Notation as in CONVENTIO
   - Held-out o_i is learnable from 16 pairs and stable: −0.06 to +0.06, near 0, because rotation 0's held-out clients are broad.
   - ⚠️ **Weak-baseline risk:** local-off (the user's chosen reference) is weaker than the archive's local_D (0.295 / 0.260 / 0.225 / 0.192). frozen_D still beats the archive local_D by 0.05–0.12, so the claim survives against the strongest local baseline measured. Report both.
   - **Untested:** a copy-heavy newcomer that needs o_i ≈ −0.6 (rotation 2 or `--alpha_window`). This is C2's coverage case.
+
+## CAL-18. NR-71 assigned: baselines B1 / B3 / B4 for fed-aligned-off (2026-10-08)
+
+**User request:** run B1 (prompting), B3 (one-shot merge) and B4 (federated CAA) for the latest method, `fed-aligned-off` (NR-62, τ = 100, round 100). The protocol is the archive's (entries 19 and 22).
+- **B1** on fed-aligned-off's client models with the direction removed: k = 0 and k = 3. The k = 3 base-model variant does not depend on the run; reuse the archive result if its data subset, prompts and settings match.
+- **B4** on the same client models. The archive found it under-tuned (6/8 clients chose the top gain, 0.8), so the gain grid is widened to 0.05 … 3.2. Report how many clients pick the top of the grid.
+- **B3:** uniform merge of `local-off`'s per-client directions (NR-60, 11206105, its selected round), evaluated with each client's own adapter and calibration. Plus B3 from `local` (11206106) as a secondary, because local-off's o_i drift could make its merge artificially weak.
+- cc only (A100, ccc0387 excluded), smoke test first. No shared-code change is expected; if one is needed, newsroom-iter1 asks first.
+- **NR-71 submitted (cc):** smoke 11236750, then b1-k0 11236751, b1-k3 11236752, b4-caa 11236753 (wide grid), b3-local-off 11236754 (r60), b3-local 11236755 (r100).
+  - B1 k = 3 on the base model is reused from 11065061 (matched subset, prompts, reference and settings).
+  - Verified: the aligned snapshot loads its table and o_i, and with B_d = 0 the logits are bit-identical across α and with or without the offset.
+  - No shared-code change; `eval_baselines.sbatch` (newsroom-owned) gained opt-in B1_SETS / CAA_ARGS.
+
+## CAL-19. Molecule resumed: MOL-25 E1 with fed-aligned-off as the main method (2026-10-09)
+
+**User decisions:** `fed-aligned-off` is the main algorithm across datasets. The molecule hold is lifted for E1, with references `fed-shared-off` and `local-off`.
+- **MOL-25** (molecule-iter1), one race group on cc only (Anvil environment broken), pruned ChEMBL, matched to MOL-18/22 (strict scorer, penalized selection, 100 rounds, seed 0, rotation 0). Common overrides: per-layer shapes, gain 1, warp_reg 0.
+
+| Arm | Overrides beyond common |
+|---|---|
+| `mol25-fed-aligned-off` | `fed.calibration=aligned fed.cov_grid=21 fed.cov_pool=saturating fed.cov_lambda_max=0.01 lora.offset=true` (τ = 100, b = 0.2 defaults, as NR-62) |
+| `mol25-fed-shared-off` | `fed.calibration=shared lora.offset=true fed.private_offset=true` |
+| `mol25-local-off` | `fed.mode=local fed.calibration=private lora.offset=true` |
+
+- The MOL-24 entry (fed-shared / fed-shared-off / local-off, never launched) is superseded.
+- τ = 100 matches the Newsroom main run (NR-62); on Newsroom, τ did not matter once o_i was present (NR-69). The user's choice between count and τ = 100 is still open.
+- Watch local-off's o_i trajectory: it drifted upward on Newsroom (NR-65) but stayed at −0.09 to −0.25 on ChEMBL in MOL-22.
+- **MOL-25 smokes submitted (cc):** 11236796 fed-aligned-off and 11236797 local-off; 2 clients (CHEMBL243, CHEMBL228) × 6 rounds. The user confirmed the relay directly to molecule-iter1.
+- **Contention:** with Anvil down, cc (one `lucmon-ic` fair-share) is the only host for Newsroom and molecule. GPU-hours on cc, not Anvil SU, are now the binding constraint. Rebuilding the Anvil environment is the user's decision.
+- molecule-iter1's falsification condition for MOL-25: if `disagreement` stays high and `support_gap` is large for the one-sided clients (CHEMBL243, CHEMBL228), fed-aligned-off may lose to local-off exactly there. That would mean aligned's benefit is conditional on clients agreeing on the shape.
+- **Correction to how `disagreement` is read** (molecule-iter1, verified at fed.py:611): it is a weight-weighted sd per (layer, grid point), averaged over all points. Where only one client has weight, the sd is structurally ≈ 0, so the logged scalar **understates** disagreement on skewed data. A low value does not mean the clients agree.
+  - Rule for both datasets: also report the sd restricted to grid points where ≥ 2 clients each hold ≥ 5% of that point's weight, plus the number of qualifying points. It is computed post hoc from snapshots (`coverage` key), with no code change.
+  - The Newsroom number (NR-61/62) gets the same restricted version, so the two datasets are comparable.
+- **`scripts/disagreement_report.py`** (molecule-iter1, new file): recomputes the logged unrestricted `disagreement` and checks it against train_log (MATCH or MISMATCH), then reports the restricted version (≥ 2 clients at ≥ 5% weight share).
+  - Layout facts: `pool_weights[c]` is per grid point only (shape (n_grid,)), so the qualifying points are the same for every layer. train_log rounds are 0-indexed, so snapshot `round_0100` corresponds to log round 99.
+  - First result, on Newsroom `nr66-fed-aligned-off-tp3000` (r100): unrestricted 0.02795 = logged; **all 21 grid points qualify** (5–8 clients each), so there is no dilution on Newsroom. Points above the floor per client: nypost 11/21, theguardian 13/21. nypost has the largest support_gap (0.044).
+  - The dilution is expected on ChEMBL only, so cross-dataset comparisons use the restricted values.
+- **Newsroom restricted disagreement** (newsroom-iter1, r100): no dilution at τ = 100 either (21/21 grid points qualify).
+  - fed-aligned 0.0284 → fed-aligned-off 0.0234 (restricted = unrestricted).
+  - With o_i, the copy-heavy and narrow clients' own shapes move toward h̄_l: support_gap nypost 0.051 → 0.033 (−35%), theguardian 0.045 → 0.035 (−22%); the other six unchanged at 0.012–0.018.
+  - Consistent with NR-63: the private level absorbs part of the shape disagreement. One seed.
+- **Correction (molecule-iter1):** the restriction does not bind on ChEMBL either.
+  - Computed from MOL-18's real counts at τ_pool = 100 on its 11-point grid: 6–8 clients clear 5% at every α, all 11 points qualify.
+  - The archive support intervals describe the output range a client reaches, not the training-data density over α. Even CHEMBL243 holds 5 examples near α = 1, weight ≈ 0.048.
+  - So `disagreement` is undiluted on both datasets and the raw numbers are comparable. 5% / 2 clients stays the documented default.
+  - Still to confirm on MOL-25's 21-point grid.
+
+## CAL-20. Shared-code fix by the coordinator: `format_monitor` crash when no client is scorable (2026-10-09)
+
+- **Bug** (found by molecule-iter1 in the MOL-25 local-off smoke 11236797):
+  - `fedsteer/monitor.py:format_monitor` read `s['pct_calib_err']['mean']` and `s['spearman']['mean']` unguarded.
+  - `metrics.summarize` drops a key when every client's value is None, which happens when every output is unscorable.
+  - The resulting KeyError propagated out of `fit()` (fed.py:637) and killed the run from a logging line.
+  - It affects every dataset, though it is practically reachable mainly on ChEMBL early in training.
+- **Fix:** every lookup is guarded through a small `stat()` helper and prints `nan` when a metric is absent. The output for normal inputs is byte-identical. It was written atomically after copying the original to the scratchpad.
+  - New test `test_format_monitor_survives_missing_metrics`; full suite running (80 tests).
+  - Files: `fedsteer/monitor.py`, `tests/test_fedsteer.py`.
+- Jobs snapshot code at start, so running jobs keep the old code. Their exposure is low: full dev evals are at round 20+, when unscorable rates are 0–4%.
+- **MOL-25 aligned smoke 11236796 passed every check:** table (252, 21); o_i absent from the server, per client and differing; tie_loss, proj_adjust, disagreement and support_gap logged.
+  - The disagreement restriction binds in the 2-client smoke (7/21 points, dilution 2.37×). That comes from thin client overlap; the 8-client expectation is unchanged.
+  - The local-off re-smoke 11237265 uses `monitor.full_every=6`.
+- **CAL-20 tests: 80/80 pass on cc** (the grep exit code 1 only means no FAIL lines). Grant closed; code syncs released. Anvil remains stale (environment broken).
+- **MOL-25 submitted (cc, PENDING):** fed-aligned-off 11237283, fed-shared-off 11237284, local-off 11237285.
+  - The local-off re-smoke 11237265 passed: private o_i per client, none on the server. All three arms are now smoke-verified.
+  - molecule-iter1 submitted at 44/80 of its own suite rerun, before my 80/80 arrived. That is harmless, since jobs snapshot at start and 80/80 passed.
+  - It will verify each arm's snapshotted monitor.py against the fixed file's md5 and report the round-1 config.yaml.
+- The CAL-20 fix is synced to Delta and dtai (MATH-23): cc 80/80, dtai 80/80, Delta 79/80 (the known MKL/libgomp environment failure in the B3 merge test). G1 22705844 will run the fixed code; MATH-21 is still held.
+
+## CAL-21. MOL-25 (ChEMBL E1): fed-aligned-off beats local-off on 6/8 clients and is worse on 0/8; aligned vs FedAvg shape is second-order on ChEMBL (2026-10-09)
+
+- **Results** (test, strict, round 100, single seed). Penalized / pct err (worst):
+  - fed-aligned-off **0.184** / 0.172 (0.244), reach 0.414, Spearman 0.898;
+  - fed-shared-off 0.186 / 0.178 (0.237);
+  - local-off 0.200 / 0.192 (0.288).
+- **Paired contrasts:**
+  - aligned-off − local-off: **6/8 better, 0/8 worse** (CHEMBL243 −0.041, CHEMBL228 −0.038, …).
+  - aligned-off − shared-off: 2/8 better (CHEMBL4078 −0.032, CHEMBL325), 1/8 worse (CHEMBL2039 +0.011).
+  - shared-off − local-off: 4/8 better, 1/8 worse.
+- **Mechanism: the endpoints.**
+  - α = 0 cell 0.197 / 0.207 / 0.248 and α = 1 cell 0.150 / 0.178 / 0.200 (aligned-off / shared-off / local-off). Interior and in-support tie.
+  - The α = 0 achieved percentile is 0.196, against 0.306 in MOL-18, where the oracle remap could not move it.
+  - CHEMBL228 at α = 0: local-off 0.466, aligned-off 0.300.
+- **Offsets:**
+  - The fed arms learn about twice the offset (−0.37 / −0.41) that local-off does (−0.19).
+  - local-off's o_i converges on ChEMBL, so it is a valid reference here.
+  - Note: on Newsroom only `local-off` drifted positive; the Newsroom fed offsets are negative, as on ChEMBL.
+- **Disagreement:** 0.0538 (restricted = unrestricted, 21/21 points) vs Newsroom 0.0234–0.028.
+  - Aligned still wins, and wins most on the clients furthest from the pool (CHEMBL243 support_gap 0.116).
+  - molecule-iter1's falsification condition is refuted: the benefit is not conditional on clients agreeing (up to ≈ 0.054).
+- **Cross-dataset picture (single seed each):**
+  - fed-aligned-off is best on both datasets.
+  - Its edge over local is large on both (Newsroom vs local-off 0.146 vs 0.178; ChEMBL 6/8 vs 0/8).
+  - Its edge over the FedAvg shape with a private offset is clear on Newsroom (3/8 vs 0/8) and second-order on ChEMBL (2/8 vs 1/8).
+- New tool: `scripts/alpha_cell_report.py` (per-α-cell decomposition, reusing the metrics' own definitions).
+- **Offset-mechanism finding (molecule-iter1, MOL-25b):** under a shared or pooled shape, a client's o_i tracks its support floor.
+  - ChEMBL Spearman(support floor, o_i): −0.905 in both fed arms; +0.19 in local-off, where all o_i ≈ −0.19 with no structure. n = 8 clients.
+  - Reading: the offset is identified as a per-client level only when the shape is tied across clients. A private shape absorbs it.
+  - Newsroom (τ = 3000 run): Spearman −0.43 but Pearson −0.91; nypost dominates. To be rechecked on NR-62 (τ = 100) for a matched comparison.
+  - The frozen-shape local probe becomes a direct test: if o_i becomes support-tracking with a frozen local shape, sharing works by identifying the level; if not, sharing does more than that.
+- New tool `scripts/offset_support_report.py` (molecule-iter1): Spearman and Pearson of o_i against the support floor, read from a run's own test eval. Large |Pearson| with a weak Spearman flags one extreme client carrying the fit (nr66: nypost).
+  - Wording rule for the paper: "the offset tracks the support floor under a shared shape and does not under a private one". Do not quote ρ = −0.905 as an effect size: n = 8, one seed.
+- **Bug in `offset_support_report.py`** (found by newsroom-iter1):
+  - Its glob `eval_round_[0-9]*__*.json` also matches E2 and baseline evals, and it took the alphabetically last file. On NR-62 and NR-60 it read the E2 plugin file (n = 4, ρ = −1.000).
+  - The MOL-25b numbers are unaffected: the coordinator checked that the three mol25 runs have exactly one non-dev eval each (`eval_round_0100__…`).
+  - molecule-iter1 fixes it with the archive's `eval_round_[0-9][0-9][0-9][0-9]__*.json` pattern.
+- **Newsroom correlation, correct (n = 8, test, selected round).** o_i vs support floor, Spearman / Pearson:
+  - fed-aligned-off −0.57 / −0.89; fed-shared-off −0.64 / −0.91; local-off −0.50 / −0.48 (all positive and drifting).
+  - Newsroom's floors bunch at 0.03–0.11 apart from nypost.
+  - Against the client's **median α**, fed o_i is near-monotone: Spearman −0.79 / −0.83, Pearson −0.85, and −0.68 / −0.75 without nypost. reuters (median α 0.72) has the second-largest offset with an ordinary floor.
+  - **Reading:** o_i tracks where a client's data sits on the global scale. On ChEMBL the floor and the median coincide as descriptors; on Newsroom the median is the right one. Use the median-α version on both datasets for the paper.
+- **Scripts fixed (molecule-iter1):** `offset_support_report.py` and `alpha_cell_report.py` now share a strict `test_eval()` (four-digit round, refuses to guess between rounds). MOL-25b was verified unaffected.
+- **Median α is the descriptor.** Spearman(o_i, median α):
+  - ChEMBL fed-aligned-off −1.000, fed-shared-off −1.000, local-off +0.41;
+  - Newsroom fed-aligned-off −0.79, fed-shared-off −0.83, local-off −0.79 (round 60; offsets +0.24 to +1.10).
+  - The floor mis-ranks the middle-only CHEMBL4078; the median places it correctly.
+- **Narrowed mechanism claim (MOL-25c), for the paper:**
+  - Sharing or pooling the shape makes o_i **correctly levelled**: negative, bounded and monotone in median α, in all four fed arms on both datasets.
+  - A private shape leaves the **level** unidentified. The failure is dataset-dependent: ChEMBL's local-off offsets collapse to an unstructured ≈ −0.19; Newsroom's keep the ordering but drift to the wrong sign.
+  - "Not identified without sharing" is too strong; do not use it.
+  - Frozen-shape local probe prediction: freezing the shape fixes the level. If it still drifts positive on Newsroom, the level is set by something dataset-specific.
+- **Newsroom confirms the narrowed claim (NR-71).**
+  - local-off's ordering by median α holds or strengthens over training: Spearman −0.67 at r30, −0.79 at r60, −0.86 at r80 and r100.
+  - Its whole level drifts up: mean +0.08 → +0.78.
+  - The fed-arm numbers are reproduced with the fixed script.
+  - **Final cross-dataset statement:** a shared or pooled shape makes o_i correctly levelled (negative, bounded, stable from about r30, monotone in median α). A private shape learns the ordering on Newsroom (and not even that on ChEMBL), but leaves the absolute level unidentified.
+
+## CAL-22. User: offset analysis closed; frozen-shape local run dropped (2026-10-09)
+
+- The offset-vs-data-position analysis stops at the CAL-21 statement. No further correlations or descriptors.
+- The frozen-shape local probe (MOL-25c) is dropped and will not be run.
+- Still open, user's call: seed replicates; E2 and baselines on ChEMBL; Anvil rebuild; math s = 1 check (MATH-21, held).
+- Relay status: delivered to newsroom-iter1. **molecule-iter1 and math-cot-iter1 are not reachable** (sessions not running); this entry is the record for molecule-iter1 to read on reconnect: offset analysis closed, frozen-shape probe dropped, keep holding.
+
+## CAL-23. Newsroom E2 (NR-72) and baselines (NR-73) done for fed-aligned-off (2026-10-09)
+
+- **E2** (4 held-out clients, rotation 0), mean pct err at n = 16 / 64 / 256 / 1024 / all:
+  - fed-aligned-off 0.174 / 0.167 / 0.145 / 0.141 / 0.132; local-off 0.315 / 0.294 / 0.277 / 0.231 / 0.167.
+  - frozen_D beats local-off on 4/4 clients at every n for all four fed arms (20/20 cells), and beats the archive local-gain-1shape mean at every n.
+  - The four fed arms lie within 0.005 of each other: E2 does not separate the designs. fed-shared-soff (no own offset) is as good, because rotation 0's newcomers are broad and need no level.
+  - Held-out o_i is ≈ 0 and stable from 16 pairs. plugin worsens with n (0.178 → 0.212).
+  - The only quality cost is the out-of-support length gap: +10–13 words at n = 16, +4–6 at n = all.
+  - The copy-heavy newcomer case (rotation 2 / α window) is still untested.
+- **Baselines** (8 participants, test), pct err (worst):
+  - fed-aligned-off 0.146 (0.199); local 0.157; B3 (merge of local) 0.181 (0.256); B3 (merge of local-off) 0.227; B4 0.253 (0.301); B1 0.38 (k = 0 / 3), 0.341 (base, archive).
+  - fed-aligned-off vs B1 8/8 better; vs B4 7/8 better, 0 worse; vs B3 7/8 better, 1/8 worse (reuters, as in entry 22).
+  - B4 tuning resolved: interior optima (0.5–0.8), none at the grid top, quality still poor. Report B3 from `local`.
+  - Gates G1 and G3 pass again with the new method.
+
+## CAL-24. NR-74 assigned: linear-shape ablation and pure FedAvg in the new parameterization (2026-10-09)
+
+- **Existing evidence (archive):**
+  - Linear g(α) = α without offset: entry 40 "const", one shape, 0.153 (0.217) vs the learned-gain method 0.151 (0.199). It has never been run with an offset or at gain 1 with per-layer shapes.
+  - Pure FedAvg = A2 (11094904, entry 30): shared adapter + shared calibration, learned gain, one shape, no offset. Pct err 0.159 (worst **0.176**); in-support 0.177 (worse); out-of-support **0.136**; reach **0.50**; Spearman 0.951. It is the house-style floor (attribution 0.409 vs 0.56–0.58).
+- **User: run both in the new setup** (newsroom-iter1, cc only), matched to NR-62/NR-60 (Llama-3.2-1B, rotation 0, 4k, 100 rounds, gain 1, warp_reg 0):
+  - `nr74-fed-linear-off`: g_i(α) = o_i + α (`lora.warp=none fed.calibration=shared lora.offset=true fed.private_offset=true`). With nothing to pool, shared and aligned are the same arm.
+  - `nr74-fed-shared-soff-sadapter`: everything FedAvg'd, g(α) = o + h_l(α) and a shared adapter (`fed.adapter=shared fed.calibration=shared lora.offset=true lora.warp_scope=module`).
+- CONVENTIONS: added shape label `linear` and deviation `sadapter`.
+- **NR-74 submitted (cc):** fed-linear-off 11241906; fed-shared-soff-sadapter 11241907.
+  - Smokes passed: linear-off's server holds only u, each client its own o. sadapter's server holds the adapter, o, the 336 shape tensors and u.
+  - With warp = none the code forces scope `model`, so `warp_scope=module` is recorded but inert.
+
+## CAL-25. Molecule baselines B1 / B3 / B4 for fed-aligned-off (MOL-26), specified; molecule-iter1 not running (2026-10-09)
+
+**User request:** run the baselines on ChEMBL. Spec, mirroring NR-71 and chembl plan §6:
+- Method: `mol25-fed-aligned-off` (11237283, round 100). Test split, strict scorer `clogp_residual_deco_strict`, **150 prompts per client** (the MOL-25 test size). Penalized error is primary; report the unscorable rate.
+- **B1** on mol25-fed-aligned-off's client models with D removed: k = 0 and k = 3 (client model), and k = 3 (base model).
+- **B4** CAA on the same models, with the widened gain grid 0.05 … 3.2 (as NR-71). Validity is the known risk for activation steering on structured output.
+- **B3:** merge `mol25-local-off`'s directions (11237285, round 100; its o_i are stable on ChEMBL) and evaluate with each client's own adapter and calibration.
+- **Traps in `sbatch/eval_baselines_chembl.sbatch`:**
+  - `SCORER` defaults to `clogp_residual`; it must be set to the strict deco scorer.
+  - `SIZE` hard-codes `--max_prompts 200`; it must be 150 to match MOL-25.
+  - `LOCAL_SNAP=best` selects on `pct_calib_err`, not the penalized metric; pass the round-100 snapshot explicitly.
+- cc only, A100, ccc0387 excluded, smoke test first. Job names `mol26-b1-k0`, `mol26-b1-k3`, `mol26-b1-k3-base`, `mol26-b4-caa`, `mol26-b3-local-off`.
+- **Blocked:** molecule-iter1 is not reachable (its session is not running). The user decides who launches.
+- molecule-iter1 is back (user-confirmed). CAL-22 relayed, and MOL-26 (the CAL-25 spec) assigned.
+- **MOL-26 submitted (cc):** b1-k0 11242545, b1-k3 11242546, b1-k3-base 11242547, b4-caa 11242548, b3-local-off 11242549.
+  - Smoke 11242038 passed: molecule B1 template, α-invariance with D removed.
+  - A fourth trap was fixed: `--caa_gains` defaults to the narrow grid and the sbatch passed none, so the widened grid needed a new `CAA_GAINS` variable.
+  - **Flag:** in the smoke, B1 was ~100% unscorable. It emits plain molecules (e.g. `O=C(N)C`), not attachment-point decoration sets, so the strict scorer rejects them. On ChEMBL, B1 may measure format failure rather than calibration failure, unlike Newsroom's B1. k = 3 (whose shots show the notation) tests whether examples teach the format. A format-explicit B1 variant would change the baseline's definition; asked the user.
+
+## CAL-26. MOL-26 results (B1, B3) and three fixes: stale molecule B1 template, B4 gain-selection crash, compare_runs None crash (2026-10-09)
+
+- **B3** (merge of local-off): penalized 0.253, pct err 0.249 (0.307), reach 0.198, unscorable 0.013.
+  - fed-aligned-off − B3: **8/8 better**, 0 worse.
+  - B3 has the lowest unscorable rate and the worst calibration, so fed-aligned-off's win is not bought by caution.
+  - MOL-25's loss on CHEMBL2039 comes from unscorability (0.235), not miscalibration.
+- **B1 is unscorable on 100% of rows in all three variants.** Coordinator diagnosis: `fedsteer/baselines.py:prompt_with_level_molecule` predates the decoration format (10-03).
+  - It gives the bare `scaffold` and "Answer with one SMILES string".
+  - Every training prompt gives `core_attached` with [n*] points and "Answer with the decorations only, as [n*]…".
+  - So B1 asked the trained models a different question; this is not evidence that prompting can't steer.
+  - **User: fix the template and rerun B1.** The current B1 results are void.
+- **B4 crashed** (`eval_baselines.py:126`): `min(fit, key=fit.get)` fails when a gain leaves no scorable dev cell (None).
+  - Fix: opt-in `--caa_select pct_calib_err_penalized` (the default reproduces the current behaviour, so NR-71 stays valid). MOL-26 uses penalized selection.
+- **`scripts/compare_runs.py:142`** crashes formatting a None `pct_calib_err`; it needs a guard.
+- Grant to molecule-iter1: `fedsteer/baselines.py`, `eval_baselines.py`, `scripts/compare_runs.py`, tests. CONVENTIONS §5 gains a nullable-metric rule.
+- **CAL-26 fixes landed** (molecule-iter1; 83/83 tests). Grant closed.
+  - B1 template rebuilt from the record's own prompt, with the level instruction before the output contract (tested). Legacy template kept for records without `core_attached`.
+  - `--caa_select`, with the default unchanged.
+  - compare_runs prints `n/a` for a None metric.
+- **Smoke 11248372:** B1 unscorable 1.00 → 0.00 (k = 0 client), 0.21 (k = 3 client), 0.67 (k = 3 base); outputs in [n*] notation. The old B1 row is void. Flag to watch: k = 3 worse than k = 0 on the client model.
+- **MOL-26a submitted (cc):** b1-k0 11250706, b1-k3 11250707, b1-k3-base 11250708, b4-caa 11250709 (penalized gain selection).
+
+## CAL-27. MOL-27 assigned: the NR-74 ablations on ChEMBL (2026-10-09)
+
+**User request:** run NR-74's two ablations on ChEMBL (molecule-iter1), matched to MOL-25 (pruned data, strict scorer, penalized selection, 100 rounds, rotation 0, seed 0, gain 1, warp_reg 0), cc only:
+- `mol27-fed-linear-off`: g_i(α) = o_i + α (`lora.warp=none fed.calibration=shared lora.offset=true fed.private_offset=true`). With warp none the code forces scope `model`.
+- `mol27-fed-shared-soff-sadapter`: pure FedAvg with a shared adapter, per-layer shape and one shared offset (`fed.adapter=shared fed.calibration=shared lora.offset=true lora.warp=kumaraswamy_mix lora.warp_scope=module`).
+- Compared against mol25-fed-aligned-off, mol25-fed-shared-off and mol25-local-off.
+- **MOL-27 submitted (cc):** fed-linear-off 11254743, fed-shared-soff-sadapter 11254744. Smokes and state assertions passed.
+  - Under a shared offset, client copies of o read 0.0; the server's o is the authoritative one and it trains. This is benign; newsroom was told.
+- **MOL-26a B1, k = 0 vs k = 3 on the client model** (150 prompts; `scripts/b1_copy_report.py`):
+  - k = 0: 65% of outputs are verbatim training targets, 73–167 distinct of 750, unscorable 0.008. The fine-tuned adapter emits memorised valid decoration sets.
+  - k = 3: copies a shown shot 13% of the time, reproduces fewer training targets (54%), is more diverse, and is unscorable 0.57.
+  - **Reading:** in-context examples push an already fine-tuned model off its output distribution (validity collapses). This is distribution shift, not copying.
+
+## CAL-28. NR-75 (NR-74 results): with a private offset the learned shape adds little; pure FedAvg repeats A2's trade-off and house-style floor (2026-10-09)
+
+- **Test pct err (worst):**
+  - fed-aligned-off 0.146 (0.199); fed-linear-off 0.148 (0.195, in-support 0.132, the best); fed-shared-off 0.150; fed-shared-soff 0.153;
+  - fed-shared-soff-sadapter 0.171 (0.191), in/out of support 0.183 / 0.154, reach 0.498;
+  - A2 (archive) 0.159 (0.176).
+- **linear-off vs aligned-off:** worse on 2/8 (wsj, aol, +0.006–0.007), better on none; mean difference ≤ 0.002. o_i is the same as in the other designs (nypost −0.69, reuters −0.41).
+  - **Design implication:** on Newsroom, most of fed-aligned-off's gain comes from the shared direction plus a private level o_i under a common calibration. The learned pooled per-layer shape adds a small out-of-support / top-end gain on broad clients (α = 1 cell 0.104 vs 0.115).
+  - Whether that holds on ChEMBL is MOL-27 (running).
+- **sadapter (pure FedAvg):** worse than aligned-off on 6/8. It is the house-style floor again: attribution 0.406, vs A2 0.409 and aligned-off 0.562.
+  - Its shared o drifts positive (+0.28 at r70, +0.61 at r100), vs −0.026 for fed-shared-soff with a private adapter.
+  - Reading, not established: o drifts when the adapter and D are in the same sharing class (local-off: both private; sadapter: both shared).
+
+## CAL-29. MOL-28 assigned: τ_pool sweep for fed-aligned-off on ChEMBL (2026-10-09)
+
+**User request:** tune τ_pool for fed-aligned-off on ChEMBL (molecule-iter1), mirroring NR-66/69. τ = 100 is MOL-25 (11237283).
+- Arms: `mol28-fed-aligned-off-tp300`, `-tp1000`, `-tp3000` (`fed.cov_tau_pool=…`), `-cnt` (`fed.cov_pool=count`). Everything else as MOL-25's aligned arm. cc only.
+- Choose on dev penalized error at the selected round, report test for all, with paired contrasts vs τ = 100.
+- On Newsroom, τ did not matter once o_i was present (NR-69).
+- **MOL-28 submitted (cc, all pinned to ccc0284, the τ = 100 node):** tp300 11256739, tp1000 11256740, tp3000 11256741, cnt 11256742. Three A100s, so about 12 h wall clock.
+  - Note: `--constraint` fails with the multi-partition request (BadConstraints); use `--partition=dali --nodelist=ccc0284`.
+- ⚠️ **MOL-25's arms ran on three GPU types:** aligned-off ccc0284 A100-PCIe, shared-off ccc0389 A100-SXM, local-off ccc0465 H200.
+  - aligned-off vs local-off (6/8, effects −0.015 to −0.041) stands.
+  - **aligned-off vs shared-off (0.184 vs 0.186) is hardware-confounded and not citable as directional.**
+  - MOL-27 runs on ccc0284, so it is matched to aligned-off only.
+- **MOL-26a B4:** all 8 clients chose the grid minimum, 0.05. Dev penalized error rises monotonically to 0.82–0.88 at 3.2. On ChEMBL the CAA grid needs extending downward.
+- **User:** decide on the hardware-matched fed-shared-off rerun after MOL-28 completes. The B4 downward-grid extension was not chosen; it is not launched.
+
+## CAL-30. MOL-26a: ChEMBL baselines complete — fed-aligned-off beats every baseline on 8/8 clients (2026-10-09)
+
+- Penalized (primary) / pct err (worst) / unscorable:
+  - fed-aligned-off 0.184 / 0.172 (0.244) / 0.071;
+  - local-off 0.200 / 0.192 / 0.034;
+  - B3 0.253 / 0.249 / 0.013;
+  - B4 0.366 / 0.364 / 0.004;
+  - B1 k = 0 0.355 / 0.352 / 0.008; B1 k = 3 0.467 / 0.313 / 0.570; B1 k = 3 base 0.766 / *0.186* / 0.981.
+- Paired: fed-aligned-off is better than each of B1 ×3, B3 and B4 on 8/8 clients and worse on 0/8.
+- **B4:** gain 0.05 (the grid minimum) for all 8 clients, with the dev curve monotone up to 3.2. Near-tie rate 0.93, reach 0.035, Spearman −0.10: inert or wrong-signed on ChEMBL.
+- **B1 k = 0** ignores the level (Spearman 0.04, near-tie 0.91).
+- ⚠️ **B1 k = 3 base looks competitive on the conditional metric (0.186) only because 98% of its outputs are unscorable.** The penalized metric puts it last (0.766). Rule: ChEMBL tables lead with the penalized metric, and the conditional pct err is never quoted without the unscorable rate.

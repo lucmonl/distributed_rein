@@ -163,19 +163,27 @@ def make_monitor(records: list[dict], clients: Sequence[str], quantiles: dict[st
 
 
 def format_monitor(ev: dict) -> str:
-    """One-line summary for the training log."""
+    """One-line summary for the training log.  Metrics can be absent when no client's outputs
+    were scorable at that evaluation (metrics.summarize drops all-None keys), so every lookup is
+    guarded: a logging line must never end a training run (CAL-20)."""
     if not ev:
         return ""
+    nan = float("nan")
+
+    def stat(s, key, field="mean"):
+        v = s.get(key)
+        return v.get(field, nan) if isinstance(v, dict) else nan
+
     parts = []
     if "loss_mean" in ev:
         parts.append(f"{ev['split']} loss {ev['loss_mean']:.4f}")
     if "full" in ev:
         s = ev["full"]["summary"]
-        parts.append(f"full {ev['split']}: pct err {s['pct_calib_err']['mean']:.3f} "
-                     f"out-of-support {s.get('pct_err_out_support', {}).get('mean', float('nan')):.3f} "
-                     f"spearman {s['spearman']['mean']:.3f}")
+        parts.append(f"full {ev['split']}: pct err {stat(s, 'pct_calib_err'):.3f} "
+                     f"out-of-support {stat(s, 'pct_err_out_support'):.3f} "
+                     f"spearman {stat(s, 'spearman'):.3f}")
     if "steer_summary" in ev:
         s = ev["steer_summary"]
-        parts.append(f"{ev['split']} spearman {s['spearman']['mean']:.3f} (worst {s['spearman']['worst']:.3f}) "
-                     f"pct err {s['pct_calib_err']['mean']:.3f} (const {s['constant_output_pct_err']:.3f})")
+        parts.append(f"{ev['split']} spearman {stat(s, 'spearman'):.3f} (worst {stat(s, 'spearman', 'worst'):.3f}) "
+                     f"pct err {stat(s, 'pct_calib_err'):.3f} (const {s.get('constant_output_pct_err', nan):.3f})")
     return " | " + " | ".join(parts)

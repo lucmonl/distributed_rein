@@ -1260,3 +1260,351 @@ Remaining: n = all for `fed-aligned-off`; `fed-shared-off`, `fed-aligned-tp3000`
   - Its lora settings (checked in that run's config): learned gain (s ∈ [0.25, 4]), **one** kumaraswamy_mix shape per client, no offset. Training used warp_reg 0.01; E2's local_D has no warp penalty.
 - **Protocol caveat:** same rotation (0), held-out clients, nested-n rule, steps, α reference (identical `alpha_reference.json`), 200 test articles and density scorer. But a different run family, code version and date (10-01): numbers only, no paired test.
 - The copy-heavy newcomer test (rotation 2 / `--alpha_window`) is **not** launched; the coordinator is raising it with the user.
+
+## NR-71. Baselines B1 / B3 / B4 for `fed-aligned-off`, launched (2026-10-09, 00:20)
+
+**Assigned by the coordinator (user request).** The method is `fed-aligned-off` (NR-62, τ = 100, `runs/nr62-fed-aligned-off_20261007-231639_j11209264`, snapshot r100). Archive protocol of entries 19/22 via `sbatch/eval_baselines.sbatch`: test split, 200 articles per client, density scorer, `max_new_tokens` 128, quality scoring after each step.
+
+| Baseline | What | Job |
+|---|---|---|
+| smoke | `SMOKE=1`, steps b1 + b4 + b3 on the `fed-aligned-off` and `local-off` snapshots | **11236750** |
+| **B1 k = 0** | prompting, the client's model (adapter + calibration, direction removed) | 11236751 (`nr71-b1-k0`) |
+| **B1 k = 3** | the same with 3 own-publication examples nearest the target α | 11236752 (`nr71-b1-k3`) |
+| B1 k = 3, base model | **reused from the archive**: `runs/exp11_cap4k_base_*/evals/eval_round_0100_b1_prompt_k3_base__20261001-104506_j11065061.json` | — |
+| **B4 federated CAA** | middle layer, 200 examples per side, 30 dev articles to fit the gain; **widened grid** 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1.2, 1.6, 2.4, 3.2 | 11236753 (`nr71-b4-caa`) |
+| **B3 from `local-off`** | merge `runs/nr60-local-off_20261007-181308_j11206105` at its dev-selected **r60**; each client keeps its adapter, per-layer shapes and offset | 11236754 (`nr71-b3-local-off`) |
+| **B3 from `local`** | merge `runs/nr60-local_20261007-231639_j11206106` at **r100** (secondary) | 11236755 (`nr71-b3-local`) |
+
+- The five real jobs depend on the smoke job (`afterok`). All are cc only, with `--gres=gpu:A100:1`, `--exclude=ccc0387`, 12 h. Launch [NR-71_baselines.sh](launch/NR-71_baselines.sh).
+
+**Checks before launch:**
+- **Reuse of B1 k = 3 base is valid.**
+  - The archive file's arguments: test, density, shots 3, base model, 200 prompts, `max_new_tokens` 128.
+  - Same model, data, `clients_file`, rotation, `max_train_per_client` (4000), seed 0 (so the identical training subset the shots come from), participants, prompt and target lengths, and an **identical `alpha_reference.json`**.
+  - `fedsteer/baselines.py` changed since 10-01 only by adding molecule and math templates (the news template is still selected for news records) and passing the empty `chat_template_kwargs`. The base model does not depend on the run.
+- **Aligned snapshot under `load_snapshot_into`** (CPU, Llama-3.2-1B, clients nypost.com and aol.com):
+  - the table equals the snapshot's;
+  - o_i loaded = snapshot (−0.618, −0.125);
+  - with D, the logits move with α (max |Δ| 4.6–5.3);
+  - **with B_d = 0, the logits are bit-identical at α = 0 and 1 and with the offset removed** (max |Δ| = 0). So B1 and B4 see the adapter alone, as intended.
+- **No shared-code change.**
+  - `sbatch/eval_baselines.sbatch` (newsroom-owned) gets two opt-in variables. `B1_SETS` is a ";"-separated list of B1 variants, defaulting to the original three. `CAA_ARGS` is extra B4 arguments, outside smoke mode, default empty.
+  - Both are passed through the environment with `--export=ALL`, because `sbatch --export` splits values on commas (entry 19a).
+
+**Report plan:**
+- A table in the archive entry-22 format: `fed-aligned-off`, `local-off`, `local`, B3 × 2, B4, B1 × 3. Columns: pct err (worst), in / out of support, reach, Spearman, near-tie, endpoint near-tie, AlignScore gap in / out, length gap.
+- Paired per-client contrasts of `fed-aligned-off` vs. each baseline.
+- B4: the gain each client picks, flagging any client still at 3.2.
+- B3: which source is stronger. `local-off`'s offsets drift (mean +0.78), which may weaken its merged direction.
+
+**Pending, low priority (coordinator, cross-dataset):** a restricted aligned-calibration disagreement for NR-62 `fed-aligned-off` (r100 snapshot) and NR-58 `fed-aligned`.
+- The logged `disagreement` (`fed.py` `_update_aligned`) is a weighted SD averaged over every (layer, grid) point, which understates disagreement where only one client has weight.
+- The new measure is the SD over grid points where ≥ 2 clients each hold ≥ 5% of the point's weight, plus the number of qualifying points.
+- molecule-iter1 is writing the post-hoc script under `scripts/`; the coordinator will pass on its name. Run it when it exists (CPU, no code change) so Newsroom and ChEMBL use the same measure.
+
+**Restricted disagreement, NR-62 vs. NR-58** (coordinator, cross-dataset; `scripts/disagreement_report.py` by molecule-iter1, read before running; CPU; r100; report `reports/nr71_disagreement_restricted.txt`). Restriction: grid points where ≥ 2 clients each hold ≥ 5% of the point's weight.
+
+| Run | Unrestricted (logged, r99) | Restricted | Qualifying grid points | nypost.com support gap | theguardian.com support gap | Other six |
+|---|---|---|---|---|---|---|
+| `fed-aligned` (NR-58) | 0.02841 (0.02841, match) | 0.02841 | **21/21** | 0.051 | 0.045 | 0.014–0.017 |
+| `fed-aligned-off` (NR-62) | 0.02336 (0.02336, match) | 0.02336 | **21/21** | **0.033** | **0.035** | 0.012–0.018 |
+
+- **No dilution on Newsroom at τ = 100 either** (factor 1.00×). Every grid point keeps 7–8 clients above the 5% floor. Only nypost.com (17/21 points) and theguardian.com (16/21) drop out at the ends of the scale. That is the same as the coordinator found at τ = 3000. The logged scalar is a fair measure here.
+- **With a private offset, the copy-heavy and narrow clients' own shapes sit closer to the pooled table.** nypost.com's support gap falls from 0.051 to 0.033 (−35%) and theguardian.com's from 0.045 to 0.035 (−22%); the others are unchanged. Overall disagreement falls from 0.028 to 0.023.
+- This is consistent with NR-63's shape-distance result for private shapes (nypost.com −41% with an offset): the level absorbs part of what would otherwise show up as a shape difference. One seed.
+
+**o_i vs. support floor (coordinator, cross-dataset, CAL-21; CPU).** Support floor = the client's 5th percentile on the global α scale (`support[0]` of the test eval; `fedsteer/data.client_support`). Plain test eval at the selected round. Report `reports/nr71_offset_vs_floor.txt`.
+
+| Arm (round) | Spearman (n = 8) | Pearson | Without nypost.com (n = 7): Spearman / Pearson | o_i vs. **median α**: Spearman / Pearson |
+|---|---|---|---|---|
+| `fed-aligned-off` NR-62 (r100) | −0.571 | −0.894 | −0.357 / −0.609 | **−0.786 / −0.854** |
+| `fed-shared-off` NR-60 (r100) | −0.643 | −0.913 | −0.464 / −0.631 | **−0.833 / −0.851** |
+| `local-off` NR-60 (r60) | −0.500 | −0.481 | −0.250 / −0.339 | — |
+| *`fed-aligned-off-tp3000` NR-66 (cross-check)* | *−0.429* | *−0.908* | *−0.143 / −0.613* | — |
+
+(support floor, o_i) pairs, sorted by floor:
+
+| Client | Floor | Median α | o_i `fed-aligned-off` | o_i `fed-shared-off` | o_i `local-off` |
+|---|---|---|---|---|---|
+| forbes.com | 0.029 | 0.28 | −0.149 | −0.166 | +0.471 |
+| people.com | 0.033 | 0.32 | −0.133 | −0.139 | +0.523 |
+| wsj.com | 0.036 | 0.47 | −0.097 | −0.097 | +0.457 |
+| theguardian.com | 0.045 | 0.27 | −0.021 | −0.020 | +1.101 |
+| aol.com | 0.062 | 0.55 | −0.125 | −0.143 | +0.624 |
+| reuters.com | 0.100 | 0.72 | −0.381 | −0.376 | +0.302 |
+| cbc.ca | 0.106 | 0.57 | −0.151 | −0.173 | +0.463 |
+| nypost.com | 0.506 | 0.85 | −0.618 | −0.663 | +0.242 |
+
+- **On Newsroom the support floor is a poor descriptor of the level; the median is a good one.**
+  - The floors bunch at 0.03–0.11 except nypost.com (0.51). The large |Pearson| with a weak Spearman shows that nypost.com carries the floor fit; without it, Spearman is −0.36 / −0.46.
+  - reuters.com has the second-largest offset (−0.38) with an unremarkable floor (0.10): it is copy-heavy through its median (0.72), not its floor.
+  - Against the client's **median α**, the ordering is near-monotone in both federated arms (Spearman −0.79 / −0.83; −0.68 / −0.75 without nypost.com). o_i tracks *where a client's data sits*, which on ChEMBL coincides with the floor.
+- **This matches ChEMBL's shared vs. private split:**
+  - the federated arms (shared or pooled shape) are strongly correlated;
+  - `local-off` is weak and of opposite sign in level (all o_i positive and drifting, NR-65). Its −0.50 Spearman mostly reflects nypost.com and reuters.com having the smallest positive offsets.
+- The τ = 3000 cross-check reproduces molecule-iter1's numbers exactly (−0.43 / −0.91).
+
+**Bug in `scripts/offset_support_report.py` (molecule-iter1's; reported, not edited).**
+- Its pattern `eval_round_[0-9]*__*.json` also matches E2 and baseline evals, and it reads the alphabetically last file.
+- For NR-62 and `fed-shared-off` that is `eval_round_0100_e2_plugin_nall__…`: the 4 *held-out* clients' plugin offsets. It printed n = 4 and Spearman −1.000.
+- The `local-off` row is correct (no E2 files in that run). The numbers above use the strict pattern `eval_round_[0-9][0-9][0-9][0-9]__*.json` (the archive entry-30 fix in `compare_runs.py`).
+
+**Correction to the `local-off` reading above (molecule-iter1 via coordinator, CAL-21; checked here).**
+- Rerun with the fixed `scripts/offset_support_report.py` (strict 4-digit glob; refuses to guess between rounds); report `reports/nr71_offset_support_fixed_script.txt`.
+- It reproduces my numbers for the federated arms:
+  - `fed-aligned-off` (r100): floor −0.571 / −0.894; median α −0.786 / −0.854.
+  - `fed-shared-off` (r100): floor −0.643 / −0.913; median α −0.833 / −0.851.
+- **`local-off` is evaluated at its dev-selected round 60, not 100.** Its o_i vs. median α is **Spearman −0.786, Pearson −0.681**: the same ordering as the federated arms. I had not computed this column for `local-off`.
+- On dev across rounds the ordering holds or strengthens while the level drifts upward:
+
+| Round | Spearman | o_i range | Mean o_i |
+|---|---|---|---|
+| r30 | −0.667 | −0.01 to +0.27 | +0.08 |
+| r60 | −0.786 | +0.24 to +1.10 | +0.52 |
+| r80 | −0.857 | +0.32 to +1.47 | +0.73 |
+| r100 | −0.857 | +0.35 to +1.58 | +0.78 |
+
+- **So `local-off` learns the right relative structure at an unidentified absolute level**, a common upward drift. This is not "no structure without sharing".
+- **The refined claim, consistent on both datasets:** sharing or pooling the shape makes o_i *correctly levelled* (negative, bounded, stable from about round 30, monotone in median α). A private shape leaves the absolute level unidentified: it drifts with D_i and P_i (NR-65), even though the ordering across clients is still learned.
+
+## NR-72. E2 final: held-out clients join every offset/aligned arm equally well, far ahead of local (2026-10-09, 11:40)
+
+Analysis only.
+
+**State.**
+- All 11 NR-68 E2 jobs are done, with no errors.
+- Nodes: `fed-aligned-off` and `fed-shared-off` on ccc0284 (A100-40GB); `fed-aligned-tp3000` on ccc0388 / ccc0390 (A100-80GB); `fed-shared-soff` on ccc0284.
+- Reports:
+  - `reports/nr72_e2_n{16,64,256,1024,all}.txt`: `compare_runs.py` with explicit E2 file patterns; paired bootstrap over articles. Every file holds the same 4 held-out clients, the same 200 test articles each and an identical α reference.
+  - `reports/nr72_e2_offsets_quality.txt`.
+- Protocol: rotation 0, held-out telegraph.co.uk, bbc.com, mashable.com, latimes.com; nested n; steps clip(⌈4n/8⌉, 200, 2000).
+- **`local-gain-1shape`** = the archive's local_D (learned gain, one shape, no offset; 11088050–54; same protocol, different code date). Shown for its means only, without paired tests (CAL-16).
+
+### Mean pct err over the 4 held-out clients (worst in brackets)
+
+| n | `fed-aligned-off` | `fed-shared-off` | `fed-aligned-tp3000` | `fed-shared-soff` | **local-off** (reference) | *`local-gain-1shape`* | plugin, aligned-off | plugin, shared-off | *prompt (archive)* |
+|---|---|---|---|---|---|---|---|---|---|
+| 16 | 0.174 (0.195) | 0.173 (0.187) | 0.177 (0.197) | 0.174 (0.188) | 0.315 (0.332) | *0.295 (0.325)* | 0.198 | 0.200 | *0.411* |
+| 64 | 0.167 (0.191) | 0.168 (0.200) | 0.165 (0.180) | 0.163 (0.181) | 0.294 (0.322) | *0.260 (0.287)* | 0.183 | 0.183 | *0.388* |
+| 256 | 0.145 (0.187) | 0.148 (0.187) | 0.141 (0.182) | 0.148 (0.201) | 0.277 (0.319) | *0.225 (0.247)* | 0.178 | 0.179 | *0.411* |
+| 1024 | 0.141 (0.177) | 0.139 (0.167) | 0.138 (0.184) | 0.138 (0.172) | 0.231 (0.319) | *0.192 (0.207)* | 0.196 | 0.198 | *0.387* |
+| all | **0.132 (0.159)** | 0.132 (0.167) | 0.130 (0.164) | 0.134 (0.168) | 0.167 (0.230) | *0.151 (0.176)* | 0.212 | 0.212 | — |
+
+### What the results say
+
+**1. Every federated arm beats local on every held-out client at every n.**
+- frozen_D − `local-off` is significant on **4/4 clients at every n for all four arms** (20 of 20 arm × n cells).
+- Against the strongest local baseline measured (`local-gain-1shape`), every arm is ahead in mean at every n: by 0.12 at n = 16, 0.09–0.10 at n = 64, about 0.08 at n = 256, about 0.05 at n = 1024 and about 0.02 at n = all.
+- **16 pairs with the frozen direction (0.173–0.177) beat local trained on 1024 pairs (0.192–0.231).**
+- At full data, every new client (0.130–0.134) is better than the participants' own test error (0.143–0.150).
+
+**2. E2 does not separate the calibration designs.**
+- The four arms are within 0.005 of each other at every n (unresolved, CAL-13).
+- Pairwise contrasts are mixed:
+  - `fed-aligned-off` − `fed-shared-off`: 1 better / 1–2 worse;
+  - `fed-aligned-off` − `fed-aligned-tp3000`: 0–1 better / 0–2 worse;
+  - `fed-shared-off` − `fed-shared-soff`: 0–1 / 0–1.
+- **For broad new clients, how the shared calibration was learned does not matter**, and neither does the client's own o_i. `fed-shared-soff`, which inherits the frozen shared o = −0.026 and trains only its adapter, does as well as the arms where the client fits its own o_i.
+- This follows from rotation 0's held-out clients being broad (next point).
+
+**3. Held-out o_i stays near 0, the participants' broad-client level.** Mean (range) over the 4 clients under frozen_D:
+
+| Arm | n = 16 | 256 | all |
+|---|---|---|---|
+| `fed-aligned-off` | −0.042 (−0.063 to −0.015) | −0.025 | +0.024 (−0.009 to +0.076) |
+| `fed-shared-off` | −0.045 (−0.066 to −0.017) | −0.027 | +0.018 |
+
+Participants: −0.02 to −0.66. One scalar is stable from n = 16 on. Whether a copy-heavy newcomer can learn o_i ≈ −0.6 is untested (the coordinator is raising it with the user).
+
+**4. plugin stays well behind frozen_D, and gets *worse* with more data.**
+- 0.198 → 0.183 → 0.178 → 0.196 → **0.212** at n = all, while frozen_D improves to 0.132.
+- frozen_D − plugin is significant on 3/4 clients at n ≤ 64 and on 4/4 from n = 256.
+- With more SFT data the knob-unaware adapter absorbs more of the client's level, and a single offset cannot undo it.
+- **Training the adapter with the knob in the loop is essential**, more so the more data a client has.
+
+**5. Local with an offset is the weaker local reference** (NR-65's drift again). `local-off` is below `local-gain-1shape` at every n (0.315 vs. 0.295 … 0.167 vs. 0.151). The conclusion holds against either.
+
+**6. Quality and judge.**
+- AlignScore gap to same-α references:
+  - federated: −0.04 to +0.03 in support, +0.05 to +0.09 out of support;
+  - `local-off`: up to +0.14 out of support.
+- **Out-of-support length gap:**
+  - federated, small n: +10 to +13 words at n = 16, falling to +4 to +6 at n = all;
+  - local: +1 to +6 words throughout.
+  - This is the one quality cost of joining with the frozen direction at very small n (seen in archive entry 30 too).
+- **Judge:**
+  - faithfulness in / out of support: federated 0.77–0.78 / 0.71–0.73 at n = 16, rising to 0.82–0.86 / 0.76–0.79 at n = all; `local-off` 0.68 / 0.70 at n = 16, 0.84 / 0.80 at n = all;
+  - out-of-support relevance gap: federated −0.05 to +0.03 at every n; `local-off` −0.12 at n = 16; `local-gain-1shape` −0.14 at n = 256;
+  - coherence: 4.17–4.30 everywhere.
+
+**Conclusion (C2, portability).** A new client joins any of the four offset/aligned designs with a frozen direction and a frozen shared calibration, fitting only its adapter (plus one scalar), and gets the same data-efficiency curve as the archive method. It beats local training on every client at every data size; 16 pairs beat 1024 local pairs. **E2 neither favours nor penalizes any of the four calibration designs** on these broad held-out clients.
+
+## NR-73. Baselines B1 / B3 / B4 for `fed-aligned-off`: results (2026-10-09, 11:50)
+
+Analysis only.
+
+**State.**
+- NR-71 jobs all done, with no errors:
+  - B1 k = 0: 11236751, ccc0284;
+  - B1 k = 3: 11236752, ccc0388;
+  - B4: 11236753, ccc0284;
+  - B3 from `local-off`: 11236754, ccc0284;
+  - B3 from `local`: 11236755, ccc0390.
+- The smoke job 11236750 (ccc0388) passed.
+- Report `reports/nr73_baselines_test.txt` (`compare_runs.py`; real-job files selected by job ID, because the smoke files sit in the same directories; paired bootstrap over articles).
+- Test split, 200 articles per client.
+
+### Table (archive entry-22 format)
+
+| | Pct err (worst) | In-support | Out-of-support (worst) | Reach | Spearman (worst) | Near-tie | Endpoint near-tie | AlignScore in / out (gap) | Length gap in / out |
+|---|---|---|---|---|---|---|---|---|---|
+| **`fed-aligned-off`** | **0.146 (0.199)** | **0.135** | **0.151 (0.184)** | **0.425** | **0.929 (0.892)** | 0.188 | 0.001 | 0.786 / 0.731 (−0.02 / +0.05) | +2.4 / +3.4 |
+| `local` | 0.157 (0.244) | 0.139 | 0.159 (0.274) | 0.396 | 0.912 (0.805) | 0.219 | 0.010 | 0.786 / 0.722 (−0.02 / +0.04) | +2.4 / +1.4 |
+| `local-off` (r60) | 0.178 (0.266) | 0.154 | 0.186 (0.300) | 0.365 | 0.886 (0.730) | 0.265 | 0.022 | 0.806 / 0.761 (0.00 / +0.08) | +3.4 / +4.3 |
+| **B3 merge of `local`** (r100) | 0.181 (0.256) | 0.152 | 0.198 (0.286) | 0.288 | 0.881 (0.701) | 0.168 | 0.011 | 0.723 / 0.721 (−0.08 / +0.04) | −2.2 / −1.4 |
+| B3 merge of `local-off` (r60) | 0.227 (0.280) | 0.203 | 0.243 (0.342) | 0.236 | 0.811 (0.579) | 0.232 | 0.021 | 0.729 / 0.731 (−0.08 / +0.05) | −0.8 / +0.8 |
+| **B4 federated CAA** (layer 8, widened grid) | 0.253 (0.301) | 0.213 | 0.289 (0.359) | 0.230 | 0.780 (0.700) | 0.042 | 0.000 | 0.602 / 0.512 (**−0.20 / −0.17**) | −0.2 / **+11.9** |
+| **B1 prompt, k = 0** (client model) | 0.381 (0.395) | 0.250 | 0.498 (0.519) | 0.034 | **−0.029** | 0.716 | **0.701** | 0.627 / 0.629 (−0.18 / −0.05) | −3.0 / −7.0 |
+| **B1 prompt, k = 3** (client model) | 0.383 (0.406) | 0.255 | 0.498 (0.523) | 0.054 | 0.032 | 0.178 | 0.164 | 0.578 / 0.582 (−0.23 / −0.10) | −3.1 / −7.3 |
+| B1 prompt, k = 3, base model (archive 11065061) | 0.341 (0.355) | 0.243 | 0.467 (0.519) | 0.117 | 0.077 | 0.003 | 0.000 | 0.609 / 0.631 (−0.20 / −0.05) | **+82 / +72** |
+
+### Paired per-client contrasts: `fed-aligned-off` − baseline
+
+| Baseline | Better on | Worse on | Notes |
+|---|---|---|---|
+| B1 k = 0 / k = 3 / k = 3 base | **8/8** each | 0/8 | |
+| B4 CAA | **7/8** | 0/8 | reuters.com tie overall (+0.005), better out of support (−0.057*); nypost.com −0.025* |
+| B3 merge of `local-off` | **7/8** | 1/8 | reuters.com +0.029*, out of support +0.003 n.s. |
+| B3 merge of `local` | **7/8** | 1/8 | reuters.com, 0.199 vs. 0.171 |
+| `local` (for reference) | 4/8 | 0/8 | NR-65 |
+
+### What the results say
+
+1. **B1 prompting does not steer.**
+   - Spearman ≈ 0 for the client model with or without shots; at k = 0, 70% of articles give near-identical text at α = 0 and 1 (endpoint near-tie 0.70).
+   - The base model with 3 shots writes 72–82 words longer than the reference (about 110 tokens).
+   - This is unchanged from archive entry 22 (0.378 / 0.378 / 0.341 there). The new client models (aligned calibration + offset) behave like the old ones once the direction is removed.
+2. **B4 CAA steers partially and damages quality; the wider gain grid did not rescue it.**
+   - Chosen gains: 0.8 for six clients (theguardian.com, people.com, wsj.com, aol.com, cbc.ca, nypost.com) and 0.5 for forbes.com and reuters.com.
+   - **No client is at 3.2 (or above 0.8):** every choice is an interior optimum on the dev fit. Archive entry 22's under-tuning concern (6/8 at the old top gain 0.8) is resolved: larger gains are worse.
+   - Result: 0.253 vs. 0.263 in the archive; Spearman 0.78; AlignScore gap −0.20 / −0.17; +11.9 words out of support.
+   - Client CAA vectors agree with the average at cosine 0.65–0.86.
+3. **B3 one-shot merging is worse than both the federated method and its own local source.**
+   - B3 from `local` − `local`: worse on **7/8**, better on 1/8. B3 from `local-off` − `local-off`: worse 7/8, better 1/8.
+   - **The stronger merge is from `local`** (0.181 vs. 0.227; better on 7/8 vs. the `local-off` merge). As the coordinator suspected, `local-off`'s drifting offsets (+0.24 to +1.10) make its directions merge badly. **B3 from `local` is the B3 to report.**
+   - The one client where both merges beat the method is **reuters.com** (0.170–0.171 vs. 0.199), the same exception as archive entry 22 (+0.017 there). Its local directions are presumably the largest contributors to the merged direction at the high end.
+   - B3's summaries are **shorter** than the references (−2.2 / −1.4 words) and less consistent in support (AlignScore gap −0.08): the merged direction is weaker than a client's own.
+4. **Ordering:** `fed-aligned-off` (0.146) < `local` (0.157) < B3 (0.181) < B4 (0.253) < B1 (0.34–0.38). It is the same ordering and similar margins as archive entry 22, which used the old method (0.151). The calibration redesign kept every baseline gap.
+
+**Gates:** G1 (B1 does not steer) and G3 (one-shot merge < iterative federated) pass again with the new method.
+
+## NR-74. Two arms in the new parameterization, launched: `fed-linear-off` and `fed-shared-soff-sadapter` (2026-10-09, 12:10)
+
+**Assigned by the coordinator (user request).** Common settings matched to NR-62 / NR-60: `model_name=meta-llama/Llama-3.2-1B-Instruct fed.rounds=100 max_train_per_client=4000 fed.fix_gain=true fed.warp_reg=0`, rotation 0, the full train → dev selection → test → quality → judge pipeline.
+
+| Arm (= job name, `runs/<name>_…`) | Model | Overrides | cc job |
+|---|---|---|---|
+| `fed-linear-off` | g_i(α) = o_i + α: **no learned shape**, private offset. There is nothing to pool, so it stands for both the shared and aligned versions. | `lora.warp=none lora.warp_scope=module fed.calibration=shared lora.offset=true fed.private_offset=true` | **11241906** |
+| `fed-shared-soff-sadapter` | **pure FedAvg**: shared adapter, per-layer h_l averaged, one shared o; g(α) = o + h_l(α) for every client. The new-setup A2. | `fed.adapter=shared fed.calibration=shared lora.offset=true lora.warp=kumaraswamy_mix lora.warp_scope=module` | **11241907** |
+
+- Launch [NR-74.sh](launch/NR-74.sh). cc only, `--gres=gpu:A100:1` (A100s, like NR-62), `--exclude=ccc0387`, 24 h. No code change.
+- **`warp_scope=module` with `warp=none` does not error.** `inject_steer_lora` uses scope `model` whenever `warp == "none"`, so the setting is recorded in `config.yaml` but has no effect (there are no shape parameters).
+
+**CPU smoke** (2 rounds, `train_fed.py`, tiny config), both passed:
+- `fed-linear-off`: warp none, offset true, `private_offset` true. The server's calibration state is `{u}` only (**no o**); each client holds only `steer_control.o`.
+- `fed-shared-soff-sadapter`: adapter shared, so 112 B_p tensors are in the server state; `private_offset` false, so **o is in the server state**; per-layer shapes plus u in the server state (338 calibration tensors).
+- To check in each real run's `config.yaml` after round 1.
+
+**Comparisons:**
+- `fed-linear-off`:
+  - vs. `fed-aligned-off` (NR-62, 0.146) and `fed-shared-off` (NR-60, 0.150), i.e. whether a learned shape is needed once o_i is there;
+  - vs. the archive's no-offset linear arm (entry 40, 11145307: 0.153).
+- `fed-shared-soff-sadapter`:
+  - vs. `fed-aligned-off`, `fed-shared-soff` (NR-60c, 0.153) and A2 (11094904: 0.159, worst 0.176; in support 0.177, out of support 0.136);
+  - **in vs. out of support**, since A2's trade-off was worse in support and better out of it;
+  - **house style** (`style_eval.py`): A2 was the floor (attribution 0.409).
+
+**Report:** the test table with the usual columns; per-α cells with α = 0 and 1 separately; learned offsets; paired contrasts against `fed-aligned-off`.
+
+**NR-74 round-1 config check (11:24):** both runs started on ccc0284 (A100-40GB, like NR-62).
+- `nr74-fed-linear-off_20261009-111900_j11241906`: warp none, offset true, `private_offset` true, adapter private, calibration shared, `fix_gain` true, `warp_reg` 0, 100 rounds, 4000 per client.
+- `nr74-fed-shared-soff-sadapter_20261009-111900_j11241907`: warp kumaraswamy_mix, scope module, offset true, `private_offset` false (o shared), **adapter shared**, calibration shared, `fix_gain` true, `warp_reg` 0.
+- As intended. The server-state contents were verified in the CPU smoke; the first real snapshot is at round 10.
+
+## NR-75. NR-74 results: a learned shape adds little once o_i is there; pure FedAvg repeats A2's trade-off and house-style floor (2026-10-09, 18:30)
+
+Analysis only.
+
+**State.** Both NR-74 runs are done on ccc0284 (A100-40GB), full pipeline, no errors:
+- `fed-linear-off` (11241906): dev-selected **r100**;
+- `fed-shared-soff-sadapter` (11241907): dev-selected **r70**, the same round A2 was selected at.
+
+Reports:
+- `reports/nr75_test.txt` (`compare_runs.py`, post-CAL-26 version; paired bootstrap);
+- `reports/nr75_cells_test.txt` (per-α cells, output percentiles, o);
+- `reports/nr75_style_test.txt` (`style_eval.py`).
+
+Archive runs cited: `linear-noOff` = entry 40's no-offset linear run (11145307, gain fixed, no warp, no offset; same setting); A2 = 11094904 at r70. Single seed.
+
+| Arm | Pct err (worst) | In-support | Out-of-support (worst) | Reach | Spearman (worst) | α = 0 cell | α = 1 cell | AlignScore gap in / out | Length gap in / out | Judge faithful in / out |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **`fed-aligned-off`** (reference, NR-62) | **0.146** (0.199) | 0.135 | 0.151 (0.184) | 0.425 | 0.929 (0.892) | **0.195** | 0.104 | −0.02 / +0.05 | +2.4 / +3.4 | 0.83 / 0.79 |
+| `fed-shared-off` (NR-60) | 0.150 (0.205) | 0.134 | 0.158 (0.184) | 0.393 | 0.928 (0.890) | 0.196 | 0.121 | −0.02 / +0.05 | +1.8 / +2.2 | 0.84 / 0.80 |
+| **`fed-linear-off`** | 0.148 (**0.195**) | **0.132** | 0.157 (0.180) | 0.408 | 0.933 (0.908) | 0.201 | 0.115 | −0.02 / +0.05 | +2.6 / +2.8 | 0.84 / 0.81 |
+| *`linear-noOff` (archive 40)* | *0.153 (0.217)* | *0.134* | *0.165 (0.207)* | *0.404* | *0.927* | | | *−0.02 / +0.06* | *+2.2 / +3.1* | *0.83 / 0.80* |
+| `fed-shared-soff` (NR-60c) | 0.153 (0.222) | 0.137 | 0.160 (0.194) | 0.397 | 0.926 (0.859) | | | −0.02 / +0.05 | +2.2 / +2.8 | 0.84 / 0.79 |
+| **`fed-shared-soff-sadapter`** (r70) | 0.171 (0.191) | **0.183** | 0.154 (**0.171**) | **0.498** | **0.948** (0.908) | 0.257 | **0.051** | **+0.09 / +0.13** | **+6.3 / +11.8** | **0.89 / 0.87** |
+| *A2 (archive, r70)* | *0.159 (0.176)* | *0.177* | *0.136 (0.168)* | *0.500* | *0.951 (0.914)* | *0.205* | *0.061* | *+0.09 / +0.10* | *+7.2 / +10.1* | *0.89 / 0.86* |
+
+### 1. `fed-linear-off`: once o_i is there, the learned shape adds little
+
+**Paired per-client contrasts:**
+
+| Contrast | Better on | Worse on |
+|---|---|---|
+| `fed-linear-off` − `fed-aligned-off` | 0/8 | 2/8: wsj.com +0.006, aol.com +0.007; out of support also people.com +0.011, wsj.com +0.014, aol.com +0.017 |
+| `fed-linear-off` − `fed-shared-off` | 1/8 (reuters.com −0.010) | 0/8 |
+| `fed-linear-off` − `linear-noOff` (archive) | **3/8** (reuters.com −0.023, nypost.com −0.012, theguardian.com −0.007) | 0/8 |
+
+- **The mean differences are 0.002 against `fed-aligned-off` and −0.002 against `fed-shared-off`: unresolved.**
+  - With a private level and a plain linear coefficient g_i(α) = o_i + α, steering is as good as with learned per-layer shapes.
+  - It is better than or equal to FedAvg-learned shapes, with the best worst-client (0.195) and in-support (0.132) of the three.
+- The aligned pooled shape still buys a little on the broad clients **out of support** (aol.com, wsj.com, people.com +0.011 to +0.017 for linear) and at the top (α = 1 cell 0.104 vs. 0.115; reach 0.425 vs. 0.408).
+- **The offset is what matters for the copy-heavy clients.** Against the no-offset linear archive run, o_i fixes reuters.com, nypost.com and theguardian.com.
+- **The offsets are the same as with a learned shape:** nypost.com −0.689, reuters.com −0.405, the others −0.03 to −0.19 (NR-62: −0.618 / −0.381). A fourth design with the same per-client levels.
+- House style is unaffected: attribution 0.550, feature gap 0.104 (`fed-aligned-off` 0.562 / 0.110).
+
+### 2. `fed-shared-soff-sadapter` (pure FedAvg) repeats A2's trade-off, a little worse, and the shared o does not settle
+
+- **Against `fed-aligned-off`:**
+  - Overall: worse on **6/8** (+0.018 to +0.049), better on 1/8 (nypost.com −0.014); reuters.com tie overall, better out of support (−0.024).
+  - **In support:** much worse (0.183 vs. 0.135).
+  - **Out of support:** about equal (0.154 vs. 0.151), with a better worst client (0.171 vs. 0.184).
+  - Steering range: reach 0.498 vs. 0.425, Spearman 0.948, α = 1 cell 0.051 vs. 0.104.
+  - The cost is the bottom: the α = 0 cell is 0.257 vs. 0.195.
+- **This is A2's trade-off** (in-support precision for reach and extrapolation). The same mechanism as archive entry 30: a shared adapter cannot absorb a client's level, so everything goes through the shared D and calibration.
+- **Against A2: worse on 7/8** (+0.009 to +0.016), better on none. The new setup's per-layer shape (averaged) and shared offset do not help the shared-adapter design; A2 (one shape, no offset, learned shared gain) was better.
+- **The shared o drifts positive.**
+  - The server's o (the authoritative value; per-client copies read 0.0, as the coordinator noted) is **+0.284 at the selected r70 and +0.606 at r100**.
+  - Every client's α = 0 output percentile rises to 0.23–0.29: the α = 0 cell is the worst of any arm. The α = 1 cell is the best of any arm.
+  - Compare `fed-shared-soff` (private adapter, shared o), where o settles at −0.026.
+  - **Pattern across the runs:** o drifts when the adapter and the direction are in the same sharing class as o, i.e. all private (`local-off`, NR-65) or all shared (here). It settles when o is the client's level next to a shared D and a private adapter, or a shared level next to private adapters. Consistent with a redundancy between o · D and the other terms trained on the same data; single seed, a reading, not established.
+- **Quality:** like A2, its summaries are longer (+6.3 / +11.8 words) and more consistent with the article (AlignScore gap +0.09 / +0.13), and the judge rates them more faithful (0.89 / 0.87). Those signs come with more copying; the judge prefers extractive summaries.
+
+### 3. House style: the A2 floor repeats exactly
+
+| Run | Attribution | P(own) | Feature gap |
+|---|---|---|---|
+| real summaries (ceiling) | 0.587 | 0.388 | — |
+| `fed-aligned-off` | 0.562 | 0.381 | 0.110 |
+| `fed-linear-off` | 0.550 | 0.375 | 0.104 |
+| **`fed-shared-soff-sadapter`** | **0.406** | 0.293 | **0.183** |
+| A2 (archive) | 0.409 | 0.295 | 0.190 |
+
+- Per client: nypost.com **0.235** (A2 0.250; `fed-aligned-off` 0.635), theguardian.com 0.297 (A2 0.294), forbes.com 0.345.
+- **Without a private adapter the house style is lost**, regardless of calibration design. With one (every other arm) it is kept.
+
+### Conclusions
+
+1. **The private offset carries most of the calibration's value.** g_i(α) = o_i + α already reaches 0.148, within noise of the learned-shape designs. The pooled shape adds a small, not significant, out-of-support and top-end gain on the broad clients.
+2. **The private adapter is needed for house style and in-support precision.** Pure FedAvg (shared adapter) trades them for reach and extrapolation, exactly as A2 did. With a shared adapter, a shared offset does not settle.

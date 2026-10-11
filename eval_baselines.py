@@ -46,6 +46,14 @@ def main():
     ap.add_argument("--caa_layer", type=int, default=None, help="B4: decoder layer (default: middle)")
     ap.add_argument("--caa_examples", type=int, default=200, help="B4: examples per side per client")
     ap.add_argument("--caa_gains", default="0.05,0.1,0.2,0.3,0.5,0.8")
+    ap.add_argument("--caa_select", default="pct_calib_err",
+                    choices=["pct_calib_err", "pct_calib_err_penalized"],
+                    help="B4: dev metric the per-client gain is chosen on (CAL-26). The default "
+                         "reproduces the previous behaviour, so NR-71 stays valid. pct_calib_err is "
+                         "None when NO dev cell scored at a gain, which crashed gain selection on "
+                         "ChEMBL (MOL-26); pct_calib_err_penalized counts an unscorable cell as "
+                         "error 1, so a gain that destroys output validity is ranked worst instead "
+                         "of being excluded.")
     ap.add_argument("--fit_prompts", type=int, default=30, help="B4: dev articles used to fit the gain")
     ap.add_argument("--split", default="test")
     ap.add_argument("--scorer", default="density", choices=sorted(SCORERS))
@@ -117,19 +125,35 @@ def main():
             steer = lambda a, g, c=c: (g * (2 * a - 1) * norms[c] * unit).to(device)
             # client side: fit the scalar gain on a few dev articles (lowest percentile error)
             fit_recs = by["dev"][c][: args.fit_prompts]
-            fit = {}
+            fit, fit_pen = {}, {}
             for g in gains:
                 grid, texts = score_grid_custom(model, fmt, fit_recs, alphas, score,
                                                 steer_fn=lambda a, g=g: steer(a, g), layer=layer,
                                                 max_new_tokens=args.max_new_tokens, batch_size=args.batch_size)
-                fit[g] = result_from_grid(grid, texts, fit_recs, alphas, refs[c])["pct_calib_err"]
-            g_best = min(fit, key=fit.get)
+                r = result_from_grid(grid, texts, fit_recs, alphas, refs[c])
+                fit[g] = r["pct_calib_err"]                       # None when nothing scored
+                fit_pen[g] = r["pct_calib_err_penalized"]         # always a number
+            sel = fit_pen if args.caa_select == "pct_calib_err_penalized" else fit
+            usable = {g: v for g, v in sel.items() if v is not None}
+            if not usable:
+                raise SystemExit(f"{c}: every gain in {gains} produced no scorable dev cell under "
+                                 f"--caa_select {args.caa_select}; rerun with "
+                                 f"--caa_select pct_calib_err_penalized, which cannot be None")
+            if len(usable) < len(sel):
+                print(f"{c}: {len(sel) - len(usable)} of {len(sel)} gains produced no scorable dev "
+                      f"cell and were skipped: {sorted(g for g in sel if sel[g] is None)}", flush=True)
+            g_best = min(usable, key=usable.get)
+            print(f"{c}: gain {g_best} chosen on {args.caa_select}; dev curve "
+                  + " ".join(f"{g}:{'None' if sel[g] is None else format(sel[g], '.3f')}" for g in gains),
+                  flush=True)
             recs = by[args.split][c][: args.max_prompts]
             grid, texts = score_grid_custom(model, fmt, recs, alphas, score,
                                             steer_fn=lambda a: steer(a, g_best), layer=layer,
                                             max_new_tokens=args.max_new_tokens, batch_size=args.batch_size)
             results[c] = result_from_grid(grid, texts, recs, alphas, refs[c], supports.get(c))
-            results[c].update({"caa_gain": g_best, "caa_fit_pct_err": fit, "caa_cos_to_shared": cos[c],
+            results[c].update({"caa_gain": g_best, "caa_fit_pct_err": fit,
+                               "caa_fit_pct_err_penalized": fit_pen, "caa_select": args.caa_select,
+                               "caa_cos_to_shared": cos[c],
                                "caa_layer": layer})
             print(c, brief(results[c]), flush=True)
         extra = {"caa_shared_norm": float(shared.norm()), "caa_client_cos_to_shared": cos}

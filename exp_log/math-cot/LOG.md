@@ -157,3 +157,12 @@ Runs `runs/math7_ans_e1_{fed,local}_qwen25_7b_20261007-091715_j2270334{9,50}`; l
   - `local`: s = 1, warp_reg 0; the reference design.
   It waits for the user's answer, relayed by the coordinator.
 - **MATH-21 on HOLD (user, relayed by the coordinator, 2026-10-08):** do not submit; the launch file stays as drafted.
+
+## MATH-23. Code sync of the CAL-20 crash fix (`fedsteer/monitor.py`); suite on all three hosts (2026-10-09) [cc+delta+dtai]
+
+- Coordinator fix: `format_monitor` raised a KeyError, killing the run, when no client's outputs were scorable at an eval. Math evals can be fully unscorable early (no `\boxed{}`), so the fix matters here. Output is unchanged otherwise.
+- cc (`steer`): **80/80**. The first attempt hit my 25-min timeout after 27 tests: the login node was loaded, and it stalled in `test_fedavg_trains_and_clients_stay_private`. The rerun with a longer timeout passed in full.
+- `scripts/sync_to_delta.sh` to Delta and dtai. Code moved: `fedsteer/monitor.py`, `tests/test_fedsteer.py`, new `scripts/disagreement_report.py` (+ `CONVENTIONS.md`, docs). A dry run afterwards is empty apart from sbatch headers.
+- Delta (`rein`): **79/80**. The one failure is the known MKL/libgomp environment error in `test_b3_merge_equals_average_of_local_directions` (MATH-17); that test is unrelated to the math pipeline.
+- dtai (`rein-gh`): **80/80**. A first attempt returned no summary line after 18 min; the rerun with the full log at `/work/nvme/bhby/lucmon/tests_cal20_dtai.log` passed.
+- G1 (Delta 22705844) is still PENDING and will copy this tree. MATH-21 stays on the user's hold.

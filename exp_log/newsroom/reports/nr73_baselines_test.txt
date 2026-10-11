@@ -1,0 +1,161 @@
+== Steering (test; mean over clients; worst client in brackets)
+pctErrFail1 = all-cell percentile error with penalty 1 for each unscorable output (supplementary)
+run              round    pct_calib_err      pctErrFail1   pct_err_in_sup   pct_err_out_su       reach_rate         spearman  concord_nt  nearTie endNearTie
+fed-aligned-off    100    0.146 (0.199)    0.146 (0.199)    0.135 (0.220)    0.151 (0.184)    0.425            0.929 (0.892)       0.910    0.188      0.001
+local-off           60    0.178 (0.266)    0.178 (0.266)    0.154 (0.235)    0.186 (0.300)    0.365            0.886 (0.730)       0.874    0.265      0.022
+local              100    0.157 (0.244)    0.157 (0.244)    0.139 (0.228)    0.159 (0.274)    0.396            0.912 (0.805)       0.897    0.219      0.010
+B3-merge-local-off    60    0.227 (0.280)    0.227 (0.280)    0.203 (0.273)    0.243 (0.342)    0.236            0.811 (0.579)       0.847    0.232      0.021
+B3-merge-local     100    0.181 (0.256)    0.181 (0.256)    0.152 (0.185)    0.198 (0.286)    0.288            0.881 (0.701)       0.890    0.168      0.011
+B4-CAA             100    0.253 (0.301)    0.253 (0.301)    0.213 (0.271)    0.289 (0.359)    0.230            0.780 (0.700)       0.840    0.042      0.000
+B1-k0              100    0.381 (0.395)    0.381 (0.395)    0.250 (0.322)    0.498 (0.519)    0.034           -0.029(-0.061)       0.493    0.716      0.701
+B1-k3              100    0.383 (0.406)    0.383 (0.406)    0.255 (0.334)    0.498 (0.523)    0.054            0.032(-0.066)       0.510    0.178      0.164
+B1-k3-base(archive)   100    0.341 (0.355)    0.341 (0.355)    0.243 (0.436)    0.467 (0.519)    0.117            0.077(-0.047)       0.531    0.003      0.000
+
+== Quality (test; mean over clients). gap = generated - real summaries at the same alpha
+run                    align_in      align_out   gap_align_in  gap_align_out     bert_f1_in    bert_f1_out      length_in     length_out  gap_length_in gap_length_out
+fed-aligned-off           0.786          0.731         -0.018          0.047          0.900          0.888         32.513         37.532          2.424          3.385
+local-off                 0.806          0.761          0.002          0.077          0.902          0.890         33.511         38.495          3.421          4.348
+local                     0.786          0.722         -0.018          0.039          0.901          0.889         32.478         35.576          2.389          1.429
+B3-merge-local-off          0.729          0.731         -0.075          0.048          0.890          0.886         29.282         34.970         -0.807          0.823
+B3-merge-local            0.723          0.721         -0.081          0.038          0.894          0.889         27.874         32.708         -2.216         -1.439
+B4-CAA                    0.602          0.512         -0.202         -0.171          0.888          0.853         29.913         46.048         -0.176         11.901
+B1-k0                     0.627          0.629         -0.177         -0.054          0.892          0.892         27.110         27.106         -2.979         -7.041
+B1-k3                     0.578          0.582         -0.227         -0.101          0.888          0.887         26.949         26.892         -3.140         -7.254
+B1-k3-base(archive)          0.609          0.631         -0.195         -0.052          0.851          0.852        112.390        106.519         82.300         72.372
+
+== LLM judge (subsample; mean over clients)
+run                    faithful_in      faithful_out   gap_faithful_in  gap_faithful_out      relevance_in     relevance_out  gap_relevance_in gap_relevance_out      coherence_in     coherence_out
+fed-aligned-off              0.828             0.788            -0.079             0.016             3.619             3.671            -0.014             0.034             4.186             4.173
+local-off                    0.846             0.805            -0.061             0.034             3.643             3.679             0.010             0.042             4.225             4.190
+local                        0.832             0.779            -0.074             0.008             3.643             3.593             0.009            -0.043             4.248             4.154
+
+== Per-client percentile error (test)
+client                 support fed-aligned-off      local-off          local B3-merge-local-off B3-merge-local         B4-CAA          B1-k0          B1-k3 B1-k3-base(archive)
+forbes.com        [0.03,0.99]          0.130          0.128          0.125          0.244          0.169          0.251          0.387          0.382          0.345
+theguardian.com   [0.04,0.55]          0.126          0.179          0.135          0.198          0.144          0.292          0.393          0.399          0.325
+people.com        [0.03,0.70]          0.142          0.170          0.151          0.276          0.209          0.298          0.380          0.388          0.355
+wsj.com           [0.04,0.89]          0.134          0.153          0.129          0.196          0.159          0.266          0.380          0.383          0.348
+aol.com           [0.06,0.82]          0.123          0.136          0.129          0.258          0.173          0.301          0.395          0.406          0.336
+cbc.ca            [0.11,0.95]          0.143          0.181          0.151          0.196          0.171          0.226          0.358          0.355          0.347
+reuters.com       [0.10,0.97]          0.199          0.213          0.194          0.170          0.171          0.194          0.365          0.369          0.333
+nypost.com        [0.51,0.95]          0.174          0.266          0.244          0.280          0.256          0.199          0.391          0.378          0.336
+
+== fed-aligned-off - B3-merge-local-off: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.113 [-0.125,-0.101]*    -0.136 [-0.154,-0.118]*
+theguardian.com      -0.073 [-0.083,-0.063]*    -0.010 [-0.019,-0.002]*
+people.com           -0.133 [-0.145,-0.122]*    -0.174 [-0.190,-0.158]*
+wsj.com              -0.062 [-0.072,-0.052]*    -0.077 [-0.091,-0.063]*
+aol.com              -0.135 [-0.146,-0.123]*    -0.136 [-0.152,-0.120]*
+cbc.ca               -0.053 [-0.064,-0.043]*    -0.074 [-0.088,-0.060]*
+reuters.com          +0.029 [+0.016,+0.042]*    +0.003 [-0.016,+0.023] 
+nypost.com           -0.106 [-0.119,-0.093]*    -0.127 [-0.142,-0.112]*
+fed-aligned-off significantly better on 7/8 clients, worse on 1/8
+
+== fed-aligned-off - B3-merge-local: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.039 [-0.050,-0.029]*    -0.046 [-0.059,-0.033]*
+theguardian.com      -0.018 [-0.026,-0.010]*    -0.015 [-0.025,-0.005]*
+people.com           -0.066 [-0.076,-0.057]*    -0.084 [-0.097,-0.070]*
+wsj.com              -0.024 [-0.035,-0.014]*    -0.028 [-0.042,-0.013]*
+aol.com              -0.050 [-0.060,-0.040]*    -0.061 [-0.074,-0.048]*
+cbc.ca               -0.028 [-0.036,-0.019]*    -0.046 [-0.058,-0.034]*
+reuters.com          +0.028 [+0.017,+0.038]*    +0.006 [-0.010,+0.024] 
+nypost.com           -0.081 [-0.092,-0.070]*    -0.102 [-0.116,-0.089]*
+fed-aligned-off significantly better on 7/8 clients, worse on 1/8
+
+== fed-aligned-off - B4-CAA: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.121 [-0.133,-0.110]*    -0.142 [-0.154,-0.130]*
+theguardian.com      -0.166 [-0.177,-0.155]*    -0.206 [-0.219,-0.193]*
+people.com           -0.156 [-0.166,-0.144]*    -0.190 [-0.205,-0.175]*
+wsj.com              -0.132 [-0.144,-0.120]*    -0.145 [-0.163,-0.128]*
+aol.com              -0.178 [-0.188,-0.168]*    -0.212 [-0.225,-0.198]*
+cbc.ca               -0.083 [-0.095,-0.071]*    -0.119 [-0.135,-0.104]*
+reuters.com          +0.005 [-0.005,+0.015]     -0.057 [-0.076,-0.038]*
+nypost.com           -0.025 [-0.034,-0.015]*    -0.028 [-0.040,-0.016]*
+fed-aligned-off significantly better on 7/8 clients, worse on 0/8
+
+== fed-aligned-off - B1-k0: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.256 [-0.266,-0.247]*    -0.403 [-0.412,-0.394]*
+theguardian.com      -0.267 [-0.279,-0.256]*    -0.380 [-0.393,-0.368]*
+people.com           -0.237 [-0.248,-0.227]*    -0.338 [-0.351,-0.324]*
+wsj.com              -0.246 [-0.257,-0.235]*    -0.349 [-0.362,-0.336]*
+aol.com              -0.272 [-0.282,-0.261]*    -0.369 [-0.379,-0.358]*
+cbc.ca               -0.215 [-0.227,-0.204]*    -0.331 [-0.343,-0.320]*
+reuters.com          -0.166 [-0.177,-0.154]*    -0.336 [-0.353,-0.318]*
+nypost.com           -0.217 [-0.227,-0.207]*    -0.272 [-0.284,-0.259]*
+fed-aligned-off significantly better on 8/8 clients, worse on 0/8
+
+== fed-aligned-off - B1-k3: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.252 [-0.261,-0.243]*    -0.387 [-0.398,-0.375]*
+theguardian.com      -0.274 [-0.284,-0.263]*    -0.384 [-0.397,-0.371]*
+people.com           -0.246 [-0.255,-0.236]*    -0.345 [-0.358,-0.332]*
+wsj.com              -0.249 [-0.259,-0.238]*    -0.352 [-0.366,-0.338]*
+aol.com              -0.283 [-0.293,-0.273]*    -0.380 [-0.393,-0.368]*
+cbc.ca               -0.212 [-0.224,-0.202]*    -0.325 [-0.337,-0.311]*
+reuters.com          -0.170 [-0.185,-0.155]*    -0.351 [-0.380,-0.322]*
+nypost.com           -0.203 [-0.215,-0.191]*    -0.253 [-0.267,-0.239]*
+fed-aligned-off significantly better on 8/8 clients, worse on 0/8
+
+== fed-aligned-off - B1-k3-base(archive): per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.215 [-0.223,-0.208]*    -0.399 [-0.411,-0.387]*
+theguardian.com      -0.200 [-0.210,-0.189]*    -0.301 [-0.315,-0.286]*
+people.com           -0.213 [-0.222,-0.203]*    -0.309 [-0.322,-0.295]*
+wsj.com              -0.213 [-0.223,-0.203]*    -0.355 [-0.372,-0.339]*
+aol.com              -0.213 [-0.222,-0.204]*    -0.349 [-0.362,-0.336]*
+cbc.ca               -0.204 [-0.214,-0.194]*    -0.349 [-0.365,-0.333]*
+reuters.com          -0.135 [-0.148,-0.121]*    -0.336 [-0.354,-0.318]*
+nypost.com           -0.161 [-0.172,-0.150]*    -0.127 [-0.138,-0.115]*
+fed-aligned-off significantly better on 8/8 clients, worse on 0/8
+
+== B3-merge-local - B3-merge-local-off: per-client paired bootstrap (negative = B3-merge-local better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           -0.075 [-0.085,-0.064]*    -0.090 [-0.108,-0.072]*
+theguardian.com      -0.055 [-0.066,-0.043]*    +0.005 [-0.006,+0.015] 
+people.com           -0.067 [-0.076,-0.057]*    -0.090 [-0.103,-0.078]*
+wsj.com              -0.038 [-0.046,-0.029]*    -0.050 [-0.064,-0.036]*
+aol.com              -0.085 [-0.094,-0.075]*    -0.074 [-0.090,-0.059]*
+cbc.ca               -0.026 [-0.034,-0.018]*    -0.028 [-0.041,-0.016]*
+reuters.com          +0.001 [-0.009,+0.010]     -0.003 [-0.018,+0.012] 
+nypost.com           -0.025 [-0.036,-0.013]*    -0.025 [-0.039,-0.010]*
+B3-merge-local significantly better on 7/8 clients, worse on 0/8
+
+== B3-merge-local - local: per-client paired bootstrap (negative = B3-merge-local better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.044 [+0.033,+0.055]*    +0.064 [+0.052,+0.076]*
+theguardian.com      +0.009 [+0.001,+0.017]*    -0.003 [-0.013,+0.008] 
+people.com           +0.057 [+0.047,+0.067]*    +0.077 [+0.064,+0.090]*
+wsj.com              +0.030 [+0.021,+0.038]*    +0.040 [+0.029,+0.050]*
+aol.com              +0.044 [+0.034,+0.054]*    +0.063 [+0.053,+0.074]*
+cbc.ca               +0.020 [+0.012,+0.029]*    +0.038 [+0.027,+0.050]*
+reuters.com          -0.023 [-0.031,-0.014]*    +0.018 [+0.008,+0.028]*
+nypost.com           +0.011 [+0.003,+0.020]*    +0.012 [+0.003,+0.021]*
+B3-merge-local significantly better on 1/8 clients, worse on 7/8
+
+== B3-merge-local-off - local-off: per-client paired bootstrap (negative = B3-merge-local-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.116 [+0.103,+0.127]*    +0.132 [+0.116,+0.149]*
+theguardian.com      +0.019 [+0.007,+0.032]*    -0.042 [-0.054,-0.032]*
+people.com           +0.105 [+0.094,+0.117]*    +0.133 [+0.118,+0.149]*
+wsj.com              +0.044 [+0.032,+0.055]*    +0.068 [+0.056,+0.081]*
+aol.com              +0.121 [+0.109,+0.133]*    +0.121 [+0.107,+0.136]*
+cbc.ca               +0.015 [+0.003,+0.027]*    +0.045 [+0.031,+0.059]*
+reuters.com          -0.043 [-0.055,-0.031]*    -0.016 [-0.030,-0.001]*
+nypost.com           +0.014 [+0.003,+0.025]*    +0.011 [-0.000,+0.021] 
+B3-merge-local-off significantly better on 1/8 clients, worse on 7/8
+
+== fed-aligned-off - local: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+forbes.com           +0.005 [-0.002,+0.012]     +0.018 [+0.008,+0.027]*
+theguardian.com      -0.009 [-0.016,-0.002]*    -0.017 [-0.027,-0.007]*
+people.com           -0.009 [-0.016,-0.001]*    -0.006 [-0.018,+0.005] 
+wsj.com              +0.005 [-0.001,+0.012]     +0.012 [-0.000,+0.024] 
+aol.com              -0.006 [-0.012,+0.000]     +0.002 [-0.008,+0.012] 
+cbc.ca               -0.008 [-0.014,-0.002]*    -0.008 [-0.018,+0.001] 
+reuters.com          +0.005 [-0.004,+0.014]     +0.024 [+0.009,+0.040]*
+nypost.com           -0.070 [-0.080,-0.059]*    -0.090 [-0.104,-0.077]*
+fed-aligned-off significantly better on 4/8 clients, worse on 0/8

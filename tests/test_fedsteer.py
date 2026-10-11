@@ -1663,6 +1663,68 @@ def test_e2_plan_keeps_existing_runs_and_gain_rule():
     assert float(m.steer_control.u) == 0.0 and float(m.steer_control.o) != 0.0
 
 
+
+def test_format_monitor_survives_missing_metrics():
+    """CAL-20: an evaluation where no client is scorable has no pct_calib_err / spearman keys;
+    the log line must print nan instead of raising (it used to kill the training run)."""
+    from fedsteer.monitor import format_monitor
+    full = {"pct_calib_err": {"mean": 0.2}, "pct_err_out_support": {"mean": 0.25}, "spearman": {"mean": 0.8}}
+    ok = format_monitor({"split": "dev", "loss_mean": 0.3, "full": {"summary": full}})
+    assert "pct err 0.200" in ok and "spearman 0.800" in ok
+    empty = format_monitor({"split": "dev", "full": {"summary": {}}, "steer_summary": {}})
+    assert "pct err nan" in empty and "spearman nan" in empty
+
+
+def test_b1_molecule_prompt_uses_the_records_own_decoration_contract():
+    """CAL-26: B1's molecule template must ask the question the model was TRAINED on.
+
+    The old template showed a bare scaffold and asked for "one SMILES string", while every training
+    prompt shows core_attached with [n*] points and closes with "Answer with the decorations only".
+    That mismatch made MOL-26's B1 1.000 unscorable at every k. The closing contract must come LAST,
+    after the level instruction, because that is its position in training.
+    """
+    from fedsteer.baselines import prompt_with_level
+    rec = {"target_name": "T", "scaffold": "C1CC1",
+           "core_attached": "[1*]C1([2*])CC1",
+           "prompt": ("Design a ligand for T.\n"
+                      "Decorate this core, keeping every attachment point: [1*]C1([2*])CC1\n"
+                      "Answer with the decorations only, as [n*]-labelled fragments joined by '.', "
+                      "one per attachment point.")}
+    out = prompt_with_level(rec, 0.25, [])
+    assert "[1*]C1([2*])CC1" in out, "the attachment-point core must be shown"
+    assert "Decorate this core scaffold: C1CC1" not in out, "the bare scaffold must not be used"
+    assert "one SMILES string" not in out, "the whole-molecule contract must not be used"
+    assert "Target decoration lipophilicity: 25" in out, "the level instruction must be present"
+    # the output contract is the final instruction, as in training
+    assert out.rstrip().endswith("one per attachment point."), "the contract must come last"
+    assert out.index("Target decoration lipophilicity") < out.index("Answer with the decorations only")
+    # shots show cores and decorations, not whole ligands
+    shot = dict(rec, target="[1*]CC.[2*]F")
+    withshots = prompt_with_level(rec, 0.75, [shot])
+    assert "Decorations: [1*]CC.[2*]F" in withshots and "Core: [1*]C1([2*])CC1" in withshots
+    assert "Ligand:" not in withshots
+    assert withshots.rstrip().endswith("one per attachment point.")
+
+
+def test_b1_molecule_prompt_keeps_the_legacy_template_without_core_attached():
+    """Pre-2026-10-03 whole-molecule records have no core_attached and must keep the old prompt,
+    so archive baseline results stay reproducible."""
+    from fedsteer.baselines import prompt_with_level
+    rec = {"target_name": "T", "scaffold": "C1CC1", "prompt": "unused"}
+    out = prompt_with_level(rec, 0.5, [])
+    assert "Decorate this core scaffold: C1CC1" in out
+    assert out.rstrip().endswith("Answer with one SMILES string.")
+
+
+def test_compare_runs_per_client_cell_handles_a_null_pct_calib_err():
+    """CONVENTIONS: pct_calib_err is nullable. The per-client table printed n/a instead of raising
+    TypeError on a fully-failing arm (MOL-26's B1 had no scorable cell for any client)."""
+    def cell(v):
+        return f"{v:14.3f}" if isinstance(v, (int, float)) else f"{'n/a':>14s}"
+    assert cell(0.1234).strip() == "0.123"
+    assert cell(None).strip() == "n/a"
+    assert cell(True).strip() != "n/a"   # bools are ints; harmless, documented
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_") and callable(f)]
     failed = 0

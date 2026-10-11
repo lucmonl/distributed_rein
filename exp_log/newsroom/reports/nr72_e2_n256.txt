@@ -1,0 +1,102 @@
+== Steering (test; mean over clients; worst client in brackets)
+pctErrFail1 = all-cell percentile error with penalty 1 for each unscorable output (supplementary)
+run              round    pct_calib_err      pctErrFail1   pct_err_in_sup   pct_err_out_su       reach_rate         spearman  concord_nt  nearTie endNearTie
+fed-aligned-off    100    0.145 (0.187)    0.145 (0.187)    0.147 (0.183)    0.141 (0.193)    0.356            0.929 (0.895)       0.918    0.172      0.000
+fed-shared-off     100    0.148 (0.187)    0.148 (0.187)    0.153 (0.195)    0.140 (0.174)    0.383            0.930 (0.916)       0.917    0.182      0.000
+fed-aligned-tp3000   100    0.141 (0.182)    0.141 (0.182)    0.146 (0.187)    0.134 (0.173)    0.389            0.928 (0.911)       0.918    0.164      0.000
+fed-shared-soff    100    0.148 (0.201)    0.148 (0.201)    0.156 (0.212)    0.136 (0.184)    0.401            0.929 (0.906)       0.915    0.177      0.000
+local-off          100    0.277 (0.319)    0.277 (0.319)    0.266 (0.307)    0.292 (0.339)    0.194            0.656 (0.596)       0.741    0.481      0.051
+local-gain-1shape   100    0.225 (0.247)    0.225 (0.247)    0.233 (0.270)    0.213 (0.261)    0.213            0.785 (0.742)       0.806    0.404      0.001
+plugin-aligned-off   100    0.178 (0.199)    0.178 (0.199)    0.216 (0.260)    0.121 (0.150)    0.447            0.896 (0.871)       0.880    0.285      0.000
+plugin-shared-off   100    0.179 (0.199)    0.179 (0.199)    0.217 (0.260)    0.122 (0.148)    0.449            0.898 (0.876)       0.879    0.290      0.000
+
+== Quality (test; mean over clients). gap = generated - real summaries at the same alpha
+run                    align_in      align_out   gap_align_in  gap_align_out     bert_f1_in    bert_f1_out      length_in     length_out  gap_length_in gap_length_out
+fed-aligned-off           0.803          0.711         -0.001          0.053          0.890          0.885         34.245         39.198          4.156          4.841
+fed-shared-off            0.816          0.725          0.012          0.067          0.892          0.884         33.241         39.941          3.152          5.584
+fed-aligned-tp3000          0.800          0.746         -0.005          0.088          0.891          0.884         32.327         41.321          2.237          6.964
+fed-shared-soff           0.803          0.728         -0.002          0.069          0.892          0.883         33.899         41.120          3.810          6.763
+local-off                 0.789          0.753         -0.015          0.094          0.899          0.893         37.247         37.041          7.158          2.684
+local-gain-1shape          0.809          0.714          0.005          0.056          0.896          0.887         35.690         34.494          5.601          0.137
+plugin-aligned-off          0.790          0.709         -0.014          0.051          0.893          0.882         42.188         48.943         12.099         14.586
+plugin-shared-off          0.793          0.712         -0.012          0.053          0.893          0.883         42.662         48.086         12.573         13.729
+
+== LLM judge (subsample; mean over clients)
+run                    faithful_in      faithful_out   gap_faithful_in  gap_faithful_out      relevance_in     relevance_out  gap_relevance_in gap_relevance_out      coherence_in     coherence_out
+fed-aligned-off              0.824             0.740            -0.081            -0.010             3.540             3.615            -0.082            -0.018             4.240             4.180
+fed-shared-off               0.846             0.736            -0.059            -0.014             3.520             3.585            -0.102            -0.048             4.297             4.200
+fed-aligned-tp3000             0.842             0.761            -0.063             0.011             3.517             3.610            -0.106            -0.023             4.260             4.195
+fed-shared-soff              0.831             0.726            -0.074            -0.024             3.507             3.595            -0.116            -0.038             4.260             4.170
+local-off                    0.826             0.791            -0.079             0.041             3.573             3.635            -0.049             0.002             4.287             4.255
+local-gain-1shape             0.798             0.780            -0.106             0.030             3.530             3.495            -0.092            -0.138             4.277             4.210
+
+== Per-client percentile error (test)
+client                 support fed-aligned-off fed-shared-off fed-aligned-tp3000 fed-shared-soff      local-off local-gain-1shape plugin-aligned-off plugin-shared-off
+telegraph.co.uk   [0.02,0.99]          0.124          0.131          0.124          0.126          0.254          0.224          0.187          0.189
+bbc.com           [0.02,0.77]          0.143          0.146          0.130          0.133          0.278          0.210          0.153          0.154
+mashable.com      [0.08,0.82]          0.125          0.128          0.129          0.132          0.255          0.217          0.173          0.174
+latimes.com       [0.11,0.98]          0.187          0.187          0.182          0.201          0.319          0.247          0.199          0.199
+
+== fed-aligned-off - local-off: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+telegraph.co.uk      -0.130 [-0.143,-0.118]*    -0.132 [-0.153,-0.112]*
+bbc.com              -0.136 [-0.149,-0.122]*    -0.185 [-0.207,-0.164]*
+mashable.com         -0.129 [-0.139,-0.120]*    -0.141 [-0.156,-0.126]*
+latimes.com          -0.132 [-0.144,-0.120]*    -0.145 [-0.164,-0.127]*
+fed-aligned-off significantly better on 4/4 clients, worse on 0/4
+
+== fed-shared-off - local-off: per-client paired bootstrap (negative = fed-shared-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+telegraph.co.uk      -0.124 [-0.137,-0.110]*    -0.126 [-0.149,-0.105]*
+bbc.com              -0.133 [-0.147,-0.119]*    -0.180 [-0.203,-0.157]*
+mashable.com         -0.127 [-0.137,-0.117]*    -0.141 [-0.156,-0.126]*
+latimes.com          -0.133 [-0.144,-0.121]*    -0.164 [-0.183,-0.145]*
+fed-shared-off significantly better on 4/4 clients, worse on 0/4
+
+== fed-aligned-tp3000 - local-off: per-client paired bootstrap (negative = fed-aligned-tp3000 better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+telegraph.co.uk      -0.130 [-0.144,-0.116]*    -0.132 [-0.154,-0.111]*
+bbc.com              -0.148 [-0.162,-0.135]*    -0.194 [-0.216,-0.173]*
+mashable.com         -0.126 [-0.135,-0.116]*    -0.143 [-0.158,-0.128]*
+latimes.com          -0.138 [-0.149,-0.126]*    -0.165 [-0.184,-0.145]*
+fed-aligned-tp3000 significantly better on 4/4 clients, worse on 0/4
+
+== fed-shared-soff - local-off: per-client paired bootstrap (negative = fed-shared-soff better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+telegraph.co.uk      -0.128 [-0.141,-0.116]*    -0.137 [-0.159,-0.116]*
+bbc.com              -0.145 [-0.158,-0.132]*    -0.195 [-0.216,-0.174]*
+mashable.com         -0.122 [-0.133,-0.112]*    -0.139 [-0.154,-0.123]*
+latimes.com          -0.118 [-0.129,-0.107]*    -0.154 [-0.173,-0.135]*
+fed-shared-soff significantly better on 4/4 clients, worse on 0/4
+
+== fed-aligned-off - fed-shared-off: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+telegraph.co.uk      -0.007 [-0.013,-0.001]*    -0.006 [-0.015,+0.004] 
+bbc.com              -0.003 [-0.009,+0.003]     -0.005 [-0.016,+0.005] 
+mashable.com         -0.003 [-0.008,+0.003]     -0.000 [-0.008,+0.008] 
+latimes.com          +0.000 [-0.006,+0.007]     +0.019 [+0.009,+0.029]*
+fed-aligned-off significantly better on 1/4 clients, worse on 0/4
+
+== fed-aligned-off - fed-aligned-tp3000: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+telegraph.co.uk      -0.000 [-0.006,+0.005]     -0.000 [-0.009,+0.009] 
+bbc.com              +0.013 [+0.006,+0.019]*    +0.009 [-0.001,+0.020] 
+mashable.com         -0.004 [-0.009,+0.002]     +0.001 [-0.007,+0.010] 
+latimes.com          +0.005 [-0.003,+0.013]     +0.020 [+0.008,+0.030]*
+fed-aligned-off significantly better on 0/4 clients, worse on 1/4
+
+== fed-shared-off - fed-shared-soff: per-client paired bootstrap (negative = fed-shared-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+telegraph.co.uk      +0.004 [-0.002,+0.011]     +0.011 [+0.002,+0.020]*
+bbc.com              +0.012 [+0.006,+0.019]*    +0.015 [+0.006,+0.025]*
+mashable.com         -0.005 [-0.011,+0.002]     -0.002 [-0.012,+0.008] 
+latimes.com          -0.014 [-0.021,-0.008]*    -0.010 [-0.019,+0.000] 
+fed-shared-off significantly better on 1/4 clients, worse on 1/4
+
+== fed-aligned-off - plugin-aligned-off: per-client paired bootstrap (negative = fed-aligned-off better; * = 95% CI excludes 0)
+client                               overall             out-of-support
+telegraph.co.uk      -0.063 [-0.074,-0.052]*    +0.007 [-0.005,+0.019] 
+bbc.com              -0.010 [-0.018,-0.001]*    +0.044 [+0.032,+0.056]*
+mashable.com         -0.048 [-0.056,-0.039]*    -0.013 [-0.025,-0.002]*
+latimes.com          -0.012 [-0.023,-0.002]*    +0.043 [+0.031,+0.053]*
+fed-aligned-off significantly better on 4/4 clients, worse on 0/4
