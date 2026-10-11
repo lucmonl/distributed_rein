@@ -633,3 +633,31 @@ Analysis only; a proposal, not yet decided by the user. Notation as in CONVENTIO
 - **B4:** gain 0.05 (the grid minimum) for all 8 clients, with the dev curve monotone up to 3.2. Near-tie rate 0.93, reach 0.035, Spearman −0.10: inert or wrong-signed on ChEMBL.
 - **B1 k = 0** ignores the level (Spearman 0.04, near-tie 0.91).
 - ⚠️ **B1 k = 3 base looks competitive on the conditional metric (0.186) only because 98% of its outputs are unscorable.** The penalized metric puts it last (0.766). Rule: ChEMBL tables lead with the penalized metric, and the conditional pct err is never quoted without the unscorable rate.
+
+## CAL-31. User protocol for reporting std (2026-10-10)
+
+- Std is measured on the **test set only**: trained models, directions and calibrations are reused, never retrained.
+- Each "seed" is a subsample of the test set. A metric's std is its spread across 3 such subsets. Newsroom first; the user will specify the experiments.
+- Coordinator notes (proposed defaults, not yet confirmed):
+  - It can be computed post hoc on CPU from the saved per-article test outputs and scores; no regeneration.
+  - Use the same subsets for every arm, so that differences between arms stay paired.
+  - Subsample per client (same fraction per client), without replacement.
+  - Subset size sets the size of the std. At 50% without replacement, the variance of a subset mean is σ²/n, the same as the sampling variance of the full-test mean.
+  - The judge used only 25 articles per client, so its subsampled std will be coarse.
+- **User: subset size 75% of each client's test articles per seed** (3 seeds, without replacement). At 75%, the variance of a subset mean is (σ²/m)(1 − m/n) = σ²/(3n), so the reported std is about 1/√3 ≈ 0.58× the full-test sampling std. Report the fraction next to every std.
+
+## CAL-32. NR-76 assigned: test-subsample std for the Newsroom E1 table (2026-10-10)
+
+**User request:** std per CAL-31 (3 seeds, 75% of each client's test articles, without replacement, same subsets for every arm, no retraining). E1 steering metrics first.
+- **Arms:**
+  - fed-aligned-off with count pooling (`nr66-fed-aligned-off-cnt`, 11215859, ccc0390);
+  - fed-shared-soff-sadapter (NR-74, round 70);
+  - local-off (NR-60, round 60);
+  - fed-linear-off (NR-74);
+  - NR-73 baselines: B3 (merged local, and merged local-off), B4 (11236753), B1 k = 3 base model only (archive 11065061).
+- **Trap:** NR-62's evals dir also holds the NR-71 **smoke** files (j11236750, 4 prompts) for b1 / b4. Use the real jobs. The B1 k = 3 base eval is the archive file in `exp11_cap4k_base_…/evals` (j11065061), not the smoke one.
+- **NR-76 done** (`scripts/subsample_std.py`; reports `nr76_subsample_std.*`).
+  - 3 subsets × 75%: 150 articles per client; theguardian has 180 test articles in the data, so 135.
+  - Pct err ± std: fed-aligned-off-cnt 0.143±0.001; fed-linear-off 0.148±0.000; sadapter 0.171±0.001; local-off 0.178±0.001; B3-local 0.182±0.000; B3-local-off 0.227±0.001; B4 0.253±0.000; B1-k3-base 0.340±0.001.
+  - Difference vs fed-aligned-off-cnt: linear-off +0.0051±0.0007, sadapter +0.028, local-off +0.035, B3 +0.039 / +0.084, B4 +0.110, B1 +0.198.
+  - Test-sampling std (≈ 0.001) is far below every gap. It excludes seed and GPU-type variation (±0.003–0.005, NR-64/66), so design-level gaps ≤ 0.005 (e.g. linear-off) stay unresolved until seed replicates. Baseline gaps are far beyond either source.

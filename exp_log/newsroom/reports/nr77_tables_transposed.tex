@@ -1,0 +1,42 @@
+% Two tables from NR-77 (exp_log/newsroom/reports/nr77_quality_style_std.json, nr77_judge_std.json).
+% Needs \usepackage{booktabs} and \usepackage{graphicx}.
+\providecommand{\std}[1]{{\scriptsize$\pm$#1}}
+
+% ---------------------------------------------------------------- quality
+\begin{table}[t]
+\centering
+\caption{Summary quality on Newsroom (test set, 8 publications). Mean $\pm$ std over 3 random subsets of 75\% of the test articles, shared by all rows (std reflects test-set sampling only, not training-seed variation). Each metric is reported at requested extractiveness levels inside (\emph{In}) and outside (\emph{Out}) the range of the publication's own training data. AlignScore: consistency with the article. BERTScore F1: similarity to the reference summary. LLM judge (Qwen2.5-7B-Instruct, every test summary): faithfulness is the fraction of summary sentences supported by the article; relevance and coherence are rated 1--5. \emph{Real summaries}: the publications' own test summaries of the same articles; a real summary has a single extractiveness level, so one value spans both columns.}
+\label{tab:quality-newsroom}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lcccccccccc}
+\toprule
+ & \multicolumn{2}{c}{AlignScore} & \multicolumn{2}{c}{BERTScore F1} & \multicolumn{2}{c}{Faithfulness} & \multicolumn{2}{c}{Relevance} & \multicolumn{2}{c}{Coherence} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7} \cmidrule(lr){8-9} \cmidrule(lr){10-11}
+Method & In & Out & In & Out & In & Out & In & Out & In & Out \\
+\midrule
+Ours & 0.785\std{0.004} & 0.729\std{0.004} & 0.900\std{0.000} & 0.888\std{0.000} & 0.827\std{0.002} & 0.780\std{0.001} & 3.591\std{0.008} & 3.612\std{0.006} & 4.201\std{0.005} & 4.169\std{0.001} \\
+Local training & 0.805\std{0.005} & 0.761\std{0.004} & 0.902\std{0.000} & 0.890\std{0.000} & 0.827\std{0.003} & 0.795\std{0.001} & 3.615\std{0.006} & 3.623\std{0.004} & 4.225\std{0.002} & 4.181\std{0.003} \\
+\midrule
+Real summaries & \multicolumn{2}{c}{0.762\std{0.004}} & \multicolumn{2}{c}{--} & \multicolumn{2}{c}{0.844\std{0.003}} & \multicolumn{2}{c}{3.670\std{0.005}} & \multicolumn{2}{c}{4.189\std{0.007}} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+% ---------------------------------------------------------------- house style
+\begin{table}[t]
+\centering
+\caption{House style on Newsroom (test set, 8 publications; requested levels inside each publication's support). Mean $\pm$ std over 3 random subsets of 75\% of the test articles, shared by all rows (std reflects test-set sampling only). \emph{Attribution accuracy}: share of a publication's generated summaries that a density-matched publication classifier assigns to that publication (chance 0.125). \emph{P(own publication)}: the classifier's mean probability of the correct publication. \emph{Style-feature gap}: mean absolute standardized difference of 11 surface-style features from the publication's own summaries at the same extractiveness. \emph{Real summaries}: the publications' own test summaries of the same articles (ceiling). Bold: best method.}
+\label{tab:style-newsroom}
+\begin{tabular}{lccc}
+\toprule
+Method & Attribution acc.\ $\uparrow$ & P(own publication) $\uparrow$ & Style-feature gap $\downarrow$ \\
+\midrule
+Ours & 0.569\std{0.002} & \textbf{0.381}\std{0.002} & \textbf{0.106}\std{0.001} \\
+FedAvg (shared adapter) & 0.407\std{0.002} & 0.293\std{0.004} & 0.187\std{0.002} \\
+Local training & \textbf{0.572}\std{0.004} & 0.379\std{0.003} & 0.125\std{0.001} \\
+\midrule
+Real summaries & 0.588\std{0.001} & 0.387\std{0.001} & -- \\
+\bottomrule
+\end{tabular}
+\end{table}

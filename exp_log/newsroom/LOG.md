@@ -1608,3 +1608,230 @@ Archive runs cited: `linear-noOff` = entry 40's no-offset linear run (11145307, 
 
 1. **The private offset carries most of the calibration's value.** g_i(α) = o_i + α already reaches 0.148, within noise of the learned-shape designs. The pooled shape adds a small, not significant, out-of-support and top-end gain on the broad clients.
 2. **The private adapter is needed for house style and in-support precision.** Pure FedAvg (shared adapter) trades them for reach and extrapolation, exactly as A2 did. With a shared adapter, a shared offset does not settle.
+
+## NR-76. Std of the Newsroom E1 table by test-set subsampling (2026-10-10)
+
+**Assigned by the coordinator (user request, CAL-31/32).** CPU only: no training, no generation.
+
+**New script `scripts/subsample_std.py`** (a new file, so no grant needed; reusable for molecule).
+- Arms are given as **explicit eval files**, so NR-62's directory, which also holds the NR-71 smoke evals (j11236750, 4 prompts), cannot be picked by mistake.
+- For each seed it draws, per client, 75% of the test articles without replacement **by article** (an article keeps all its α), **once**, from the article ids, and applies the same subsets to every arm.
+- Metrics are recomputed with `fedsteer.metrics`' own `metrics_for_client` (with each eval's stored support, as in `compare_runs`), `summarize` (mean and worst) and `text_tie_metrics` (near-tie). The α = 0 / 1 cells use `compare_runs.per_article`'s formula.
+- **It refuses to run** unless all arms have the same clients, identical `record_ids` per client, the same article count per client and an identical `alpha_reference.json`.
+- The full-test value is printed next to each mean ± std as a check.
+
+**Checks, all passed:**
+- All 8 arms share the identical test articles (`record_ids` equal per client), the same α reference and saved outputs.
+- **theguardian.com has 180 test articles, not 200**, in every arm. This is the dataset itself: 180 test records for theguardian.com, 200 for every other client in `data/newsroom_fed/data.jsonl`. It is not an arm mismatch. The script's first version assumed 200 per client and stopped; the check now requires equal counts across arms.
+- Per subset: 150 articles per client (theguardian.com 135); 1580 articles in all.
+- **Every full-test value reproduces the reported number** (0.143 / 0.171 / 0.178 / 0.148 / 0.181 / 0.227 / 0.253 / 0.341).
+
+**Arms and files** (selected rounds as reported):
+
+| Arm | Eval file |
+|---|---|
+| `fed-aligned-off-cnt` (reference) | `runs/nr66-fed-aligned-off-cnt_20261008-170119_j11215859/evals/eval_round_0100__20261008-170119_j11215859.json` (ccc0390) |
+| `fed-shared-soff-sadapter` | `runs/nr74-fed-shared-soff-sadapter_20261009-111900_j11241907/evals/eval_round_0070__…_j11241907.json` (r70) |
+| `local-off` | `runs/nr60-local-off_20261007-181308_j11206105/evals/eval_round_0060__…_j11206105.json` (r60) |
+| `fed-linear-off` | `runs/nr74-fed-linear-off_20261009-111900_j11241906/evals/eval_round_0100__…_j11241906.json` |
+| B3 merge of `local` | `runs/nr60-local_…/evals/eval_round_0100_merged_round_0100_b3__20261009-022626_j11236755.json` |
+| B3 merge of `local-off` | `runs/nr60-local-off_…/evals/eval_round_0060_merged_round_0060_b3__20261009-021438_j11236754.json` |
+| B4 CAA | `runs/nr62-fed-aligned-off_…/evals/eval_round_0100_b4_caa_L8_client__20261009-021418_j11236753.json` |
+| B1 k = 3, base model | `runs/exp11_cap4k_base_…/evals/eval_round_0100_b1_prompt_k3_base__20261001-104506_j11065061.json` (archive) |
+
+Reports: `reports/nr76_subsample_std.txt` and `reports/nr76_subsample_std.json` (per-subset values and files).
+
+### E1 table, mean ± std over 3 subsets × 75% of test articles (seeds 0, 1, 2)
+
+| Arm | Pct err | Worst | In-support | Out-of-support (worst) | Reach | Spearman (worst) | Near-tie | α = 0 cell | α = 1 cell |
+|---|---|---|---|---|---|---|---|---|---|
+| **`fed-aligned-off-cnt`** | **0.143 ± 0.001** | 0.190 ± 0.002 | **0.133 ± 0.001** | **0.147 ± 0.002** (0.178 ± 0.000) | 0.435 ± 0.003 | 0.933 ± 0.002 (0.897 ± 0.006) | 0.181 ± 0.001 | 0.188 ± 0.003 | 0.101 ± 0.002 |
+| `fed-linear-off` | 0.148 ± 0.000 | 0.193 ± 0.002 | 0.133 ± 0.000 | 0.157 ± 0.001 (0.182 ± 0.002) | 0.415 ± 0.005 | 0.932 ± 0.001 (0.903 ± 0.004) | 0.191 ± 0.002 | 0.200 ± 0.002 | 0.116 ± 0.000 |
+| `fed-shared-soff-sadapter` | 0.171 ± 0.001 | 0.192 ± 0.001 | 0.183 ± 0.002 | 0.154 ± 0.001 (**0.170** ± 0.002) | **0.500** ± 0.004 | **0.948** ± 0.001 (**0.908** ± 0.002) | 0.194 ± 0.002 | 0.256 ± 0.001 | **0.050** ± 0.001 |
+| `local-off` | 0.178 ± 0.001 | 0.266 ± 0.005 | 0.153 ± 0.000 | 0.186 ± 0.002 (0.301 ± 0.006) | 0.369 ± 0.004 | 0.885 ± 0.002 (0.732 ± 0.019) | 0.266 ± 0.003 | 0.246 ± 0.001 | 0.134 ± 0.001 |
+| B3 merge of `local` | 0.182 ± 0.000 | 0.255 ± 0.005 | 0.152 ± 0.001 | 0.198 ± 0.001 (0.287 ± 0.007) | 0.295 ± 0.001 | 0.882 ± 0.002 (0.713 ± 0.029) | 0.166 ± 0.001 | 0.189 ± 0.001 | 0.208 ± 0.002 |
+| B3 merge of `local-off` | 0.227 ± 0.001 | 0.279 ± 0.004 | 0.201 ± 0.002 | 0.242 ± 0.001 (0.342 ± 0.002) | 0.240 ± 0.001 | 0.810 ± 0.003 (0.567 ± 0.023) | 0.231 ± 0.006 | 0.216 ± 0.001 | 0.262 ± 0.002 |
+| B4 CAA | 0.253 ± 0.000 | 0.303 ± 0.001 | 0.212 ± 0.001 | 0.287 ± 0.000 (0.357 ± 0.001) | 0.232 ± 0.004 | 0.781 ± 0.001 (0.693 ± 0.007) | 0.042 ± 0.001 | 0.096 ± 0.001 | 0.475 ± 0.001 |
+| B1 k = 3, base model | 0.340 ± 0.001 | 0.353 ± 0.003 | 0.242 ± 0.000 | 0.467 ± 0.001 (0.520 ± 0.005) | 0.118 ± 0.001 | 0.073 ± 0.003 (−0.056 ± 0.023) | 0.003 ± 0.000 | 0.322 ± 0.002 | 0.660 ± 0.004 |
+
+### Per-subset difference in mean pct err vs. `fed-aligned-off-cnt` (mean ± std over 3 subsets × 75%; positive = arm worse)
+
+| Arm | Difference | Full test |
+|---|---|---|
+| `fed-linear-off` | **+0.0051 ± 0.0007** | +0.0045 |
+| `fed-shared-soff-sadapter` | +0.0281 ± 0.0011 | +0.0282 |
+| `local-off` | +0.0352 ± 0.0005 | +0.0352 |
+| B3 merge of `local` | +0.0389 ± 0.0007 | +0.0382 |
+| B3 merge of `local-off` | +0.0838 ± 0.0011 | +0.0842 |
+| B4 CAA | +0.1095 ± 0.0007 | +0.1103 |
+| B1 k = 3, base model | +0.1975 ± 0.0014 | +0.1976 |
+
+### How to read the std
+
+- **It measures test-article sampling only.** Mean pct err has a subset std of about 0.001 (0.0005–0.0014 on the differences). By CAL-31's factor (about 0.58× the full-test std at 75% overlap), the **full-test sampling std of a mean or a paired difference is about 0.001–0.002**.
+- Worst-client and Spearman-worst metrics are noisier: 0.002–0.007, and 0.02–0.03 for the weakest arms' Spearman worst.
+- **Every gap between `fed-aligned-off-cnt` and another arm clearly exceeds its subsampling std**, including `fed-linear-off`'s +0.005 (7 × its std). So none of the E1 differences is a test-sampling artefact.
+- **This std does not include training-seed or GPU-type variation.** The reference arm ran on an A100-80GB node; `fed-linear-off`, `fed-shared-soff-sadapter` and `local-off` on the A100-40GB ccc0284. NR-64/66 showed near-identical models differing by up to about 0.003–0.005 in mean pct err across τ. So for **design-level differences of ≤ 0.005** (e.g. `fed-aligned-off-cnt` vs. `fed-linear-off`), CAL-13's rule still applies: robust to test sampling, unresolved until the seed-1 replicates.
+- The baseline gaps (+0.028 to +0.198) are an order of magnitude beyond either source of variation.
+
+**NR-76 addendum (user request): `fed-shared-off` added to the E1 table; per-client analysis vs. `fed-aligned-off-cnt`.**
+- Same script, same seed-determined subsets (they depend only on seed and client, so the new arms are on exactly the same subsets).
+- Reports: `reports/nr76_subsample_std_extra.txt/.json` and `reports/nr76_perclient_sharedoff_vs_cnt.txt`. The two jobs returned exit 124 *after* writing complete output: the std file ends with its JSON write, and the compare report has every section. The full-test values reproduce NR-63/65.
+
+| Arm | Pct err | Worst | In | Out (worst) | Reach | Spearman (worst) | Near-tie | α = 0 / α = 1 cell | Δ pct err vs. ref |
+|---|---|---|---|---|---|---|---|---|---|
+| `fed-shared-off` (NR-60, r100) | 0.150 ± 0.000 | 0.204 ± 0.001 | 0.135 ± 0.001 | 0.157 ± 0.001 (0.185 ± 0.002) | 0.401 ± 0.005 | 0.928 ± 0.001 (0.890 ± 0.008) | 0.200 ± 0.001 | 0.195 / 0.120 | **+0.0066 ± 0.0003** |
+| `local` (NR-60, r100) | 0.158 ± 0.001 | 0.246 ± 0.002 | 0.139 ± 0.001 | 0.160 ± 0.001 (0.276 ± 0.003) | 0.404 ± 0.002 | 0.912 ± 0.000 (0.807 ± 0.013) | 0.218 ± 0.002 | 0.190 / 0.130 | **+0.0147 ± 0.0012** |
+
+**Per client vs. `fed-aligned-off-cnt`** (paired bootstrap):
+
+| Contrast | Better on | Worse on | Out of support |
+|---|---|---|---|
+| `fed-shared-off` | 0/8 | **4/8** (reuters.com +0.014, people.com +0.012, wsj.com +0.009, aol.com +0.009) | worse also on cbc.ca (+0.013) |
+| `local` | 0/8 | **4/8** (nypost.com +0.077, cbc.ca +0.015, theguardian.com +0.010, people.com +0.010) | `local` better on forbes.com (−0.017), wsj.com (−0.013), reuters.com (−0.015) |
+
+- `fed-shared-off` vs. the reference: +0.0066 ± 0.0003 on test sampling. Like the other design-level gaps it differs in GPU type (A100-40GB vs. A100-80GB), so CAL-13 applies until the seed replicates; the per-client pattern (4 worse, none better) is consistent.
+- **`local` (no offset) is the stronger local baseline** (0.158 vs. `local-off`'s 0.178; worst client 0.246 vs. 0.266). It is available for the paper's "Local training" row if the strongest local baseline is wanted.
+- **The LaTeX table** `reports/nr76_e1_table.tex` now has a "FedAvg calibration + private offset" row (= `fed-shared-off`) as the first row below the method / baseline line.
+
+**NR-76 per-client table (user request):** `fed-aligned-off-cnt` ("Ours") vs. `fed-shared-soff-sadapter` ("FedAvg (shared adapter)") vs. `local` (NR-60, r100; "Local training", the stronger local baseline). All 8 publications with their support; pct err, in-support, out-of-support and Spearman, mean ± std over 3 subsets × 75%.
+- `scripts/subsample_std.py` gained `--per_client` (my script; it prints each client's metrics as mean ± std plus support).
+- Reports: `reports/nr76_perclient_std.txt/.json`; LaTeX `reports/nr76_perclient_table.tex`, generated from the JSON, best value per publication in bold.
+- The full-test per-client values reproduce the earlier reports.
+
+## NR-77. Std of house style, summary quality and the LLM judge by test-set subsampling (2026-10-11)
+
+**User request.** Arms: `fed-aligned-off-cnt`, `fed-shared-soff-sadapter` (r70) and `local-off` (r60), the same eval files as NR-76, plus a real-summary ceiling. Same subsets as NR-76: 3 seeds × 75% of test articles, drawn per client by article from the shared `draw_subsets` now factored out of `scripts/subsample_std.py`.
+
+**Two new scripts** (new files; no shared code modified):
+- `scripts/subsample_quality_style.py`:
+  - The quality and style files keep only aggregates, so it rescores every summary once, cached in `runs/_subsample_items/`.
+  - It uses `fedsteer.quality`'s AlignScorer / BERTScorer / surface and `style_eval.py`'s cached density-matched classifier (`runs/_style/style_clf_58467d166c.pkl`, the same as in every earlier style report) and style features.
+  - Aggregation follows `score_quality.py` (per client and α → in/out → mean over clients; gaps to the real summaries of the same subset articles, binned to the nearest α) and `style_eval.py` (in-support α, non-empty texts).
+  - Ceiling: the real summaries of the same subset articles.
+- `scripts/subsample_judge.py` (LLM judge, below).
+
+### Quality and house style. Job cc 11300763 (`nr77-quality-style`, ccc0284, A100-80GB, 9 min)
+
+Reports: `reports/nr77_quality_style_std.txt/.json`.
+
+**Validation, full-test values reproduce the existing reports:**
+- `fed-aligned-off-cnt`: AlignScore 0.785 / 0.725, gap −0.019 / +0.042, length gap +2.26 / +3.69 (NR-69).
+- `fed-shared-soff-sadapter` style: 0.406 / 0.293 / 0.183 (NR-75).
+- `local-off` style: 0.570 / 0.378 / 0.120 (NR-68).
+- Real-summary ceiling: 0.587 / 0.388 (entry 31).
+
+Mean ± std over 3 subsets × 75% of test articles:
+
+| | `fed-aligned-off-cnt` | `fed-shared-soff-sadapter` | `local-off` | Real summaries (ceiling) |
+|---|---|---|---|---|
+| Attribution acc (in support) ↑ | 0.569 ± 0.002 | 0.407 ± 0.002 | **0.572 ± 0.004** | 0.588 ± 0.001 |
+| P(own publication) ↑ | **0.381 ± 0.002** | 0.293 ± 0.004 | 0.379 ± 0.003 | 0.387 ± 0.001 |
+| Style-feature gap ↓ | **0.106 ± 0.001** | 0.187 ± 0.002 | 0.125 ± 0.001 | — |
+| AlignScore in / out | 0.785 ± 0.004 / 0.729 ± 0.004 | 0.892 ± 0.003 / 0.819 ± 0.002 | 0.805 ± 0.005 / 0.761 ± 0.004 | 0.762 ± 0.004 (all α) |
+| AlignScore gap to real, in / out | −0.018 ± 0.005 / +0.046 ± 0.004 | +0.089 ± 0.006 / +0.136 ± 0.003 | +0.002 ± 0.003 / +0.078 ± 0.007 | 0 by definition |
+| BERTScore F1 in / out | 0.900 ± 0.000 / 0.888 ± 0.000 | 0.897 ± 0.000 / 0.885 ± 0.000 | 0.902 ± 0.000 / 0.890 ± 0.000 | — |
+| Length (words) in / out | 32.4 ± 0.0 / 37.8 ± 0.3 | 36.3 ± 0.1 / 45.9 ± 0.2 | 33.3 ± 0.1 / 38.3 ± 0.3 | 30.7 ± 0.3 |
+| Length gap to real, in / out | +2.4 ± 0.2 / +4.0 ± 0.4 | +6.3 ± 0.2 / +12.1 ± 0.3 | +3.3 ± 0.2 / +4.5 ± 0.5 | 0 |
+| Repeated trigrams, in / out | 0.004 / 0.006 | 0.005 / 0.005 | 0.004 / **0.011** ± 0.001 | — |
+
+- **House style:**
+  - `fed-aligned-off-cnt` and `local-off` are within about 0.02 of the real-summary ceiling on attribution and P(own); they differ by about 1 std on attribution.
+  - The pure-FedAvg arm drops to 0.407 (−0.16, about 80 std): the shared adapter loses the house style.
+  - On the feature gap, `fed-aligned-off-cnt` is the closest to the publications' own summaries (0.106 vs. 0.125 for local).
+- **Quality:**
+  - AlignScore rises with copying. `fed-shared-soff-sadapter` (the most extractive, +6 / +12 words) has the highest AlignScore and gap. `fed-aligned-off-cnt` is closest to the real summaries in support (gap −0.018).
+  - BERTScore is flat (0.885–0.902). `local-off` repeats trigrams twice as often out of support.
+- **Note on the feature gap:** it is a nonlinear statistic (|mean difference|) and is biased upward on smaller samples. The subset mean is about 0.005 above the full-test value for every arm (0.106 vs. 0.100 and so on); compare arms on the same basis, as the table does.
+- **Std meaning:** test-article sampling only, as in NR-76.
+
+### LLM judge. Job cc 11300861 (`nr77-judge`, ccc0284, A100-80GB, 57 min)
+
+Reports: `reports/nr77_judge_std.txt/.json`.
+
+**`scripts/subsample_judge.py`:**
+- `judge_quality.py`'s own model (Qwen2.5-7B-Instruct, greedy), prompt and parser, imported unchanged.
+- **Every** test article is judged (1580 articles × 5 α per arm, plus the 1580 real summaries), not the first 25 per client.
+- The reference for the gaps is the real summaries of the same subset articles, binned to the nearest α (`judge_quality.py`: 30 random real summaries per bin).
+- **So these numbers replace, and do not match exactly, the earlier 25-article judge numbers.**
+- Parse failures: 4 / 3 / 1 of 7900 per arm, 0 of 1580 real (dropped, as in `judge_quality.py`).
+
+| | `fed-aligned-off-cnt` | `fed-shared-soff-sadapter` | `local-off` | Real summaries (ceiling) |
+|---|---|---|---|---|
+| Faithfulness in / out (fraction of supported sentences) | 0.827 ± 0.002 / 0.780 ± 0.001 | **0.879** ± 0.002 / **0.848** ± 0.002 | 0.827 ± 0.003 / 0.795 ± 0.001 | 0.844 ± 0.003 |
+| Gap to real, in / out | −0.047 ± 0.000 / +0.010 ± 0.006 | +0.005 ± 0.003 / +0.078 ± 0.004 | −0.047 ± 0.001 / +0.025 ± 0.006 | 0 |
+| Relevance (1–5) in / out | 3.591 ± 0.008 / 3.612 ± 0.006 | 3.642 ± 0.002 / 3.701 ± 0.001 | 3.615 ± 0.006 / 3.623 ± 0.004 | 3.670 ± 0.005 |
+| Gap to real, in / out | −0.107 ± 0.010 / −0.018 ± 0.006 | −0.056 ± 0.006 / +0.071 ± 0.011 | −0.083 ± 0.010 / −0.007 ± 0.008 | 0 |
+| Coherence (1–5) in / out | 4.201 ± 0.005 / 4.169 ± 0.001 | 4.288 ± 0.002 / 4.218 ± 0.003 | 4.225 ± 0.002 / 4.181 ± 0.003 | 4.189 ± 0.007 |
+| Gap to real, in / out | −0.039 ± 0.018 / +0.079 ± 0.010 | +0.049 ± 0.011 / +0.128 ± 0.011 | −0.014 ± 0.014 / +0.092 ± 0.010 | 0 |
+
+- **All three are close to the real summaries:** within 0.05 faithfulness and 0.11 relevance in support, and at or above them on coherence.
+- **`fed-aligned-off-cnt` vs. `local-off`:**
+  - equal faithfulness in support (0.827 / 0.827);
+  - slightly lower out of support (0.780 vs. 0.795) and slightly lower relevance (by 0.01–0.02).
+  - These are small next to judge noise per summary, though beyond the test-sampling std.
+- **`fed-shared-soff-sadapter` scores highest on every judge axis.** As with AlignScore, that comes with copying more (+6 / +12 words); the judge favours extractive summaries. It does not offset its house-style loss (attribution 0.407).
+- Overall: the private-adapter arms keep both quality and house style at the level of the real summaries, and the shared-adapter arm trades house style for more extractive, judge-preferred summaries.
+
+## NR-78. E2 (held-out clients) with test-subsampling std: `fed-aligned-off-cnt`, `fed-shared-soff-sadapter` (zero-shot) and the `local-off` reference, launched (2026-10-11)
+
+**User request:** the standard-deviation analysis (NR-76/77 protocol) for held-out-client performance, comparing `fed-aligned-off-cnt`, `fed-shared-soff-sadapter` and `local-off`.
+
+**Protocol per arm** (rotation 0; held-out telegraph.co.uk, bbc.com, mashable.com, latimes.com; 200 test articles each; n ∈ {16, 64, 256, 1024, all}):
+- **`fed-aligned-off-cnt`, frozen_D:** the new client trains its adapter and its own o_i from 0, with D and the run's pooled table h̄_l frozen and u fixed (the NR-68 `e2_plan` aligned path).
+  - cc **11313916** (n ≤ 1024) and **11313917** (n = all; done: ccc0284, 1 h 35 min, with quality and judge).
+  - `--settings frozen_D`, `sbatch/eval_settings.sbatch`, `--gres=gpu:A100:1`, `--exclude=ccc0387`.
+- **`fed-shared-soff-sadapter`, zero-shot (user decision):**
+  - The new client uses the run's **global model as-is**: the shared adapter + D + the shared calibration including the shared o. No training, so one evaluation, the same for every n.
+  - `e2_heldout.py` would instead train a fresh private adapter, which is not pure FedAvg. To avoid editing shared code, the new script **`scripts/e2_zeroshot.py`** loads the global model with `load_snapshot_into` (which restores the shared adapter and calibration for shared-adapter runs) and evaluates the held-out clients exactly as `e2_heldout.py` does: the same test articles, α grid, scorer and generation settings, and support from the client's full training pool (as at n = all).
+  - Snapshot r70 (the selected round). cc **11317087** (`nr78-e2-sadapter-zeroshot`).
+- **`local-off` reference:** the existing local_D files from the `fed-aligned-off` E2 jobs (NR-68, 11222319–23). The setting is run-independent and identical to `local-off`'s config.
+
+**Analysis (when the jobs finish):** `scripts/subsample_std.py` on the E2 files per n (the files keep `record_ids` and outputs; the same 3 seeds × 75% of each held-out client's test articles). Steering metrics: mean ± std, plus the per-subset difference vs. `fed-aligned-off-cnt`.
+
+### NR-78 results: E2 with test-subsampling std (2026-10-11)
+
+**Jobs, all done with no errors:**
+- `fed-aligned-off-cnt` frozen_D: 11313916 (n ≤ 1024, 2 h 16 min) and 11313917 (n = all), both ccc0284.
+- `fed-shared-soff-sadapter` zero-shot: 11317087 (ccc0284, 28 min).
+- `local-off` reference: NR-68's local_D files.
+
+Reports: `reports/nr78_e2_std_n{16,64,256,1024,all}.txt/.json` (`scripts/subsample_std.py --per_client`).
+- All arms are on identical held-out test articles: 4 clients × 200, 150 per subset.
+- The full-test values reproduce NR-72 for `local-off` (0.315 / 0.294 / 0.277 / 0.231 / 0.167).
+
+**Mean pct err over the 4 held-out clients, mean ± std over 3 subsets × 75% of test articles (worst client in brackets):**
+
+| n | `fed-aligned-off-cnt` (frozen_D) | `local-off` | `fed-shared-soff-sadapter` (zero-shot, no training) | Δ local-off | Δ zero-shot |
+|---|---|---|---|---|---|
+| 16 | 0.173 ± 0.001 (0.188) | 0.315 ± 0.002 (0.336) | **0.165** ± 0.001 (**0.171**) | +0.1425 ± 0.0023 | **−0.0076 ± 0.0002** |
+| 64 | 0.172 ± 0.001 (0.188) | 0.293 ± 0.002 (0.321) | **0.165** ± 0.001 (**0.171**) | +0.1210 ± 0.0014 | **−0.0073 ± 0.0004** |
+| 256 | **0.148** ± 0.001 (0.179) | 0.275 ± 0.001 (0.318) | 0.165 ± 0.001 (**0.171**) | +0.1270 ± 0.0005 | +0.0170 ± 0.0001 |
+| 1024 | **0.135** ± 0.001 (0.173) | 0.231 ± 0.001 (0.318) | 0.165 ± 0.001 (**0.171**) | +0.0958 ± 0.0008 | +0.0299 ± 0.0009 |
+| all | **0.129** ± 0.001 (**0.160**) | 0.166 ± 0.001 (0.229) | 0.165 ± 0.001 (0.171) | +0.0376 ± 0.0007 | +0.0362 ± 0.0004 |
+
+(Δ = arm − `fed-aligned-off-cnt`, per-subset mean ± std; positive = arm worse.)
+
+Spearman (worst client in brackets):
+
+| n | `fed-aligned-off-cnt` | `local-off` | zero-shot |
+|---|---|---|---|
+| 16 | 0.899 ± 0.002 | 0.434 ± 0.022 | **0.958** ± 0.001 |
+| 64 | 0.920 ± 0.001 | 0.576 ± 0.010 | **0.958** |
+| 256 | 0.936 | 0.661 | **0.958** |
+| 1024 | 0.945 | 0.768 | **0.958** |
+| all | 0.948 | 0.884 | **0.958** |
+
+Reach: `fed-aligned-off-cnt` 0.53 / 0.36 / 0.40 / 0.40 / 0.40; `local-off` 0.18–0.34; zero-shot 0.44.
+
+**Findings:**
+1. **Federated beats local at every n**, by far more than the test-sampling std: +0.14 at n = 16, +0.04 at n = all.
+2. **The pure-FedAvg global model, used zero-shot, is the strongest option for a new client with little data.**
+   - At n = 16 and 64 it beats `fed-aligned-off-cnt` (0.165 vs. 0.173; Δ −0.0076 ± 0.0002, about 40 test-sampling std), with no training at all. It also has a better worst client (0.171 vs. 0.188) and the highest Spearman at every n (0.958).
+   - `fed-aligned-off-cnt` overtakes it from **n = 256** (0.148 vs. 0.165) and is clearly better at n ≥ 1024 (0.135 / 0.129).
+   - Reading: with very few pairs, training a private adapter from scratch (frozen_D) is still noisy, while the global shared adapter generalizes well to rotation 0's broad held-out clients. The private-adapter design pays off once a client has a few hundred pairs.
+   - **Caveats:**
+     - single seed and test-sampling std only; the zero-shot gap at n ≤ 64 (0.008) is near the scale of run-to-run variation (CAL-13), the later gaps (≥ 0.017) are not;
+     - rotation 0's held-out clients are broad, which favours a global model; a copy-heavy newcomer is untested;
+     - zero-shot has no house style by construction (shared adapter; NR-75: attribution 0.41 for participants). House style cannot be measured for held-out publications with the participants-only classifier.
+3. **In/out-of-support split:** the zero-shot evaluation uses each client's full-data support (it has no n), while frozen_D and local_D at n < all use the support of their n pairs. Its in/out numbers are therefore not comparable at n < all; overall pct err, Spearman and reach are.

@@ -1,0 +1,21 @@
+% Held-out clients (E2) on Newsroom, single-column version. Source: exp_log/newsroom/reports/nr78_e2_std_n{256,1024,all}.txt (NR-78).
+% Needs \usepackage{booktabs} and \usepackage{graphicx} (for \resizebox).
+\providecommand{\std}[1]{{\scriptsize$\pm$#1}}
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\caption{New publications joining after training (4 held-out publications, test set). Percentile error ($\downarrow$) with $n$ training pairs per new publication; mean $\pm$ std over 3 random subsets of 75\% of the test articles. \emph{Ours}: trains its adapter and offset against the frozen federated direction and calibration. \emph{FedAvg (shared ad.)}: the global model used without training. \emph{Local}: trains its own model from scratch.}
+\label{tab:e2-newsroom}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lccc}
+\toprule
+Method & $n{=}256$ & $n{=}1024$ & All \\
+\midrule
+Ours & \textbf{0.148}\std{.001} & \textbf{0.135}\std{.001} & \textbf{0.129}\std{.001} \\
+FedAvg (shared ad.) & 0.165\std{.001} & 0.165\std{.001} & 0.165\std{.001} \\
+Local & 0.275\std{.001} & 0.231\std{.001} & 0.166\std{.001} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

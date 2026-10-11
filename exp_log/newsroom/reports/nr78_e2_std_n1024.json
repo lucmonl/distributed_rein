@@ -1,0 +1,749 @@
+{
+ "label": "3 subsets x 75% of test articles",
+ "seeds": [
+  0,
+  1,
+  2
+ ],
+ "frac": 0.75,
+ "ref": "fed-aligned-off-cnt",
+ "files": {
+  "fed-aligned-off-cnt": "runs/nr66-fed-aligned-off-cnt_20261008-170119_j11215859/evals/eval_round_0100_e2_frozen_D_n1024__20261011-112940_j11313916.json",
+  "local-off": "runs/nr62-fed-aligned-off_20261007-231639_j11209264/evals/eval_round_0100_e2_local_D_n1024__20261008-195338_j11222322.json",
+  "fed-shared-soff-sadapter-zeroshot": "runs/nr74-fed-shared-soff-sadapter_20261009-111900_j11241907/evals/eval_round_0070_e2_zeroshot_nall__20261011-133321_j11317087.json"
+ },
+ "results": {
+  "fed-aligned-off-cnt": {
+   "full": {
+    "pct_err": 0.1351906308089149,
+    "pct_err_worst": 0.17286429220038046,
+    "in_support": 0.14050370768241327,
+    "out_support": 0.12722101549866743,
+    "out_support_worst": 0.14650191378528693,
+    "reach": 0.40249999999999997,
+    "spearman": 0.9435038726399727,
+    "spearman_worst": 0.9199052565908715,
+    "near_tie": 0.144375,
+    "cell_a0": 0.1756859687968711,
+    "cell_a1": 0.07875606220046368,
+    "per_client": {
+     "bbc.com": {
+      "pct_calib_err": 0.1279566554793895,
+      "pct_err_in_support": 0.118195328032445,
+      "pct_err_out_support": 0.14259864664980626,
+      "reach_rate": 0.3975,
+      "spearman": 0.9542199754636934,
+      "support": [
+       0.0293,
+       0.7908
+      ]
+     },
+     "latimes.com": {
+      "pct_calib_err": 0.17286429220038046,
+      "pct_err_in_support": 0.19043921114377618,
+      "pct_err_out_support": 0.14650191378528693,
+      "reach_rate": 0.3525,
+      "spearman": 0.9199052565908715,
+      "support": [
+       0.1247,
+       0.9788
+      ]
+     },
+     "mashable.com": {
+      "pct_calib_err": 0.11748885708072909,
+      "pct_err_in_support": 0.1069059158470459,
+      "pct_err_out_support": 0.1333632689312539,
+      "reach_rate": 0.5225,
+      "spearman": 0.962084834744299,
+      "support": [
+       0.0706,
+       0.7992
+      ]
+     },
+     "telegraph.co.uk": {
+      "pct_calib_err": 0.12245271847516064,
+      "pct_err_in_support": 0.14647437570638594,
+      "pct_err_out_support": 0.08642023262832269,
+      "reach_rate": 0.3375,
+      "spearman": 0.937805423761027,
+      "support": [
+       0.0191,
+       0.9936
+      ]
+     }
+    }
+   },
+   "subsets": [
+    {
+     "pct_err": 0.13671678969207585,
+     "pct_err_worst": 0.1750187845206217,
+     "in_support": 0.1427465346684738,
+     "out_support": 0.12767217222747893,
+     "out_support_worst": 0.1414789734430848,
+     "reach": 0.3983333333333333,
+     "spearman": 0.9438389713707334,
+     "spearman_worst": 0.9233549649653552,
+     "near_tie": 0.14125,
+     "cell_a0": 0.17594489141902925,
+     "cell_a1": 0.07939945303592852,
+     "per_client": {
+      "bbc.com": {
+       "pct_calib_err": 0.12937834917619453,
+       "pct_err_in_support": 0.12159600555729018,
+       "pct_err_out_support": 0.1410518646045511,
+       "reach_rate": 0.41,
+       "spearman": 0.9528508621138864,
+       "support": [
+        0.0293,
+        0.7908
+       ]
+      },
+      "latimes.com": {
+       "pct_calib_err": 0.1750187845206217,
+       "pct_err_in_support": 0.197378658572313,
+       "pct_err_out_support": 0.1414789734430848,
+       "reach_rate": 0.36333333333333334,
+       "spearman": 0.9233549649653552,
+       "support": [
+        0.1247,
+        0.9788
+       ]
+      },
+      "mashable.com": {
+       "pct_calib_err": 0.12028643538324049,
+       "pct_err_in_support": 0.1075540956333574,
+       "pct_err_out_support": 0.13938494500806514,
+       "reach_rate": 0.51,
+       "spearman": 0.9599872733651894,
+       "support": [
+        0.0706,
+        0.7992
+       ]
+      },
+      "telegraph.co.uk": {
+       "pct_calib_err": 0.1221835896882467,
+       "pct_err_in_support": 0.14445737891093471,
+       "pct_err_out_support": 0.08877290585421466,
+       "reach_rate": 0.31,
+       "spearman": 0.939162785038502,
+       "support": [
+        0.0191,
+        0.9936
+       ]
+      }
+     }
+    },
+    {
+     "pct_err": 0.13400363031288984,
+     "pct_err_worst": 0.17254578867472006,
+     "in_support": 0.1392926309609498,
+     "out_support": 0.1260701293407999,
+     "out_support_worst": 0.14886357245573384,
+     "reach": 0.4,
+     "spearman": 0.945256636653805,
+     "spearman_worst": 0.9173061298569841,
+     "near_tie": 0.14041666666666666,
+     "cell_a0": 0.17389616108567396,
+     "cell_a1": 0.07824409759592578,
+     "per_client": {
+      "bbc.com": {
+       "pct_calib_err": 0.12530551558592556,
+       "pct_err_in_support": 0.11838617180237868,
+       "pct_err_out_support": 0.1356845312612459,
+       "reach_rate": 0.41,
+       "spearman": 0.9569251662338877,
+       "support": [
+        0.0293,
+        0.7908
+       ]
+      },
+      "latimes.com": {
+       "pct_calib_err": 0.17254578867472006,
+       "pct_err_in_support": 0.1883339328207109,
+       "pct_err_out_support": 0.14886357245573384,
+       "reach_rate": 0.3466666666666667,
+       "spearman": 0.9173061298569841,
+       "support": [
+        0.1247,
+        0.9788
+       ]
+      },
+      "mashable.com": {
+       "pct_calib_err": 0.11660123197643922,
+       "pct_err_in_support": 0.10504261721227628,
+       "pct_err_out_support": 0.13393915412268362,
+       "reach_rate": 0.5166666666666667,
+       "spearman": 0.9633077916032079,
+       "support": [
+        0.0706,
+        0.7992
+       ]
+      },
+      "telegraph.co.uk": {
+       "pct_calib_err": 0.12156198501447443,
+       "pct_err_in_support": 0.14540780200843323,
+       "pct_err_out_support": 0.08579325952353627,
+       "reach_rate": 0.32666666666666666,
+       "spearman": 0.9434874589211404,
+       "support": [
+        0.0191,
+        0.9936
+       ]
+      }
+     }
+    },
+    {
+     "pct_err": 0.1348867452779554,
+     "pct_err_worst": 0.17177220318365993,
+     "in_support": 0.14037402953329195,
+     "out_support": 0.12665581889495062,
+     "out_support_worst": 0.14848280347869566,
+     "reach": 0.4008333333333333,
+     "spearman": 0.9460829837761167,
+     "spearman_worst": 0.9310432631650967,
+     "near_tie": 0.14583333333333334,
+     "cell_a0": 0.17686240467643138,
+     "cell_a1": 0.07644923311346971,
+     "per_client": {
+      "bbc.com": {
+       "pct_calib_err": 0.1266913110024946,
+       "pct_err_in_support": 0.11982751866712824,
+       "pct_err_out_support": 0.13698699950554416,
+       "reach_rate": 0.41333333333333333,
+       "spearman": 0.9533660439118159,
+       "support": [
+        0.0293,
+        0.7908
+       ]
+      },
+      "latimes.com": {
+       "pct_calib_err": 0.17177220318365993,
+       "pct_err_in_support": 0.18729846965363608,
+       "pct_err_out_support": 0.14848280347869566,
+       "reach_rate": 0.3466666666666667,
+       "spearman": 0.9310432631650967,
+       "support": [
+        0.1247,
+        0.9788
+       ]
+      },
+      "mashable.com": {
+       "pct_calib_err": 0.11894476586881013,
+       "pct_err_in_support": 0.10750518758477753,
+       "pct_err_out_support": 0.13610413329485904,
+       "reach_rate": 0.5233333333333333,
+       "spearman": 0.9598576112039177,
+       "support": [
+        0.0706,
+        0.7992
+       ]
+      },
+      "telegraph.co.uk": {
+       "pct_calib_err": 0.12213870105685701,
+       "pct_err_in_support": 0.14686494222762594,
+       "pct_err_out_support": 0.08504933930070357,
+       "reach_rate": 0.32,
+       "spearman": 0.9400650168236363,
+       "support": [
+        0.0191,
+        0.9936
+       ]
+      }
+     }
+    }
+   ]
+  },
+  "local-off": {
+   "full": {
+    "pct_err": 0.23089674013863612,
+    "pct_err_worst": 0.31890037882887395,
+    "in_support": 0.22536011611005546,
+    "out_support": 0.23920167618150706,
+    "out_support_worst": 0.325591328780895,
+    "reach": 0.246875,
+    "spearman": 0.7695032561464652,
+    "spearman_worst": 0.6424703879396716,
+    "near_tie": 0.369375,
+    "cell_a0": 0.3149430860517205,
+    "cell_a1": 0.16346026631129357,
+    "per_client": {
+     "bbc.com": {
+      "pct_calib_err": 0.2214975850725359,
+      "pct_err_in_support": 0.20467851200858855,
+      "pct_err_out_support": 0.2467261946684569,
+      "reach_rate": 0.2625,
+      "spearman": 0.8180290946120569,
+      "support": [
+       0.0293,
+       0.7908
+      ]
+     },
+     "latimes.com": {
+      "pct_calib_err": 0.31890037882887395,
+      "pct_err_in_support": 0.31443974552752657,
+      "pct_err_out_support": 0.325591328780895,
+      "reach_rate": 0.1575,
+      "spearman": 0.6424703879396716,
+      "support": [
+       0.1247,
+       0.9788
+      ]
+     },
+     "mashable.com": {
+      "pct_calib_err": 0.16776211643483685,
+      "pct_err_in_support": 0.1380792412648811,
+      "pct_err_out_support": 0.21228642918977042,
+      "reach_rate": 0.3475,
+      "spearman": 0.9003710331952984,
+      "support": [
+       0.0706,
+       0.7992
+      ]
+     },
+     "telegraph.co.uk": {
+      "pct_calib_err": 0.2154268802182978,
+      "pct_err_in_support": 0.24424296563922562,
+      "pct_err_out_support": 0.17220275208690608,
+      "reach_rate": 0.22,
+      "spearman": 0.7171425088388341,
+      "support": [
+       0.0191,
+       0.9936
+      ]
+     }
+    }
+   },
+   "subsets": [
+    {
+     "pct_err": 0.23204633308502676,
+     "pct_err_worst": 0.3190569774727878,
+     "in_support": 0.22652196407145475,
+     "out_support": 0.24033288660538482,
+     "out_support_worst": 0.3172035433091331,
+     "reach": 0.25,
+     "spearman": 0.7780271455744748,
+     "spearman_worst": 0.6620166017113862,
+     "near_tie": 0.35833333333333334,
+     "cell_a0": 0.3167979322590531,
+     "cell_a1": 0.16386784095171655,
+     "per_client": {
+      "bbc.com": {
+       "pct_calib_err": 0.22243879244802445,
+       "pct_err_in_support": 0.20515777843408783,
+       "pct_err_out_support": 0.24836031346892942,
+       "reach_rate": 0.26666666666666666,
+       "spearman": 0.8173601361848888,
+       "support": [
+        0.0293,
+        0.7908
+       ]
+      },
+      "latimes.com": {
+       "pct_calib_err": 0.3190569774727878,
+       "pct_err_in_support": 0.3202926002485575,
+       "pct_err_out_support": 0.3172035433091331,
+       "reach_rate": 0.17333333333333334,
+       "spearman": 0.6620166017113862,
+       "support": [
+        0.1247,
+        0.9788
+       ]
+      },
+      "mashable.com": {
+       "pct_calib_err": 0.1687116106078897,
+       "pct_err_in_support": 0.1377202927213642,
+       "pct_err_out_support": 0.21519858743767795,
+       "reach_rate": 0.35333333333333333,
+       "spearman": 0.9014081367840928,
+       "support": [
+        0.0706,
+        0.7992
+       ]
+      },
+      "telegraph.co.uk": {
+       "pct_calib_err": 0.21797795181140517,
+       "pct_err_in_support": 0.24291718488180947,
+       "pct_err_out_support": 0.18056910220579878,
+       "reach_rate": 0.20666666666666667,
+       "spearman": 0.7313237076175314,
+       "support": [
+        0.0191,
+        0.9936
+       ]
+      }
+     }
+    },
+    {
+     "pct_err": 0.22937379529507052,
+     "pct_err_worst": 0.31629945166183565,
+     "in_support": 0.2217047511260673,
+     "out_support": 0.2408773615485753,
+     "out_support_worst": 0.33491718962183786,
+     "reach": 0.23833333333333334,
+     "spearman": 0.7590216613488006,
+     "spearman_worst": 0.6141584991017291,
+     "near_tie": 0.36916666666666664,
+     "cell_a0": 0.31755930428430523,
+     "cell_a1": 0.1641954188128455,
+     "per_client": {
+      "bbc.com": {
+       "pct_calib_err": 0.2206256056908562,
+       "pct_err_in_support": 0.2025758117631829,
+       "pct_err_out_support": 0.24770029658236614,
+       "reach_rate": 0.27666666666666667,
+       "spearman": 0.8184688358008552,
+       "support": [
+        0.0293,
+        0.7908
+       ]
+      },
+      "latimes.com": {
+       "pct_calib_err": 0.31629945166183565,
+       "pct_err_in_support": 0.30388762635516753,
+       "pct_err_out_support": 0.33491718962183786,
+       "reach_rate": 0.13,
+       "spearman": 0.6141584991017291,
+       "support": [
+        0.1247,
+        0.9788
+       ]
+      },
+      "mashable.com": {
+       "pct_calib_err": 0.16681325589952178,
+       "pct_err_in_support": 0.13586636687373113,
+       "pct_err_out_support": 0.21323358943820772,
+       "reach_rate": 0.32666666666666666,
+       "spearman": 0.8915559255907588,
+       "support": [
+        0.0706,
+        0.7992
+       ]
+      },
+      "telegraph.co.uk": {
+       "pct_calib_err": 0.21375686792806842,
+       "pct_err_in_support": 0.24448919951218767,
+       "pct_err_out_support": 0.16765837055188954,
+       "reach_rate": 0.22,
+       "spearman": 0.7119033849018592,
+       "support": [
+        0.0191,
+        0.9936
+       ]
+      }
+     }
+    },
+    {
+     "pct_err": 0.2316022532481767,
+     "pct_err_worst": 0.31757921669300737,
+     "in_support": 0.22589198504196384,
+     "out_support": 0.240167655557496,
+     "out_support_worst": 0.32813728025287464,
+     "reach": 0.24583333333333335,
+     "spearman": 0.7668768402680042,
+     "spearman_worst": 0.6388843740243085,
+     "near_tie": 0.3645833333333333,
+     "cell_a0": 0.3144679710678884,
+     "cell_a1": 0.16586734004710363,
+     "per_client": {
+      "bbc.com": {
+       "pct_calib_err": 0.22285782495635922,
+       "pct_err_in_support": 0.20628566956866154,
+       "pct_err_out_support": 0.24771605803790578,
+       "reach_rate": 0.27,
+       "spearman": 0.8101881947887746,
+       "support": [
+        0.0293,
+        0.7908
+       ]
+      },
+      "latimes.com": {
+       "pct_calib_err": 0.31757921669300737,
+       "pct_err_in_support": 0.3105405076530959,
+       "pct_err_out_support": 0.32813728025287464,
+       "reach_rate": 0.15333333333333332,
+       "spearman": 0.6388843740243085,
+       "support": [
+        0.1247,
+        0.9788
+       ]
+      },
+      "mashable.com": {
+       "pct_calib_err": 0.16928827197744215,
+       "pct_err_in_support": 0.13799906506277648,
+       "pct_err_out_support": 0.2162220823494406,
+       "reach_rate": 0.3466666666666667,
+       "spearman": 0.8977051451043379,
+       "support": [
+        0.0706,
+        0.7992
+       ]
+      },
+      "telegraph.co.uk": {
+       "pct_calib_err": 0.21668369936589815,
+       "pct_err_in_support": 0.24874269788332154,
+       "pct_err_out_support": 0.16859520158976296,
+       "reach_rate": 0.21333333333333335,
+       "spearman": 0.7207296471545963,
+       "support": [
+        0.0191,
+        0.9936
+       ]
+      }
+     }
+    }
+   ]
+  },
+  "fed-shared-soff-sadapter-zeroshot": {
+   "full": {
+    "pct_err": 0.1651774752924272,
+    "pct_err_worst": 0.1711293424196134,
+    "in_support": 0.18504176379153092,
+    "out_support": 0.1353810425437716,
+    "out_support_worst": 0.1565055849224458,
+    "reach": 0.440625,
+    "spearman": 0.9568923425982017,
+    "spearman_worst": 0.9536077414745898,
+    "near_tie": 0.1765625,
+    "cell_a0": 0.2424579748988852,
+    "cell_a1": 0.028304110188657916,
+    "per_client": {
+     "bbc.com": {
+      "pct_calib_err": 0.16258619147801312,
+      "pct_err_in_support": 0.18872359292470262,
+      "pct_err_out_support": 0.12338008930797884,
+      "reach_rate": 0.4975,
+      "spearman": 0.9585176261422975,
+      "support": [
+       0.029,
+       0.7908
+      ]
+     },
+     "latimes.com": {
+      "pct_calib_err": 0.1711293424196134,
+      "pct_err_in_support": 0.1808785140843918,
+      "pct_err_out_support": 0.1565055849224458,
+      "reach_rate": 0.39,
+      "spearman": 0.9571854429197545,
+      "support": [
+       0.1132,
+       0.9788
+      ]
+     },
+     "mashable.com": {
+      "pct_calib_err": 0.16879115993268842,
+      "pct_err_in_support": 0.18934326933266907,
+      "pct_err_out_support": 0.13796299583271746,
+      "reach_rate": 0.52,
+      "spearman": 0.9582585598561647,
+      "support": [
+       0.0786,
+       0.7908
+      ]
+     },
+     "telegraph.co.uk": {
+      "pct_calib_err": 0.15820320733939386,
+      "pct_err_in_support": 0.18122167882436022,
+      "pct_err_out_support": 0.12367550011194432,
+      "reach_rate": 0.355,
+      "spearman": 0.9536077414745898,
+      "support": [
+       0.0209,
+       0.9946
+      ]
+     }
+    }
+   },
+   "subsets": [
+    {
+     "pct_err": 0.16564726026675322,
+     "pct_err_worst": 0.172850782133273,
+     "in_support": 0.1865048401082135,
+     "out_support": 0.13436089050456276,
+     "out_support_worst": 0.15273854894809147,
+     "reach": 0.44166666666666665,
+     "spearman": 0.9594039743740124,
+     "spearman_worst": 0.9536522628073972,
+     "near_tie": 0.17875,
+     "cell_a0": 0.24242700524491473,
+     "cell_a1": 0.026294775764210708,
+     "per_client": {
+      "bbc.com": {
+       "pct_calib_err": 0.16414158404340204,
+       "pct_err_in_support": 0.1929725554469508,
+       "pct_err_out_support": 0.1208951269380789,
+       "reach_rate": 0.5,
+       "spearman": 0.9587009052756855,
+       "support": [
+        0.029,
+        0.7908
+       ]
+      },
+      "latimes.com": {
+       "pct_calib_err": 0.172850782133273,
+       "pct_err_in_support": 0.18625893759006065,
+       "pct_err_out_support": 0.15273854894809147,
+       "reach_rate": 0.39666666666666667,
+       "spearman": 0.960642701187982,
+       "support": [
+        0.1132,
+        0.9788
+       ]
+      },
+      "mashable.com": {
+       "pct_calib_err": 0.17030450088718965,
+       "pct_err_in_support": 0.19048245990153528,
+       "pct_err_out_support": 0.1400375623656712,
+       "reach_rate": 0.5233333333333333,
+       "spearman": 0.9646200282249848,
+       "support": [
+        0.0786,
+        0.7908
+       ]
+      },
+      "telegraph.co.uk": {
+       "pct_calib_err": 0.15529217400314818,
+       "pct_err_in_support": 0.17630540749430737,
+       "pct_err_out_support": 0.12377232376640947,
+       "reach_rate": 0.3466666666666667,
+       "spearman": 0.9536522628073972,
+       "support": [
+        0.0209,
+        0.9946
+       ]
+      }
+     }
+    },
+    {
+     "pct_err": 0.16415638616949618,
+     "pct_err_worst": 0.1690143765060255,
+     "in_support": 0.18431157847511528,
+     "out_support": 0.1339235977110675,
+     "out_support_worst": 0.15886473814710383,
+     "reach": 0.44416666666666665,
+     "spearman": 0.9577018173491065,
+     "spearman_worst": 0.9534974712282273,
+     "near_tie": 0.1720833333333333,
+     "cell_a0": 0.23871310377688804,
+     "cell_a1": 0.029134091645246843,
+     "per_client": {
+      "bbc.com": {
+       "pct_calib_err": 0.16369255107963607,
+       "pct_err_in_support": 0.1923052920454039,
+       "pct_err_out_support": 0.12077343963098429,
+       "reach_rate": 0.5,
+       "spearman": 0.9588940460104985,
+       "support": [
+        0.029,
+        0.7908
+       ]
+      },
+      "latimes.com": {
+       "pct_calib_err": 0.1690143765060255,
+       "pct_err_in_support": 0.17578080207863997,
+       "pct_err_out_support": 0.15886473814710383,
+       "reach_rate": 0.39,
+       "spearman": 0.9534974712282273,
+       "support": [
+        0.1132,
+        0.9788
+       ]
+      },
+      "mashable.com": {
+       "pct_calib_err": 0.16794293085647538,
+       "pct_err_in_support": 0.18983033901487953,
+       "pct_err_out_support": 0.13511181861886915,
+       "reach_rate": 0.5233333333333333,
+       "spearman": 0.9607343610337216,
+       "support": [
+        0.0786,
+        0.7908
+       ]
+      },
+      "telegraph.co.uk": {
+       "pct_calib_err": 0.15597568623584773,
+       "pct_err_in_support": 0.17932988076153775,
+       "pct_err_out_support": 0.1209443944473127,
+       "reach_rate": 0.36333333333333334,
+       "spearman": 0.9576813911239788,
+       "support": [
+        0.0209,
+        0.9946
+       ]
+      }
+     }
+    },
+    {
+     "pct_err": 0.16550305480952968,
+     "pct_err_worst": 0.1721898151599125,
+     "in_support": 0.18479343151517527,
+     "out_support": 0.1365674897510613,
+     "out_support_worst": 0.1582084903711756,
+     "reach": 0.44,
+     "spearman": 0.9571844007195975,
+     "spearman_worst": 0.9548305674369575,
+     "near_tie": 0.1754166666666667,
+     "cell_a0": 0.2438608310108139,
+     "cell_a1": 0.02927414849130862,
+     "per_client": {
+      "bbc.com": {
+       "pct_calib_err": 0.1634498054706074,
+       "pct_err_in_support": 0.1868304954370954,
+       "pct_err_out_support": 0.12837877052087537,
+       "reach_rate": 0.49,
+       "spearman": 0.9548305674369575,
+       "support": [
+        0.029,
+        0.7908
+       ]
+      },
+      "latimes.com": {
+       "pct_calib_err": 0.1721898151599125,
+       "pct_err_in_support": 0.18151069835240377,
+       "pct_err_out_support": 0.1582084903711756,
+       "reach_rate": 0.4033333333333333,
+       "spearman": 0.9568594082077184,
+       "support": [
+        0.1132,
+        0.9788
+       ]
+      },
+      "mashable.com": {
+       "pct_calib_err": 0.1703716384150416,
+       "pct_err_in_support": 0.19184783256334817,
+       "pct_err_out_support": 0.1381573471925817,
+       "reach_rate": 0.52,
+       "spearman": 0.9595207599061175,
+       "support": [
+        0.0786,
+        0.7908
+       ]
+      },
+      "telegraph.co.uk": {
+       "pct_calib_err": 0.1560009601925573,
+       "pct_err_in_support": 0.17898469970785383,
+       "pct_err_out_support": 0.12152535091961257,
+       "reach_rate": 0.3466666666666667,
+       "spearman": 0.9575268673275972,
+       "support": [
+        0.0209,
+        0.9946
+       ]
+      }
+     }
+    }
+   ]
+  }
+ },
+ "pct_err_diff_vs_ref": {
+  "local-off": [
+   0.09532954339295091,
+   0.09537016498218068,
+   0.0967155079702213
+  ],
+  "fed-shared-soff-sadapter-zeroshot": [
+   0.028930470574677375,
+   0.030152755856606345,
+   0.030616309531574265
+  ]
+ }
+}

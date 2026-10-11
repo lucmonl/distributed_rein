@@ -1,0 +1,64 @@
+== E1 steering metrics, mean +- std over 3 subsets x 75% of test articles (full-test value in brackets)
+   arms on identical test articles: fed-aligned-off-cnt, fed-shared-off, local; 1580 articles, 8 clients
+   articles per client (full / per subset): aol.com 200/150, cbc.ca 200/150, forbes.com 200/150, nypost.com 200/150, people.com 200/150, reuters.com 200/150, theguardian.com 180/135, wsj.com 200/150
+
+-- pct_err
+   fed-aligned-off-cnt        0.143 +- 0.001   [0.143]
+   fed-shared-off             0.150 +- 0.000   [0.150]
+   local                      0.158 +- 0.001   [0.157]
+
+-- pct_err_worst
+   fed-aligned-off-cnt        0.190 +- 0.002   [0.191]
+   fed-shared-off             0.204 +- 0.001   [0.205]
+   local                      0.246 +- 0.002   [0.244]
+
+-- in_support
+   fed-aligned-off-cnt        0.133 +- 0.001   [0.132]
+   fed-shared-off             0.135 +- 0.001   [0.134]
+   local                      0.139 +- 0.001   [0.139]
+
+-- out_support
+   fed-aligned-off-cnt        0.147 +- 0.002   [0.147]
+   fed-shared-off             0.157 +- 0.001   [0.158]
+   local                      0.160 +- 0.001   [0.159]
+
+-- out_support_worst
+   fed-aligned-off-cnt        0.178 +- 0.000   [0.178]
+   fed-shared-off             0.185 +- 0.002   [0.184]
+   local                      0.276 +- 0.003   [0.274]
+
+-- reach
+   fed-aligned-off-cnt        0.435 +- 0.003   [0.435]
+   fed-shared-off             0.401 +- 0.005   [0.398]
+   local                      0.404 +- 0.002   [0.403]
+
+-- spearman
+   fed-aligned-off-cnt        0.933 +- 0.002   [0.934]
+   fed-shared-off             0.928 +- 0.001   [0.928]
+   local                      0.912 +- 0.000   [0.912]
+
+-- spearman_worst
+   fed-aligned-off-cnt        0.897 +- 0.006   [0.898]
+   fed-shared-off             0.890 +- 0.008   [0.890]
+   local                      0.807 +- 0.013   [0.805]
+
+-- near_tie
+   fed-aligned-off-cnt        0.181 +- 0.001   [0.181]
+   fed-shared-off             0.200 +- 0.001   [0.200]
+   local                      0.218 +- 0.002   [0.219]
+
+-- cell_a0
+   fed-aligned-off-cnt        0.188 +- 0.003   [0.189]
+   fed-shared-off             0.195 +- 0.002   [0.196]
+   local                      0.190 +- 0.000   [0.189]
+
+-- cell_a1
+   fed-aligned-off-cnt        0.101 +- 0.002   [0.102]
+   fed-shared-off             0.120 +- 0.000   [0.121]
+   local                      0.130 +- 0.001   [0.130]
+
+-- per-subset difference in mean pct err vs fed-aligned-off-cnt (mean +- std over 3 subsets x 75% of test articles; negative = arm better). A gap is real only if it clearly exceeds its std.
+   fed-shared-off             +0.0066 +- 0.0003   (full test +0.0064)
+   local                      +0.0147 +- 0.0012   (full test +0.0141)
+
+wrote exp_log/newsroom/reports/nr76_subsample_std_extra.json

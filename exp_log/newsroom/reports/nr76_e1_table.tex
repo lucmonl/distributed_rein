@@ -1,0 +1,24 @@
+% E1 steering results on Newsroom (test). Sources: exp_log/newsroom/reports/nr76_subsample_std.txt and nr76_subsample_std_extra.txt (NR-76).
+% Needs \usepackage{booktabs} and \usepackage{graphicx} (for \resizebox).
+\providecommand{\std}[1]{{\scriptsize$\pm$#1}}
+\begin{table}[t]
+\centering
+\caption{Steering on Newsroom (test set, 8 publications). Mean $\pm$ std over 3 random subsets of 75\% of the test articles, drawn per publication and shared by all methods. The std reflects test-set sampling only, not training-seed variation. Errors are the absolute difference between the requested and the achieved percentile of extractiveness, averaged over $\alpha \in \{0, 0.25, 0.5, 0.75, 1\}$ and over publications. \emph{Worst}: the worst publication. \emph{In-/Out-of-supp.}: requested levels inside / outside the range of the publication's own training data. \emph{Reach}: the fraction of out-of-support requests whose output leaves the publication's own range in the requested direction. \emph{Spearman}: the rank correlation between the requested level and the output's extractiveness, per article. Best value per column in bold.}
+\label{tab:e1-newsroom}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Method & Pct err $\downarrow$ & Worst $\downarrow$ & In-supp.\ $\downarrow$ & Out-of-supp.\ $\downarrow$ & Reach $\uparrow$ & Spearman $\uparrow$ \\
+\midrule
+Ours & \textbf{0.143}\std{0.001} & \textbf{0.190}\std{0.002} & \textbf{0.133}\std{0.001} & \textbf{0.147}\std{0.002} & 0.435\std{0.003} & 0.933\std{0.002} \\
+\midrule
+FedAvg calibration + private offset & 0.150\std{0.000} & 0.204\std{0.001} & 0.135\std{0.001} & 0.157\std{0.001} & 0.401\std{0.005} & 0.928\std{0.001} \\
+FedAvg (shared adapter) & 0.171\std{0.001} & 0.192\std{0.001} & 0.183\std{0.002} & 0.154\std{0.001} & \textbf{0.500}\std{0.004} & \textbf{0.948}\std{0.001} \\
+Local training & 0.178\std{0.001} & 0.266\std{0.005} & 0.153\std{0.000} & 0.186\std{0.002} & 0.369\std{0.004} & 0.885\std{0.002} \\
+One-shot merge & 0.182\std{0.000} & 0.255\std{0.005} & 0.152\std{0.001} & 0.198\std{0.001} & 0.295\std{0.001} & 0.882\std{0.002} \\
+Activation steering (CAA) & 0.253\std{0.000} & 0.303\std{0.001} & 0.212\std{0.001} & 0.287\std{0.000} & 0.232\std{0.004} & 0.781\std{0.001} \\
+Prompting ($k{=}3$) & 0.340\std{0.001} & 0.353\std{0.003} & 0.242\std{0.000} & 0.467\std{0.001} & 0.118\std{0.001} & 0.073\std{0.003} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

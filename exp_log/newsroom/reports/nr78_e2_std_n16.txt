@@ -1,0 +1,101 @@
+== E1 steering metrics, mean +- std over 3 subsets x 75% of test articles (full-test value in brackets)
+   arms on identical test articles: fed-aligned-off-cnt, local-off, fed-shared-soff-sadapter-zeroshot; 800 articles, 4 clients
+   articles per client (full / per subset): bbc.com 200/150, latimes.com 200/150, mashable.com 200/150, telegraph.co.uk 200/150
+
+-- pct_err
+   fed-aligned-off-cnt        0.173 +- 0.001   [0.174]
+   local-off                  0.315 +- 0.002   [0.315]
+   fed-shared-soff-sadapter-zeroshot 0.165 +- 0.001   [0.165]
+
+-- pct_err_worst
+   fed-aligned-off-cnt        0.188 +- 0.001   [0.191]
+   local-off                  0.336 +- 0.002   [0.332]
+   fed-shared-soff-sadapter-zeroshot 0.171 +- 0.002   [0.171]
+
+-- in_support
+   fed-aligned-off-cnt        0.193 +- 0.001   [0.193]
+   local-off                  0.290 +- 0.002   [0.288]
+   fed-shared-soff-sadapter-zeroshot 0.185 +- 0.001   [0.185]
+
+-- out_support
+   fed-aligned-off-cnt        0.152 +- 0.001   [0.154]
+   local-off                  0.338 +- 0.004   [0.339]
+   fed-shared-soff-sadapter-zeroshot 0.135 +- 0.001   [0.135]
+
+-- out_support_worst
+   fed-aligned-off-cnt        0.195 +- 0.006   [0.198]
+   local-off                  0.377 +- 0.006   [0.373]
+   fed-shared-soff-sadapter-zeroshot 0.157 +- 0.003   [0.157]
+
+-- reach
+   fed-aligned-off-cnt        0.531 +- 0.002   [0.527]
+   local-off                  0.287 +- 0.006   [0.282]
+   fed-shared-soff-sadapter-zeroshot 0.442 +- 0.002   [0.441]
+
+-- spearman
+   fed-aligned-off-cnt        0.899 +- 0.002   [0.896]
+   local-off                  0.434 +- 0.022   [0.433]
+   fed-shared-soff-sadapter-zeroshot 0.958 +- 0.001   [0.957]
+
+-- spearman_worst
+   fed-aligned-off-cnt        0.865 +- 0.007   [0.858]
+   local-off                  0.277 +- 0.033   [0.293]
+   fed-shared-soff-sadapter-zeroshot 0.954 +- 0.001   [0.954]
+
+-- near_tie
+   fed-aligned-off-cnt        0.219 +- 0.003   [0.215]
+   local-off                  0.582 +- 0.011   [0.579]
+   fed-shared-soff-sadapter-zeroshot 0.175 +- 0.003   [0.177]
+
+-- cell_a0
+   fed-aligned-off-cnt        0.219 +- 0.002   [0.221]
+   local-off                  0.464 +- 0.006   [0.465]
+   fed-shared-soff-sadapter-zeroshot 0.242 +- 0.003   [0.242]
+
+-- cell_a1
+   fed-aligned-off-cnt        0.093 +- 0.002   [0.094]
+   local-off                  0.287 +- 0.009   [0.288]
+   fed-shared-soff-sadapter-zeroshot 0.028 +- 0.002   [0.028]
+
+== per client, mean +- std over 3 subsets x 75% of test articles (full-test value in brackets); support = the client's 5th-95th percentile on the global alpha scale
+
+-- pct_calib_err
+   client                 support         fed-aligned-off-cnt                   local-offfed-shared-soff-sadapter-zeroshot
+   bbc.com          [0.10,0.63]        0.170 +- 0.003 [0.170]      0.336 +- 0.002 [0.332]      0.164 +- 0.000 [0.163]
+   latimes.com      [0.16,0.98]        0.188 +- 0.001 [0.191]      0.323 +- 0.005 [0.324]      0.171 +- 0.002 [0.171]
+   mashable.com     [0.10,0.70]        0.171 +- 0.002 [0.171]      0.321 +- 0.005 [0.321]      0.170 +- 0.001 [0.169]
+   telegraph.co.uk  [0.02,0.80]        0.162 +- 0.002 [0.163]      0.281 +- 0.003 [0.283]      0.156 +- 0.000 [0.158]
+
+-- pct_err_in_support
+   client                 support         fed-aligned-off-cnt                   local-offfed-shared-soff-sadapter-zeroshot
+   bbc.com          [0.10,0.63]        0.204 +- 0.003 [0.202]      0.274 +- 0.005 [0.271]      0.191 +- 0.003 [0.189]
+   latimes.com      [0.16,0.98]        0.184 +- 0.005 [0.186]      0.295 +- 0.009 [0.295]      0.181 +- 0.005 [0.181]
+   mashable.com     [0.10,0.70]        0.183 +- 0.003 [0.182]      0.310 +- 0.006 [0.305]      0.191 +- 0.001 [0.189]
+   telegraph.co.uk  [0.02,0.80]        0.200 +- 0.001 [0.201]      0.282 +- 0.003 [0.282]      0.178 +- 0.002 [0.181]
+
+-- pct_err_out_support
+   client                 support         fed-aligned-off-cnt                   local-offfed-shared-soff-sadapter-zeroshot
+   bbc.com          [0.10,0.63]        0.147 +- 0.002 [0.148]      0.377 +- 0.006 [0.373]      0.123 +- 0.004 [0.123]
+   latimes.com      [0.16,0.98]        0.195 +- 0.006 [0.198]      0.365 +- 0.002 [0.367]      0.157 +- 0.003 [0.157]
+   mashable.com     [0.10,0.70]        0.163 +- 0.002 [0.163]      0.329 +- 0.005 [0.331]      0.138 +- 0.002 [0.138]
+   telegraph.co.uk  [0.02,0.80]        0.103 +- 0.004 [0.106]      0.279 +- 0.009 [0.284]      0.122 +- 0.001 [0.124]
+
+-- reach_rate
+   client                 support         fed-aligned-off-cnt                   local-offfed-shared-soff-sadapter-zeroshot
+   bbc.com          [0.10,0.63]        0.718 +- 0.013 [0.713]      0.343 +- 0.010 [0.338]      0.497 +- 0.006 [0.497]
+   latimes.com      [0.16,0.98]        0.287 +- 0.009 [0.280]      0.161 +- 0.013 [0.158]      0.397 +- 0.007 [0.390]
+   mashable.com     [0.10,0.70]        0.647 +- 0.012 [0.642]      0.407 +- 0.012 [0.402]      0.522 +- 0.002 [0.520]
+   telegraph.co.uk  [0.02,0.80]        0.473 +- 0.006 [0.472]      0.236 +- 0.005 [0.230]      0.352 +- 0.010 [0.355]
+
+-- spearman
+   client                 support         fed-aligned-off-cnt                   local-offfed-shared-soff-sadapter-zeroshot
+   bbc.com          [0.10,0.63]        0.916 +- 0.002 [0.915]      0.277 +- 0.033 [0.293]      0.957 +- 0.002 [0.959]
+   latimes.com      [0.16,0.98]        0.892 +- 0.001 [0.889]      0.497 +- 0.020 [0.498]      0.957 +- 0.004 [0.957]
+   mashable.com     [0.10,0.70]        0.923 +- 0.003 [0.922]      0.504 +- 0.025 [0.490]      0.962 +- 0.003 [0.958]
+   telegraph.co.uk  [0.02,0.80]        0.865 +- 0.007 [0.858]      0.458 +- 0.017 [0.449]      0.956 +- 0.002 [0.954]
+
+-- per-subset difference in mean pct err vs fed-aligned-off-cnt (mean +- std over 3 subsets x 75% of test articles; negative = arm better). A gap is real only if it clearly exceeds its std.
+   local-off                  +0.1425 +- 0.0023   (full test +0.1412)
+   fed-shared-soff-sadapter-zeroshot -0.0076 +- 0.0002   (full test -0.0085)
+
+wrote exp_log/newsroom/reports/nr78_e2_std_n16.json

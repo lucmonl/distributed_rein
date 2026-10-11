@@ -1,0 +1,43 @@
+% Two tables from NR-77 (exp_log/newsroom/reports/nr77_quality_style_std.json, nr77_judge_std.json).
+% Quality: the mean of the in-support and out-of-support values already reported; std = the mean of the two stds
+% (an upper bound on the std of the average). Needs \usepackage{booktabs} and \usepackage{graphicx}.
+\providecommand{\std}[1]{{\scriptsize$\pm$#1}}
+
+% ---------------------------------------------------------------- quality
+\begin{table}[t]
+\centering
+\caption{Summary quality on Newsroom (test set, 8 publications), averaged over requested extractiveness levels inside and outside each publication's support. Mean $\pm$ std over 3 random subsets of 75\% of the test articles, shared by all rows (std reflects test-set sampling only). AlignScore: consistency with the article. BERTScore F1: similarity to the reference summary. LLM judge (Qwen2.5-7B-Instruct, every test summary): faithfulness is the fraction of summary sentences supported by the article; relevance and coherence are rated 1--5. \emph{Real summaries}: the publications' own test summaries of the same articles.}
+\label{tab:quality-newsroom}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lccccc}
+\toprule
+Method & AlignScore & BERTScore F1 & Faithfulness & Relevance & Coherence \\
+\midrule
+Ours & 0.757\std{0.004} & 0.894\std{0.000} & 0.804\std{0.002} & 3.602\std{0.007} & 4.185\std{0.003} \\
+Local training & 0.783\std{0.005} & 0.896\std{0.000} & 0.811\std{0.002} & 3.619\std{0.005} & 4.203\std{0.003} \\
+\midrule
+Real summaries & 0.762\std{0.004} & -- & 0.844\std{0.003} & 3.670\std{0.005} & 4.189\std{0.007} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+% ---------------------------------------------------------------- house style (single column)
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{House style on Newsroom (test set; in-support levels). Mean $\pm$ std over 3 random subsets of 75\% of the test articles. \emph{Acc.}: share of generated summaries a density-matched publication classifier assigns to the right publication (chance 0.125). \emph{P(own)}: its mean probability of the right publication. \emph{Gap}: mean absolute standardized difference of 11 style features from the publication's own summaries. Real: the publications' own test summaries (ceiling). Bold: best method.}
+\label{tab:style-newsroom}
+\begin{tabular}{lccc}
+\toprule
+Method & Acc.\ $\uparrow$ & P(own) $\uparrow$ & Gap $\downarrow$ \\
+\midrule
+Ours & 0.569\std{.002} & \textbf{0.381}\std{.002} & \textbf{0.106}\std{.001} \\
+FedAvg (shared ad.) & 0.407\std{.002} & 0.293\std{.004} & 0.187\std{.002} \\
+Local training & \textbf{0.572}\std{.004} & 0.379\std{.003} & 0.125\std{.001} \\
+\midrule
+Real summaries & 0.588\std{.001} & 0.387\std{.001} & -- \\
+\bottomrule
+\end{tabular}
+\end{table}

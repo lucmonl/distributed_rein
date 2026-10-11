@@ -1053,12 +1053,19 @@ This is the part a single number hides:
 | `fed-aligned-off` | **0.172** (better) | 0.071 | 0.184 |
 | `fed-shared-soff-sadapter` | 0.176 | **0.013** (5× lower) | **0.178** |
 
-**On calibration `fed-aligned-off` is better; on validity `sadapter` is 5× better; the penalized
-metric nets out marginally in `sadapter`'s favour.** Its worst-client in-support error is also much
-better (0.206 vs 0.234). The plausible reason is data volume: a shared adapter is trained on all
-eight clients' data at once, so it learns the decoration format better, while eight private adapters
-each see one client's. Same validity/calibration trade-off as MOL-26a's B3 row, in the opposite
-direction.
+**On calibration `fed-aligned-off` is better; on validity `sadapter` is better; the penalized metric
+nets out marginally in `sadapter`'s favour.** Its worst-client in-support error is also much better
+(0.206 vs 0.234). The plausible reason is data volume: a shared adapter is trained on all eight
+clients' data at once, so it learns the decoration format better, while eight private adapters each
+see one client's. Same validity/calibration trade-off as MOL-26a's B3 row, in the opposite direction.
+
+⚠️ **Correction (2026-10-11).** An earlier version of this paragraph said `sadapter` was "5× more
+valid". That read `unscorable_row_rate` (0.013 vs 0.071) as a per-molecule rate, but it is
+**row-level**: `metrics.py:103` drops a prompt if *any* of its 5 α cells is unscorable. The
+**cell-level** validity from `score_molecules.py` is **0.997 vs 0.990** — a per-generation failure
+rate of 0.3% against 1.0%, which compounds over 5 alphas into the 1.3%-vs-7.1% row figure. The 5× is
+real for *prompts* and badly overstates the per-molecule effect; both arms produce valid molecules
+~99% of the time. The direction of the trade-off stands, its magnitude does not.
 
 ### 4. Offsets: MOL-25c's mechanism refined, not contradicted
 

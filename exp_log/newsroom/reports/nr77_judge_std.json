@@ -1,0 +1,2267 @@
+{
+ "label": "3 subsets x 75% of test articles",
+ "judge": "Qwen/Qwen2.5-7B-Instruct",
+ "files": {
+  "fed-aligned-off-cnt": "runs/nr66-fed-aligned-off-cnt_20261008-170119_j11215859/evals/eval_round_0100__20261008-170119_j11215859.json",
+  "fed-shared-soff-sadapter": "runs/nr74-fed-shared-soff-sadapter_20261009-111900_j11241907/evals/eval_round_0070__20261009-111900_j11241907.json",
+  "local-off": "runs/nr60-local-off_20261007-181308_j11206105/evals/eval_round_0060__20261007-181308_j11206105.json"
+ },
+ "results": {
+  "fed-aligned-off-cnt": {
+   "full": {
+    "faithful_in": 0.8262440210310813,
+    "gap_faithful_in": -0.04718860806031,
+    "relevance_in": 3.584744556113903,
+    "gap_relevance_in": -0.10651915828999246,
+    "coherence_in": 4.199737751256281,
+    "gap_coherence_in": -0.04175423310670634,
+    "faithful_out": 0.7763546931637908,
+    "gap_faithful_out": 0.01137175739183782,
+    "relevance_out": 3.6021739484459334,
+    "gap_relevance_out": -0.007521349905081916,
+    "coherence_out": 4.166088602735901,
+    "gap_coherence_out": 0.07712672409352392,
+    "real_faithful": 0.8418935185185186,
+    "real_relevance": 3.659513888888889,
+    "real_coherence": 4.188958333333334,
+    "per_client": {
+     "forbes.com": {
+      "judge": {
+       "faithful_in": 0.7812206867671692,
+       "gap_faithful_in": -0.09221194232422214,
+       "relevance_in": 3.602956448911223,
+       "gap_relevance_in": -0.0883072654926725,
+       "coherence_in": 4.2120686767169175,
+       "gap_coherence_in": -0.029423307646069635,
+       "faithful_out": 0.6991823701842547,
+       "gap_faithful_out": -0.048930648413742506,
+       "relevance_out": 3.609535175879397,
+       "gap_relevance_out": 0.014979688448373052,
+       "coherence_out": 4.115414572864322,
+       "gap_coherence_out": 0.054789189663831284
+      },
+      "real": {
+       "faithful": 0.7793333333333333,
+       "relevance": 3.595,
+       "coherence": 4.125
+      }
+     },
+     "theguardian.com": {
+      "judge": {
+       "faithful_in": 0.860648148148148,
+       "gap_faithful_in": -0.026280730764019766,
+       "relevance_in": 3.541666666666667,
+       "gap_relevance_in": -0.1396463806673316,
+       "coherence_in": 4.15,
+       "gap_coherence_in": -0.07267486974836501,
+       "faithful_out": 0.8691358024691359,
+       "gap_faithful_out": 0.0882470802538583,
+       "relevance_out": 3.7092592592592593,
+       "gap_relevance_out": 0.07583391812401352,
+       "coherence_out": 4.272222222222222,
+       "gap_coherence_out": 0.13876322889115075
+      },
+      "real": {
+       "faithful": 0.9064814814814814,
+       "relevance": 3.761111111111111,
+       "coherence": 4.166666666666667
+      }
+     },
+     "people.com": {
+      "judge": {
+       "faithful_in": 0.815,
+       "gap_faithful_in": -0.07192887891216787,
+       "relevance_in": 3.26,
+       "gap_relevance_in": -0.4213130473339983,
+       "coherence_in": 4.0375,
+       "gap_coherence_in": -0.18517486974836528,
+       "faithful_out": 0.776623015873016,
+       "gap_faithful_out": -0.004265706342261681,
+       "relevance_out": 3.3533333333333335,
+       "gap_relevance_out": -0.2800920078019124,
+       "coherence_out": 4.093333333333334,
+       "gap_coherence_out": -0.040125659997737984
+      },
+      "real": {
+       "faithful": 0.8658333333333332,
+       "relevance": 3.49,
+       "coherence": 4.11
+      }
+     },
+     "wsj.com": {
+      "judge": {
+       "faithful_in": 0.8323611111111111,
+       "gap_faithful_in": -0.0410715179802803,
+       "relevance_in": 3.57,
+       "gap_relevance_in": -0.12126371440389534,
+       "coherence_in": 4.273333333333333,
+       "gap_coherence_in": 0.03184134897034566,
+       "faithful_out": 0.7779583333333333,
+       "gap_faithful_out": 0.029845314735336137,
+       "relevance_out": 3.6225,
+       "gap_relevance_out": 0.02794451256897612,
+       "coherence_out": 4.195,
+       "gap_coherence_out": 0.13437461679950946
+      },
+      "real": {
+       "faithful": 0.8758333333333335,
+       "relevance": 3.745,
+       "coherence": 4.28
+      }
+     },
+     "aol.com": {
+      "judge": {
+       "faithful_in": 0.8609722222222222,
+       "gap_faithful_in": -0.012460406869169013,
+       "relevance_in": 3.3716666666666666,
+       "gap_relevance_in": -0.3195970477372286,
+       "coherence_in": 4.1066666666666665,
+       "gap_coherence_in": -0.13482531769632114,
+       "faithful_out": 0.7606666666666668,
+       "gap_faithful_out": 0.012553648068669598,
+       "relevance_out": 3.42,
+       "gap_relevance_out": -0.174555487431024,
+       "coherence_out": 4.1125,
+       "gap_coherence_out": 0.05187461679950944
+      },
+      "real": {
+       "faithful": 0.85375,
+       "relevance": 3.32,
+       "coherence": 4.005
+      }
+     },
+     "cbc.ca": {
+      "judge": {
+       "faithful_in": 0.8817499999999999,
+       "gap_faithful_in": 0.00831737090860866,
+       "relevance_in": 3.796666666666667,
+       "gap_relevance_in": 0.10540295226277137,
+       "coherence_in": 4.325,
+       "gap_coherence_in": 0.08350801563701242,
+       "faithful_out": 0.8441666666666667,
+       "gap_faithful_out": 0.0960536480686695,
+       "relevance_out": 3.795,
+       "gap_relevance_out": 0.200444512568976,
+       "coherence_out": 4.2625,
+       "gap_coherence_out": 0.2018746167995098
+      },
+      "real": {
+       "faithful": 0.89125,
+       "relevance": 3.83,
+       "coherence": 4.36
+      }
+     },
+     "reuters.com": {
+      "judge": {
+       "faithful_in": 0.8246666666666668,
+       "gap_faithful_in": -0.04876596242472464,
+       "relevance_in": 3.74,
+       "gap_relevance_in": 0.04873628559610473,
+       "coherence_in": 4.303333333333334,
+       "gap_coherence_in": 0.06184134897034532,
+       "faithful_out": 0.763125,
+       "gap_faithful_out": 0.015011981402002827,
+       "relevance_out": 3.7575000000000003,
+       "gap_relevance_out": 0.16294451256897613,
+       "coherence_out": 4.215,
+       "gap_coherence_out": 0.15437461679950948
+      },
+      "real": {
+       "faithful": 0.828,
+       "relevance": 3.8,
+       "coherence": 4.27
+      }
+     },
+     "nypost.com": {
+      "judge": {
+       "faithful_in": 0.7533333333333333,
+       "gap_faithful_in": -0.09310679611650496,
+       "relevance_in": 3.795,
+       "gap_relevance_in": 0.08383495145631059,
+       "coherence_in": 4.19,
+       "gap_coherence_in": -0.08912621359223305,
+       "faithful_out": 0.7199796901172529,
+       "gap_faithful_out": -0.09754125863782961,
+       "relevance_out": 3.550263819095477,
+       "gap_relevance_out": -0.08767044828703374,
+       "coherence_out": 4.062738693467336,
+       "gap_coherence_out": -0.07891143300709091
+      },
+      "real": {
+       "faithful": 0.7346666666666667,
+       "relevance": 3.735,
+       "coherence": 4.195
+      }
+     }
+    }
+   },
+   "subsets": [
+    {
+     "faithful_in": 0.8293111691109454,
+     "gap_faithful_in": -0.04737393253978117,
+     "relevance_in": 3.583968120805369,
+     "gap_relevance_in": -0.11250451459113678,
+     "coherence_in": 4.198915299527716,
+     "gap_coherence_in": -0.04517094915822336,
+     "faithful_out": 0.7817759728041934,
+     "gap_faithful_out": 0.015490294827541363,
+     "relevance_out": 3.608137324964786,
+     "gap_relevance_out": -0.010822857864556229,
+     "coherence_out": 4.167902270279228,
+     "gap_coherence_out": 0.08880548524027555,
+     "real_faithful": 0.845496913580247,
+     "real_relevance": 3.6650925925925923,
+     "real_coherence": 4.18962962962963,
+     "per_client": {
+      "aol.com": {
+       "judge": {
+        "faithful_in": 0.8701851851851853,
+        "gap_faithful_in": -0.00649991646554134,
+        "relevance_in": 3.3777777777777778,
+        "gap_relevance_in": -0.3186948576187281,
+        "coherence_in": 4.1066666666666665,
+        "gap_coherence_in": -0.1374195820192723,
+        "faithful_out": 0.787,
+        "gap_faithful_out": 0.03740322580645161,
+        "relevance_out": 3.4433333333333334,
+        "gap_relevance_out": -0.1609427356839208,
+        "coherence_out": 4.13,
+        "gap_coherence_out": 0.0810502625656413
+       },
+       "real": {
+        "faithful": 0.8666666666666667,
+        "relevance": 3.36,
+        "coherence": 4.026666666666666
+       }
+      },
+      "cbc.ca": {
+       "judge": {
+        "faithful_in": 0.874925925925926,
+        "gap_faithful_in": -0.0017591757248006286,
+        "relevance_in": 3.802222222222222,
+        "gap_relevance_in": 0.10574958682571634,
+        "coherence_in": 4.311111111111111,
+        "gap_coherence_in": 0.06702486242517185,
+        "faithful_out": 0.8433333333333334,
+        "gap_faithful_out": 0.09373655913978496,
+        "relevance_out": 3.793333333333333,
+        "gap_relevance_out": 0.18905726431607905,
+        "coherence_out": 4.25,
+        "gap_coherence_out": 0.2010502625656414
+       },
+       "real": {
+        "faithful": 0.89,
+        "relevance": 3.8466666666666667,
+        "coherence": 4.373333333333333
+       }
+      },
+      "forbes.com": {
+       "judge": {
+        "faithful_in": 0.79673626646781,
+        "gap_faithful_in": -0.07994883518291647,
+        "relevance_in": 3.5861894108873975,
+        "gap_relevance_in": -0.11028322450910855,
+        "coherence_in": 4.222803877703207,
+        "gap_coherence_in": -0.021282370982732484,
+        "faithful_out": 0.708838553318419,
+        "gap_faithful_out": -0.04075822087512937,
+        "relevance_out": 3.6228411633109623,
+        "gap_relevance_out": 0.018565094293707896,
+        "coherence_out": 4.1306935123042505,
+        "gap_coherence_out": 0.08174377486989193
+       },
+       "real": {
+        "faithful": 0.8007777777777778,
+        "relevance": 3.6,
+        "coherence": 4.093333333333334
+       }
+      },
+      "nypost.com": {
+       "judge": {
+        "faithful_in": 0.7461111111111111,
+        "gap_faithful_in": -0.09515362629510538,
+        "relevance_in": 3.7733333333333334,
+        "gap_relevance_in": 0.05307609860664542,
+        "coherence_in": 4.16,
+        "gap_coherence_in": -0.11652733118971081,
+        "faithful_out": 0.7121008575689785,
+        "gap_faithful_out": -0.10989517141428662,
+        "relevance_out": 3.5228747203579416,
+        "gap_relevance_out": -0.12155348201639271,
+        "coherence_out": 4.043512304250559,
+        "gap_coherence_out": -0.09489541818364677
+       },
+       "real": {
+        "faithful": 0.725,
+        "relevance": 3.7133333333333334,
+        "coherence": 4.166666666666667
+       }
+      },
+      "people.com": {
+       "judge": {
+        "faithful_in": 0.8133333333333332,
+        "gap_faithful_in": -0.08106195043964831,
+        "relevance_in": 3.256666666666667,
+        "gap_relevance_in": -0.42791366906474826,
+        "coherence_in": 4.03,
+        "gap_coherence_in": -0.19786570743405285,
+        "faithful_out": 0.7702222222222223,
+        "gap_faithful_out": -0.009930539708882172,
+        "relevance_out": 3.366666666666667,
+        "gap_relevance_out": -0.2762697909203986,
+        "coherence_out": 4.086666666666667,
+        "gap_coherence_out": -0.03814226868614279
+       },
+       "real": {
+        "faithful": 0.8577777777777779,
+        "relevance": 3.473333333333333,
+        "coherence": 4.113333333333333
+       }
+      },
+      "reuters.com": {
+       "judge": {
+        "faithful_in": 0.8254814814814814,
+        "gap_faithful_in": -0.0512036201692451,
+        "relevance_in": 3.7488888888888887,
+        "gap_relevance_in": 0.05241625349238296,
+        "coherence_in": 4.291111111111111,
+        "gap_coherence_in": 0.047024862425172266,
+        "faithful_out": 0.7838888888888889,
+        "gap_faithful_out": 0.03429211469534049,
+        "relevance_out": 3.79,
+        "gap_relevance_out": 0.18572393098274564,
+        "coherence_out": 4.23,
+        "gap_coherence_out": 0.18105026256564138
+       },
+       "real": {
+        "faithful": 0.8462222222222222,
+        "relevance": 3.8266666666666667,
+        "coherence": 4.26
+       }
+      },
+      "theguardian.com": {
+       "judge": {
+        "faithful_in": 0.8771604938271604,
+        "gap_faithful_in": -0.017234789945821116,
+        "relevance_in": 3.533333333333333,
+        "gap_relevance_in": -0.15124700239808142,
+        "coherence_in": 4.174074074074074,
+        "gap_coherence_in": -0.05379163335997905,
+        "faithful_out": 0.8782128159905938,
+        "gap_faithful_out": 0.0980600540594893,
+        "relevance_out": 3.7160493827160495,
+        "gap_relevance_out": 0.073112925128984,
+        "coherence_out": 4.279012345679012,
+        "gap_coherence_out": 0.15420341032620324
+       },
+       "real": {
+        "faithful": 0.9086419753086419,
+        "relevance": 3.740740740740741,
+        "coherence": 4.17037037037037
+       }
+      },
+      "wsj.com": {
+       "judge": {
+        "faithful_in": 0.8305555555555554,
+        "gap_faithful_in": -0.046129546095171024,
+        "relevance_in": 3.5933333333333333,
+        "gap_relevance_in": -0.10313930206317264,
+        "coherence_in": 4.295555555555556,
+        "gap_coherence_in": 0.05146930686961652,
+        "faithful_out": 0.7706111111111111,
+        "gap_faithful_out": 0.021014336917562715,
+        "relevance_out": 3.61,
+        "gap_relevance_out": 0.005723930982745706,
+        "coherence_out": 4.193333333333333,
+        "gap_coherence_out": 0.14438359589897476
+       },
+       "real": {
+        "faithful": 0.8688888888888889,
+        "relevance": 3.76,
+        "coherence": 4.3133333333333335
+       }
+      }
+     }
+    },
+    {
+     "faithful_in": 0.8244870328941918,
+     "gap_faithful_in": -0.04679873266696988,
+     "relevance_in": 3.588362540392742,
+     "gap_relevance_in": -0.11406224767855523,
+     "coherence_in": 4.196509756400696,
+     "gap_coherence_in": -0.05195960726886201,
+     "faithful_out": 0.7790799284323473,
+     "gap_faithful_out": 0.011392610805914465,
+     "relevance_out": 3.608973972574364,
+     "gap_relevance_out": -0.021545634276390283,
+     "coherence_out": 4.16871602866849,
+     "gap_coherence_out": 0.07976186359413608,
+     "real_faithful": 0.8406111111111112,
+     "real_relevance": 3.6737962962962962,
+     "real_coherence": 4.194814814814815,
+     "per_client": {
+      "aol.com": {
+       "judge": {
+        "faithful_in": 0.8424074074074075,
+        "gap_faithful_in": -0.02887835815375417,
+        "relevance_in": 3.3888888888888893,
+        "gap_relevance_in": -0.313535899182408,
+        "coherence_in": 4.097777777777778,
+        "gap_coherence_in": -0.15069158589178025,
+        "faithful_out": 0.7536666666666667,
+        "gap_faithful_out": 0.0023921484531365667,
+        "relevance_out": 3.4366666666666665,
+        "gap_relevance_out": -0.1795196431634929,
+        "coherence_out": 4.1066666666666665,
+        "gap_coherence_out": 0.04846628924343799
+       },
+       "real": {
+        "faithful": 0.8366666666666667,
+        "relevance": 3.34,
+        "coherence": 3.986666666666667
+       }
+      },
+      "cbc.ca": {
+       "judge": {
+        "faithful_in": 0.8899259259259259,
+        "gap_faithful_in": 0.01864016036476431,
+        "relevance_in": 3.813333333333334,
+        "gap_relevance_in": 0.11090854526203635,
+        "coherence_in": 4.328888888888889,
+        "gap_coherence_in": 0.08041952521933086,
+        "faithful_out": 0.8472222222222223,
+        "gap_faithful_out": 0.09594770400869218,
+        "relevance_out": 3.81,
+        "gap_relevance_out": 0.1938136901698404,
+        "coherence_out": 4.253333333333334,
+        "gap_coherence_out": 0.19513295591010493
+       },
+       "real": {
+        "faithful": 0.9083333333333333,
+        "relevance": 3.86,
+        "coherence": 4.386666666666667
+       }
+      },
+      "forbes.com": {
+       "judge": {
+        "faithful_in": 0.78740243599304,
+        "gap_faithful_in": -0.08388332956812161,
+        "relevance_in": 3.6172706935123045,
+        "gap_relevance_in": -0.08515409455899266,
+        "coherence_in": 4.227263236390754,
+        "gap_coherence_in": -0.02120612727880496,
+        "faithful_out": 0.7032289336316182,
+        "gap_faithful_out": -0.04804558458191194,
+        "relevance_out": 3.639507829977629,
+        "gap_relevance_out": 0.02332152014746902,
+        "coherence_out": 4.1407158836689035,
+        "gap_coherence_out": 0.08251550624567505
+       },
+       "real": {
+        "faithful": 0.7807777777777777,
+        "relevance": 3.6266666666666665,
+        "coherence": 4.16
+       }
+      },
+      "nypost.com": {
+       "judge": {
+        "faithful_in": 0.7433333333333333,
+        "gap_faithful_in": -0.10704668838219333,
+        "relevance_in": 3.7533333333333334,
+        "gap_relevance_in": 0.017176981541802583,
+        "coherence_in": 4.173333333333333,
+        "gap_coherence_in": -0.13285559174810047,
+        "faithful_out": 0.7204166666666667,
+        "gap_faithful_out": -0.09608991118208796,
+        "relevance_out": 3.5549999999999997,
+        "gap_relevance_out": -0.0958726580206698,
+        "coherence_out": 4.076666666666666,
+        "gap_coherence_out": -0.06223831352675768
+       },
+       "real": {
+        "faithful": 0.7412222222222222,
+        "relevance": 3.7466666666666666,
+        "coherence": 4.22
+       }
+      },
+      "people.com": {
+       "judge": {
+        "faithful_in": 0.8183333333333334,
+        "gap_faithful_in": -0.06340530415064577,
+        "relevance_in": 3.26,
+        "gap_relevance_in": -0.42555900621118004,
+        "coherence_in": 4.023333333333333,
+        "gap_coherence_in": -0.19627624963028678,
+        "faithful_out": 0.7839417989417989,
+        "gap_faithful_out": -0.00036788710573002853,
+        "relevance_out": 3.3644444444444446,
+        "gap_relevance_out": -0.29173187937283895,
+        "coherence_out": 4.097777777777778,
+        "gap_coherence_out": -0.04308544886485244
+       },
+       "real": {
+        "faithful": 0.8611111111111113,
+        "relevance": 3.473333333333333,
+        "coherence": 4.1
+       }
+      },
+      "reuters.com": {
+       "judge": {
+        "faithful_in": 0.8217777777777777,
+        "gap_faithful_in": -0.04950798778338383,
+        "relevance_in": 3.7533333333333334,
+        "gap_relevance_in": 0.05090854526203629,
+        "coherence_in": 4.311111111111111,
+        "gap_coherence_in": 0.06264174744155326,
+        "faithful_out": 0.7662222222222221,
+        "gap_faithful_out": 0.014947704008692109,
+        "relevance_out": 3.763333333333333,
+        "gap_relevance_out": 0.14714702350317355,
+        "coherence_out": 4.213333333333333,
+        "gap_coherence_out": 0.1551329559101049
+       },
+       "real": {
+        "faithful": 0.8278888888888889,
+        "relevance": 3.8133333333333335,
+        "coherence": 4.273333333333333
+       }
+      },
+      "theguardian.com": {
+       "judge": {
+        "faithful_in": 0.8660493827160494,
+        "gap_faithful_in": -0.015689254767929706,
+        "relevance_in": 3.551851851851852,
+        "gap_relevance_in": -0.13370715435932823,
+        "coherence_in": 4.170370370370371,
+        "gap_coherence_in": -0.049239212593249704,
+        "faithful_out": 0.8815520282186949,
+        "gap_faithful_out": 0.09724234217116597,
+        "relevance_out": 3.706172839506173,
+        "gap_relevance_out": 0.049996515688889374,
+        "coherence_out": 4.301234567901235,
+        "gap_coherence_out": 0.1603713412586044
+       },
+       "real": {
+        "faithful": 0.9,
+        "relevance": 3.77037037037037,
+        "coherence": 4.185185185185185
+       }
+      },
+      "wsj.com": {
+       "judge": {
+        "faithful_in": 0.8266666666666667,
+        "gap_faithful_in": -0.044619098894494925,
+        "relevance_in": 3.568888888888889,
+        "gap_relevance_in": -0.13353589918240813,
+        "coherence_in": 4.239999999999999,
+        "gap_coherence_in": -0.008469363669558009,
+        "faithful_out": 0.7763888888888889,
+        "gap_faithful_out": 0.02511437067535882,
+        "relevance_out": 3.5966666666666667,
+        "gap_relevance_out": -0.019519643163492972,
+        "coherence_out": 4.16,
+        "gap_coherence_out": 0.10179962257677144
+       },
+       "real": {
+        "faithful": 0.8688888888888889,
+        "relevance": 3.76,
+        "coherence": 4.246666666666667
+       }
+      }
+     }
+    },
+    {
+     "faithful_in": 0.8260648355290413,
+     "gap_faithful_in": -0.04763422496957905,
+     "relevance_in": 3.5996405045985584,
+     "gap_relevance_in": -0.09518644769387591,
+     "coherence_in": 4.206524670643798,
+     "gap_coherence_in": -0.01847548932881467,
+     "faithful_out": 0.7800122661511784,
+     "gap_faithful_out": 0.003918661041777049,
+     "relevance_out": 3.619340614383959,
+     "gap_relevance_out": -0.021482780400853933,
+     "coherence_out": 4.170185392327451,
+     "gap_coherence_out": 0.06936097300591701,
+     "real_faithful": 0.8457191358024692,
+     "real_relevance": 3.672037037037037,
+     "real_coherence": 4.181203703703703,
+     "per_client": {
+      "aol.com": {
+       "judge": {
+        "faithful_in": 0.8500000000000001,
+        "gap_faithful_in": -0.0236990604986204,
+        "relevance_in": 3.3311111111111114,
+        "gap_relevance_in": -0.363715841181323,
+        "coherence_in": 4.082222222222222,
+        "gap_coherence_in": -0.14277793775039052,
+        "faithful_out": 0.764888888888889,
+        "gap_faithful_out": 0.003665945165945095,
+        "relevance_out": 3.4466666666666663,
+        "gap_relevance_out": -0.18428571428571439,
+        "coherence_out": 4.1066666666666665,
+        "gap_coherence_out": 0.02930735930735917
+       },
+       "real": {
+        "faithful": 0.8783333333333333,
+        "relevance": 3.32,
+        "coherence": 3.986666666666667
+       }
+      },
+      "cbc.ca": {
+       "judge": {
+        "faithful_in": 0.8895555555555555,
+        "gap_faithful_in": 0.015856495056935205,
+        "relevance_in": 3.8266666666666667,
+        "gap_relevance_in": 0.13183971437423248,
+        "coherence_in": 4.34,
+        "gap_coherence_in": 0.11499984002738699,
+        "faithful_out": 0.8547222222222222,
+        "gap_faithful_out": 0.09349927849927836,
+        "relevance_out": 3.8266666666666667,
+        "gap_relevance_out": 0.19571428571428573,
+        "coherence_out": 4.2666666666666675,
+        "gap_coherence_out": 0.18930735930735954
+       },
+       "real": {
+        "faithful": 0.8772222222222221,
+        "relevance": 3.8066666666666666,
+        "coherence": 4.3133333333333335
+       }
+      },
+      "forbes.com": {
+       "judge": {
+        "faithful_in": 0.8079878200347999,
+        "gap_faithful_in": -0.0657112404638206,
+        "relevance_in": 3.6997166293810593,
+        "gap_relevance_in": 0.004889677088624644,
+        "coherence_in": 4.258493661446682,
+        "gap_coherence_in": 0.033493501474068786,
+        "faithful_out": 0.7182662192393736,
+        "gap_faithful_out": -0.04295672448357024,
+        "relevance_out": 3.6930648769574947,
+        "gap_relevance_out": 0.06211249600511359,
+        "coherence_out": 4.177494407158837,
+        "gap_coherence_out": 0.10013509979952917
+       },
+       "real": {
+        "faithful": 0.8181111111111111,
+        "relevance": 3.7,
+        "coherence": 4.166666666666667
+       }
+      },
+      "nypost.com": {
+       "judge": {
+        "faithful_in": 0.7455555555555556,
+        "gap_faithful_in": -0.0987270765911542,
+        "relevance_in": 3.7933333333333334,
+        "gap_relevance_in": 0.08783171521035626,
+        "coherence_in": 4.213333333333333,
+        "gap_coherence_in": -0.048802588996764484,
+        "faithful_out": 0.7112481357196123,
+        "gap_faithful_out": -0.11356697347914751,
+        "relevance_out": 3.540302013422819,
+        "gap_relevance_out": -0.119918986741953,
+        "coherence_out": 4.072013422818792,
+        "gap_coherence_out": -0.0698823702577972
+       },
+       "real": {
+        "faithful": 0.7138888888888889,
+        "relevance": 3.7133333333333334,
+        "coherence": 4.206666666666667
+       }
+      },
+      "people.com": {
+       "judge": {
+        "faithful_in": 0.8033333333333333,
+        "gap_faithful_in": -0.08507394134124235,
+        "relevance_in": 3.23,
+        "gap_relevance_in": -0.4594896193771627,
+        "coherence_in": 4.043333333333333,
+        "gap_coherence_in": -0.16309894546053716,
+        "faithful_out": 0.7813121693121694,
+        "gap_faithful_out": -0.00759733721869645,
+        "relevance_out": 3.3577777777777773,
+        "gap_relevance_out": -0.2980243488981353,
+        "coherence_out": 4.084444444444444,
+        "gap_coherence_out": -0.054507067905126494
+       },
+       "real": {
+        "faithful": 0.8811111111111111,
+        "relevance": 3.533333333333333,
+        "coherence": 4.113333333333333
+       }
+      },
+      "reuters.com": {
+       "judge": {
+        "faithful_in": 0.8295555555555555,
+        "gap_faithful_in": -0.04414350494306485,
+        "relevance_in": 3.7733333333333334,
+        "gap_relevance_in": 0.07850638104089909,
+        "coherence_in": 4.311111111111111,
+        "gap_coherence_in": 0.08611095113849832,
+        "faithful_out": 0.7707777777777778,
+        "gap_faithful_out": 0.009554834054833983,
+        "relevance_out": 3.76,
+        "gap_relevance_out": 0.12904761904761908,
+        "coherence_out": 4.206666666666667,
+        "gap_coherence_out": 0.12930735930735904
+       },
+       "real": {
+        "faithful": 0.825111111111111,
+        "relevance": 3.8333333333333335,
+        "coherence": 4.273333333333333
+       }
+      },
+      "theguardian.com": {
+       "judge": {
+        "faithful_in": 0.8567901234567901,
+        "gap_faithful_in": -0.03161715121778558,
+        "relevance_in": 3.562962962962963,
+        "gap_relevance_in": -0.1265266564141998,
+        "coherence_in": 4.15925925925926,
+        "gap_coherence_in": -0.04717301953461117,
+        "faithful_out": 0.8693827160493827,
+        "gap_faithful_out": 0.08047320951851689,
+        "relevance_out": 3.71358024691358,
+        "gap_relevance_out": 0.05777812023766726,
+        "coherence_out": 4.264197530864198,
+        "gap_coherence_out": 0.12524601851462677
+       },
+       "real": {
+        "faithful": 0.9086419753086419,
+        "relevance": 3.762962962962963,
+        "coherence": 4.162962962962963
+       }
+      },
+      "wsj.com": {
+       "judge": {
+        "faithful_in": 0.8257407407407408,
+        "gap_faithful_in": -0.04795831975787964,
+        "relevance_in": 3.58,
+        "gap_relevance_in": -0.11482695229243411,
+        "coherence_in": 4.2444444444444445,
+        "gap_coherence_in": 0.019444284471831885,
+        "faithful_out": 0.7695000000000001,
+        "gap_faithful_out": 0.008277056277056272,
+        "relevance_out": 3.6166666666666663,
+        "gap_relevance_out": -0.014285714285714457,
+        "coherence_out": 4.183333333333334,
+        "gap_coherence_out": 0.10597402597402605
+       },
+       "real": {
+        "faithful": 0.8633333333333333,
+        "relevance": 3.7066666666666666,
+        "coherence": 4.226666666666667
+       }
+      }
+     }
+    }
+   ]
+  },
+  "fed-shared-soff-sadapter": {
+   "full": {
+    "faithful_in": 0.8773485794548138,
+    "gap_faithful_in": 0.003915950363422417,
+    "relevance_in": 3.6326771007816863,
+    "gap_relevance_in": -0.058586613622209134,
+    "coherence_in": 4.288275404801787,
+    "gap_coherence_in": 0.046783420438799114,
+    "faithful_out": 0.8450523642001997,
+    "gap_faithful_out": 0.0800694284282468,
+    "relevance_out": 3.6999839765959424,
+    "gap_relevance_out": 0.09028867824492731,
+    "coherence_out": 4.219846163688814,
+    "gap_coherence_out": 0.13088428504643668,
+    "real_faithful": 0.8418935185185186,
+    "real_relevance": 3.659513888888889,
+    "real_coherence": 4.188958333333334,
+    "per_client": {
+     "forbes.com": {
+      "judge": {
+       "faithful_in": 0.8316408730158731,
+       "gap_faithful_in": -0.04179175607551833,
+       "relevance_in": 3.608333333333333,
+       "gap_relevance_in": -0.0829303810705621,
+       "coherence_in": 4.306666666666667,
+       "gap_coherence_in": 0.06517468230367889,
+       "faithful_out": 0.8190597943722944,
+       "gap_faithful_out": 0.07094677577429714,
+       "relevance_out": 3.695,
+       "gap_relevance_out": 0.10044451256897591,
+       "coherence_out": 4.195,
+       "gap_coherence_out": 0.13437461679950946
+      },
+      "real": {
+       "faithful": 0.7793333333333333,
+       "relevance": 3.595,
+       "coherence": 4.125
+      }
+     },
+     "theguardian.com": {
+      "judge": {
+       "faithful_in": 0.9122685185185186,
+       "gap_faithful_in": 0.025339639606350717,
+       "relevance_in": 3.602777777777778,
+       "gap_relevance_in": -0.07853526955622048,
+       "coherence_in": 4.294444444444444,
+       "gap_coherence_in": 0.07176957469607981,
+       "faithful_out": 0.8682186948853615,
+       "gap_faithful_out": 0.08732997267008402,
+       "relevance_out": 3.8574074074074076,
+       "gap_relevance_out": 0.22398206627216158,
+       "coherence_out": 4.342592592592593,
+       "gap_coherence_out": 0.20913359926152145
+      },
+      "real": {
+       "faithful": 0.9064814814814814,
+       "relevance": 3.761111111111111,
+       "coherence": 4.166666666666667
+      }
+     },
+     "people.com": {
+      "judge": {
+       "faithful_in": 0.90125,
+       "gap_faithful_in": 0.014321121087832123,
+       "relevance_in": 3.3775,
+       "gap_relevance_in": -0.3038130473339984,
+       "coherence_in": 4.11,
+       "gap_coherence_in": -0.1126748697483646,
+       "faithful_out": 0.8296388888888888,
+       "gap_faithful_out": 0.04875016667361132,
+       "relevance_out": 3.546666666666667,
+       "gap_relevance_out": -0.08675867446857903,
+       "coherence_out": 4.146666666666667,
+       "gap_coherence_out": 0.013207673335595397
+      },
+      "real": {
+       "faithful": 0.8658333333333332,
+       "relevance": 3.49,
+       "coherence": 4.11
+      }
+     },
+     "wsj.com": {
+      "judge": {
+       "faithful_in": 0.8774444444444445,
+       "gap_faithful_in": 0.004011815353053172,
+       "relevance_in": 3.608333333333334,
+       "gap_relevance_in": -0.08293038107056194,
+       "coherence_in": 4.33,
+       "gap_coherence_in": 0.08850801563701231,
+       "faithful_out": 0.8217261904761906,
+       "gap_faithful_out": 0.07361317187819333,
+       "relevance_out": 3.69,
+       "gap_relevance_out": 0.09544451256897601,
+       "coherence_out": 4.1975,
+       "gap_coherence_out": 0.13687461679950985
+      },
+      "real": {
+       "faithful": 0.8758333333333335,
+       "relevance": 3.745,
+       "coherence": 4.28
+      }
+     },
+     "aol.com": {
+      "judge": {
+       "faithful_in": 0.879468253968254,
+       "gap_faithful_in": 0.0060356248768626,
+       "relevance_in": 3.4683333333333337,
+       "gap_relevance_in": -0.22293038107056207,
+       "coherence_in": 4.2283333333333335,
+       "gap_coherence_in": -0.013158651029654264,
+       "faithful_out": 0.8426130952380952,
+       "gap_faithful_out": 0.09450007664009807,
+       "relevance_out": 3.6025,
+       "gap_relevance_out": 0.007944512568976103,
+       "coherence_out": 4.1825,
+       "gap_coherence_out": 0.12187461679950973
+      },
+      "real": {
+       "faithful": 0.85375,
+       "relevance": 3.32,
+       "coherence": 4.005
+      }
+     },
+     "cbc.ca": {
+      "judge": {
+       "faithful_in": 0.9204444444444443,
+       "gap_faithful_in": 0.047011815353053064,
+       "relevance_in": 3.7716666666666665,
+       "gap_relevance_in": 0.08040295226277132,
+       "coherence_in": 4.353333333333334,
+       "gap_coherence_in": 0.11184134897034574,
+       "faithful_out": 0.8911666666666667,
+       "gap_faithful_out": 0.1430536480686695,
+       "relevance_out": 3.81,
+       "gap_relevance_out": 0.21544451256897612,
+       "coherence_out": 4.2825,
+       "gap_coherence_out": 0.22187461679950937
+      },
+      "real": {
+       "faithful": 0.89125,
+       "relevance": 3.83,
+       "coherence": 4.36
+      }
+     },
+     "reuters.com": {
+      "judge": {
+       "faithful_in": 0.8714814814814815,
+       "gap_faithful_in": -0.0019511476099098128,
+       "relevance_in": 3.73,
+       "gap_relevance_in": 0.03873628559610465,
+       "coherence_in": 4.331666666666667,
+       "gap_coherence_in": 0.09017468230367924,
+       "faithful_out": 0.8315178571428572,
+       "gap_faithful_out": 0.08340483854485997,
+       "relevance_out": 3.7624999999999997,
+       "gap_relevance_out": 0.1679445125689758,
+       "coherence_out": 4.234999999999999,
+       "gap_coherence_out": 0.1743746167995095
+      },
+      "real": {
+       "faithful": 0.828,
+       "relevance": 3.8,
+       "coherence": 4.27
+      }
+     },
+     "nypost.com": {
+      "judge": {
+       "faithful_in": 0.8247906197654941,
+       "gap_faithful_in": -0.021649509684344204,
+       "relevance_in": 3.8944723618090453,
+       "gap_relevance_in": 0.183307313265356,
+       "coherence_in": 4.351758793969849,
+       "gap_coherence_in": 0.07263258037761577,
+       "faithful_out": 0.8564777259312435,
+       "gap_faithful_out": 0.038956777176161,
+       "relevance_out": 3.635797738693467,
+       "gap_relevance_out": -0.002136528689043904,
+       "coherence_out": 4.177010050251257,
+       "gap_coherence_out": 0.03535992377682873
+      },
+      "real": {
+       "faithful": 0.7346666666666667,
+       "relevance": 3.735,
+       "coherence": 4.195
+      }
+     }
+    }
+   },
+   "subsets": [
+    {
+     "faithful_in": 0.8785704572221631,
+     "gap_faithful_in": 0.0018853555714364932,
+     "relevance_in": 3.6420345513298535,
+     "gap_relevance_in": -0.05443808406665255,
+     "coherence_in": 4.290325938354462,
+     "gap_coherence_in": 0.04623968966852269,
+     "faithful_out": 0.8458282467241033,
+     "gap_faithful_out": 0.07954256874745136,
+     "relevance_out": 3.7002780367056096,
+     "gap_relevance_out": 0.08131785387626739,
+     "coherence_out": 4.215275965282956,
+     "gap_coherence_out": 0.13617918024400416,
+     "real_faithful": 0.845496913580247,
+     "real_relevance": 3.6650925925925923,
+     "real_coherence": 4.18962962962963,
+     "per_client": {
+      "aol.com": {
+       "judge": {
+        "faithful_in": 0.8844761904761905,
+        "gap_faithful_in": 0.007791088825463903,
+        "relevance_in": 3.486666666666667,
+        "gap_relevance_in": -0.20980596872983925,
+        "coherence_in": 4.237777777777777,
+        "gap_coherence_in": -0.006308470908161408,
+        "faithful_out": 0.8502698412698413,
+        "gap_faithful_out": 0.10067306707629287,
+        "relevance_out": 3.6433333333333335,
+        "gap_relevance_out": 0.039057264316079365,
+        "coherence_out": 4.193333333333333,
+        "gap_coherence_out": 0.14438359589897476
+       },
+       "real": {
+        "faithful": 0.8666666666666667,
+        "relevance": 3.36,
+        "coherence": 4.026666666666666
+       }
+      },
+      "cbc.ca": {
+       "judge": {
+        "faithful_in": 0.9217037037037037,
+        "gap_faithful_in": 0.045018602052977176,
+        "relevance_in": 3.766666666666667,
+        "gap_relevance_in": 0.07019403127016084,
+        "coherence_in": 4.326666666666667,
+        "gap_coherence_in": 0.08258041798072775,
+        "faithful_out": 0.8897222222222222,
+        "gap_faithful_out": 0.14012544802867377,
+        "relevance_out": 3.8066666666666666,
+        "gap_relevance_out": 0.20239059764941225,
+        "coherence_out": 4.263333333333334,
+        "gap_coherence_out": 0.2143835958989746
+       },
+       "real": {
+        "faithful": 0.89,
+        "relevance": 3.8466666666666667,
+        "coherence": 4.373333333333333
+       }
+      },
+      "forbes.com": {
+       "judge": {
+        "faithful_in": 0.8339761904761905,
+        "gap_faithful_in": -0.042708911174536124,
+        "relevance_in": 3.617777777777778,
+        "gap_relevance_in": -0.07869485761872808,
+        "coherence_in": 4.3133333333333335,
+        "gap_coherence_in": 0.06924708464739411,
+        "faithful_out": 0.8234606782106781,
+        "gap_faithful_out": 0.07386390401712978,
+        "relevance_out": 3.6933333333333334,
+        "gap_relevance_out": 0.08905726431607919,
+        "coherence_out": 4.18,
+        "gap_coherence_out": 0.13105026256564156
+       },
+       "real": {
+        "faithful": 0.8007777777777778,
+        "relevance": 3.6,
+        "coherence": 4.093333333333334
+       }
+      },
+      "nypost.com": {
+       "judge": {
+        "faithful_in": 0.8259507829977628,
+        "gap_faithful_in": -0.015313954408453623,
+        "relevance_in": 3.8859060402684564,
+        "gap_relevance_in": 0.16564880554176842,
+        "coherence_in": 4.3355704697986575,
+        "gap_coherence_in": 0.0590431386089465,
+        "faithful_out": 0.8732643549589858,
+        "gap_faithful_out": 0.05126832597572081,
+        "relevance_out": 3.6127181208053694,
+        "gap_relevance_out": -0.031710081568965376,
+        "coherence_out": 4.15430648769575,
+        "gap_coherence_out": 0.015898765261543657
+       },
+       "real": {
+        "faithful": 0.725,
+        "relevance": 3.7133333333333334,
+        "coherence": 4.166666666666667
+       }
+      },
+      "people.com": {
+       "judge": {
+        "faithful_in": 0.8866666666666667,
+        "gap_faithful_in": -0.00772861710631495,
+        "relevance_in": 3.3666666666666663,
+        "gap_relevance_in": -0.3179136690647484,
+        "coherence_in": 4.116666666666666,
+        "gap_coherence_in": -0.11119904076738685,
+        "faithful_out": 0.8214814814814814,
+        "gap_faithful_out": 0.041328719550377056,
+        "relevance_out": 3.5533333333333332,
+        "gap_relevance_out": -0.08960312425373207,
+        "coherence_out": 4.142222222222222,
+        "gap_coherence_out": 0.017413286869412865
+       },
+       "real": {
+        "faithful": 0.8577777777777779,
+        "relevance": 3.473333333333333,
+        "coherence": 4.113333333333333
+       }
+      },
+      "reuters.com": {
+       "judge": {
+        "faithful_in": 0.8777160493827161,
+        "gap_faithful_in": 0.001030947731989566,
+        "relevance_in": 3.753333333333334,
+        "gap_relevance_in": 0.0568606979368275,
+        "coherence_in": 4.344444444444444,
+        "gap_coherence_in": 0.10035819575850535,
+        "faithful_out": 0.8220238095238095,
+        "gap_faithful_out": 0.07242703533026112,
+        "relevance_out": 3.7533333333333334,
+        "gap_relevance_out": 0.14905726431607924,
+        "coherence_out": 4.23,
+        "gap_coherence_out": 0.18105026256564138
+       },
+       "real": {
+        "faithful": 0.8462222222222222,
+        "relevance": 3.8266666666666667,
+        "coherence": 4.26
+       }
+      },
+      "theguardian.com": {
+       "judge": {
+        "faithful_in": 0.9194444444444445,
+        "gap_faithful_in": 0.0250491606714629,
+        "relevance_in": 3.6259259259259258,
+        "gap_relevance_in": -0.05865440980548886,
+        "coherence_in": 4.292592592592593,
+        "gap_coherence_in": 0.06472688515853964,
+        "faithful_out": 0.8716813639035861,
+        "gap_faithful_out": 0.0915286019724817,
+        "relevance_out": 3.8395061728395063,
+        "gap_relevance_out": 0.19656971525244074,
+        "coherence_out": 4.345679012345679,
+        "gap_coherence_out": 0.22087007699286967
+       },
+       "real": {
+        "faithful": 0.9086419753086419,
+        "relevance": 3.740740740740741,
+        "coherence": 4.17037037037037
+       }
+      },
+      "wsj.com": {
+       "judge": {
+        "faithful_in": 0.8786296296296298,
+        "gap_faithful_in": 0.001944527978903099,
+        "relevance_in": 3.6333333333333333,
+        "gap_relevance_in": -0.0631393020631726,
+        "coherence_in": 4.355555555555555,
+        "gap_coherence_in": 0.11146930686961642,
+        "faithful_out": 0.8147222222222221,
+        "gap_faithful_out": 0.06512544802867376,
+        "relevance_out": 3.7,
+        "gap_relevance_out": 0.09572393098274579,
+        "coherence_out": 4.213333333333333,
+        "gap_coherence_out": 0.16438359589897478
+       },
+       "real": {
+        "faithful": 0.8688888888888889,
+        "relevance": 3.76,
+        "coherence": 4.3133333333333335
+       }
+      }
+     }
+    },
+    {
+     "faithful_in": 0.877590137216955,
+     "gap_faithful_in": 0.006304371655793306,
+     "relevance_in": 3.639701404424559,
+     "gap_relevance_in": -0.06272338364673818,
+     "coherence_in": 4.287894606015412,
+     "gap_coherence_in": 0.039425242345853394,
+     "faithful_out": 0.8483715276208519,
+     "gap_faithful_out": 0.08068420999441897,
+     "relevance_out": 3.701458592261165,
+     "gap_relevance_out": 0.07093898541041058,
+     "coherence_out": 4.2210398541718455,
+     "gap_coherence_out": 0.1320856890974919,
+     "real_faithful": 0.8406111111111112,
+     "real_relevance": 3.6737962962962962,
+     "real_coherence": 4.194814814814815,
+     "per_client": {
+      "aol.com": {
+       "judge": {
+        "faithful_in": 0.8722539682539683,
+        "gap_faithful_in": 0.0009682026928066559,
+        "relevance_in": 3.491111111111111,
+        "gap_relevance_in": -0.21131367696018577,
+        "coherence_in": 4.22,
+        "gap_coherence_in": -0.028469363669558174,
+        "faithful_out": 0.8342380952380952,
+        "gap_faithful_out": 0.0829635770245652,
+        "relevance_out": 3.586666666666667,
+        "gap_relevance_out": -0.02951964316349298,
+        "coherence_out": 4.16,
+        "gap_coherence_out": 0.10179962257677166
+       },
+       "real": {
+        "faithful": 0.8366666666666667,
+        "relevance": 3.34,
+        "coherence": 3.986666666666667
+       }
+      },
+      "cbc.ca": {
+       "judge": {
+        "faithful_in": 0.9245555555555556,
+        "gap_faithful_in": 0.05326978999439399,
+        "relevance_in": 3.777777777777778,
+        "gap_relevance_in": 0.07535298970648086,
+        "coherence_in": 4.335555555555556,
+        "gap_coherence_in": 0.08708619188599769,
+        "faithful_out": 0.9088888888888889,
+        "gap_faithful_out": 0.15761437067535883,
+        "relevance_out": 3.84,
+        "gap_relevance_out": 0.2238136901698402,
+        "coherence_out": 4.273333333333333,
+        "gap_coherence_out": 0.21513295591010495
+       },
+       "real": {
+        "faithful": 0.9083333333333333,
+        "relevance": 3.86,
+        "coherence": 4.386666666666667
+       }
+      },
+      "forbes.com": {
+       "judge": {
+        "faithful_in": 0.8334523809523811,
+        "gap_faithful_in": -0.03783338460878061,
+        "relevance_in": 3.6333333333333333,
+        "gap_relevance_in": -0.06909145473796367,
+        "coherence_in": 4.3244444444444445,
+        "gap_coherence_in": 0.07597508077488661,
+        "faithful_out": 0.821754329004329,
+        "gap_faithful_out": 0.0704798107907989,
+        "relevance_out": 3.713333333333333,
+        "gap_relevance_out": 0.0971470235031735,
+        "coherence_out": 4.226666666666667,
+        "gap_coherence_out": 0.1684662892434381
+       },
+       "real": {
+        "faithful": 0.7807777777777777,
+        "relevance": 3.6266666666666665,
+        "coherence": 4.16
+       }
+      },
+      "nypost.com": {
+       "judge": {
+        "faithful_in": 0.8262863534675615,
+        "gap_faithful_in": -0.024093668247965105,
+        "relevance_in": 3.9194630872483223,
+        "gap_relevance_in": 0.18330673545679144,
+        "coherence_in": 4.3624161073825505,
+        "gap_coherence_in": 0.05622718230111712,
+        "faithful_out": 0.8539051347608394,
+        "gap_faithful_out": 0.03739855691208488,
+        "relevance_out": 3.621051454138702,
+        "gap_relevance_out": -0.029821203881967295,
+        "coherence_out": 4.1626398210290825,
+        "gap_coherence_out": 0.023734840835658466
+       },
+       "real": {
+        "faithful": 0.7412222222222222,
+        "relevance": 3.7466666666666666,
+        "coherence": 4.22
+       }
+      },
+      "people.com": {
+       "judge": {
+        "faithful_in": 0.905,
+        "gap_faithful_in": 0.0232613625160209,
+        "relevance_in": 3.3833333333333333,
+        "gap_relevance_in": -0.30222567287784674,
+        "coherence_in": 4.086666666666666,
+        "gap_coherence_in": -0.13294291629695376,
+        "faithful_out": 0.8448888888888888,
+        "gap_faithful_out": 0.060579202841359946,
+        "relevance_out": 3.548888888888889,
+        "gap_relevance_out": -0.10728743492839439,
+        "coherence_out": 4.157777777777778,
+        "gap_coherence_out": 0.016914551135147764
+       },
+       "real": {
+        "faithful": 0.8611111111111113,
+        "relevance": 3.473333333333333,
+        "coherence": 4.1
+       }
+      },
+      "reuters.com": {
+       "judge": {
+        "faithful_in": 0.8727901234567902,
+        "gap_faithful_in": 0.0015043578956285646,
+        "relevance_in": 3.7244444444444444,
+        "gap_relevance_in": 0.022019656373147473,
+        "coherence_in": 4.344444444444444,
+        "gap_coherence_in": 0.09597508077488648,
+        "faithful_out": 0.8367222222222223,
+        "gap_faithful_out": 0.08544770400869217,
+        "relevance_out": 3.7633333333333336,
+        "gap_relevance_out": 0.14714702350317377,
+        "coherence_out": 4.236666666666666,
+        "gap_coherence_out": 0.17846628924343833
+       },
+       "real": {
+        "faithful": 0.8278888888888889,
+        "relevance": 3.8133333333333335,
+        "coherence": 4.273333333333333
+       }
+      },
+      "theguardian.com": {
+       "judge": {
+        "faithful_in": 0.9132716049382716,
+        "gap_faithful_in": 0.031532967454292515,
+        "relevance_in": 3.6259259259259258,
+        "gap_relevance_in": -0.05963308028525427,
+        "coherence_in": 4.34074074074074,
+        "gap_coherence_in": 0.12113115777712036,
+        "faithful_out": 0.8657730746619636,
+        "gap_faithful_out": 0.08146338861443463,
+        "relevance_out": 3.8617283950617285,
+        "gap_relevance_out": 0.20555207124444497,
+        "coherence_out": 4.367901234567901,
+        "gap_coherence_out": 0.22703800792527082
+       },
+       "real": {
+        "faithful": 0.9,
+        "relevance": 3.77037037037037,
+        "coherence": 4.185185185185185
+       }
+      },
+      "wsj.com": {
+       "judge": {
+        "faithful_in": 0.8731111111111112,
+        "gap_faithful_in": 0.0018253455499495457,
+        "relevance_in": 3.5622222222222217,
+        "gap_relevance_in": -0.14020256584907478,
+        "coherence_in": 4.288888888888889,
+        "gap_coherence_in": 0.04041952521933082,
+        "faithful_out": 0.8208015873015873,
+        "gap_faithful_out": 0.06952706908805723,
+        "relevance_out": 3.6766666666666667,
+        "gap_relevance_out": 0.06048035683650688,
+        "coherence_out": 4.183333333333334,
+        "gap_coherence_out": 0.1251329559101051
+       },
+       "real": {
+        "faithful": 0.8688888888888889,
+        "relevance": 3.76,
+        "coherence": 4.246666666666667
+       }
+      }
+     }
+    },
+    {
+     "faithful_in": 0.880676917989418,
+     "gap_faithful_in": 0.006977857490797585,
+     "relevance_in": 3.6432870370370374,
+     "gap_relevance_in": -0.0515399152553971,
+     "coherence_in": 4.285648148148148,
+     "gap_coherence_in": 0.060647988175535336,
+     "faithful_out": 0.8486885922719256,
+     "gap_faithful_out": 0.07259498716252431,
+     "relevance_out": 3.7008256172839507,
+     "gap_relevance_out": 0.06000222249913781,
+     "coherence_out": 4.2170601851851846,
+     "gap_coherence_out": 0.11623576586365171,
+     "real_faithful": 0.8457191358024692,
+     "real_relevance": 3.672037037037037,
+     "real_coherence": 4.181203703703703,
+     "per_client": {
+      "aol.com": {
+       "judge": {
+        "faithful_in": 0.8736243386243386,
+        "gap_faithful_in": -7.472187428185044e-05,
+        "relevance_in": 3.4355555555555557,
+        "gap_relevance_in": -0.2592713967368785,
+        "coherence_in": 4.204444444444444,
+        "gap_coherence_in": -0.020555715528168445,
+        "faithful_out": 0.831595238095238,
+        "gap_faithful_out": 0.07037229437229425,
+        "relevance_out": 3.56,
+        "gap_relevance_out": -0.07095238095238088,
+        "coherence_out": 4.17,
+        "gap_coherence_out": 0.09264069264069263
+       },
+       "real": {
+        "faithful": 0.8783333333333333,
+        "relevance": 3.32,
+        "coherence": 3.986666666666667
+       }
+      },
+      "cbc.ca": {
+       "judge": {
+        "faithful_in": 0.9142962962962965,
+        "gap_faithful_in": 0.040597235797675935,
+        "relevance_in": 3.7844444444444445,
+        "gap_relevance_in": 0.08961749215201031,
+        "coherence_in": 4.348888888888889,
+        "gap_coherence_in": 0.12388872891627607,
+        "faithful_out": 0.9026666666666667,
+        "gap_faithful_out": 0.14144372294372293,
+        "relevance_out": 3.8133333333333335,
+        "gap_relevance_out": 0.18238095238095253,
+        "coherence_out": 4.283333333333333,
+        "gap_coherence_out": 0.2059740259740257
+       },
+       "real": {
+        "faithful": 0.8772222222222221,
+        "relevance": 3.8066666666666666,
+        "coherence": 4.3133333333333335
+       }
+      },
+      "forbes.com": {
+       "judge": {
+        "faithful_in": 0.8526798941798942,
+        "gap_faithful_in": -0.021019166318726284,
+        "relevance_in": 3.6666666666666665,
+        "gap_relevance_in": -0.028160285625767518,
+        "coherence_in": 4.335555555555556,
+        "gap_coherence_in": 0.11055539558294274,
+        "faithful_out": 0.8345955988455989,
+        "gap_faithful_out": 0.07337265512265506,
+        "relevance_out": 3.77,
+        "gap_relevance_out": 0.1390476190476191,
+        "coherence_out": 4.24,
+        "gap_coherence_out": 0.1626406926406927
+       },
+       "real": {
+        "faithful": 0.8181111111111111,
+        "relevance": 3.7,
+        "coherence": 4.166666666666667
+       }
+      },
+      "nypost.com": {
+       "judge": {
+        "faithful_in": 0.8411111111111111,
+        "gap_faithful_in": -0.003171521035598701,
+        "relevance_in": 3.9133333333333336,
+        "gap_relevance_in": 0.20783171521035637,
+        "coherence_in": 4.36,
+        "gap_coherence_in": 0.0978640776699029,
+        "faithful_out": 0.8724219576719577,
+        "gap_faithful_out": 0.047606848473197905,
+        "relevance_out": 3.661666666666666,
+        "gap_relevance_out": 0.0014456665018949266,
+        "coherence_out": 4.198333333333334,
+        "gap_coherence_out": 0.0564375402567443
+       },
+       "real": {
+        "faithful": 0.7138888888888889,
+        "relevance": 3.7133333333333334,
+        "coherence": 4.206666666666667
+       }
+      },
+      "people.com": {
+       "judge": {
+        "faithful_in": 0.9016666666666666,
+        "gap_faithful_in": 0.013259391992090974,
+        "relevance_in": 3.37,
+        "gap_relevance_in": -0.3194896193771628,
+        "coherence_in": 4.1,
+        "gap_coherence_in": -0.10643227879387052,
+        "faithful_out": 0.8278888888888889,
+        "gap_faithful_out": 0.03897938235802308,
+        "relevance_out": 3.5400000000000005,
+        "gap_relevance_out": -0.11580212667591312,
+        "coherence_out": 4.1466666666666665,
+        "gap_coherence_out": 0.007715154317095685
+       },
+       "real": {
+        "faithful": 0.8811111111111111,
+        "relevance": 3.533333333333333,
+        "coherence": 4.113333333333333
+       }
+      },
+      "reuters.com": {
+       "judge": {
+        "faithful_in": 0.8779629629629632,
+        "gap_faithful_in": 0.004263902464342643,
+        "relevance_in": 3.7377777777777776,
+        "gap_relevance_in": 0.04295082548534346,
+        "coherence_in": 4.317777777777778,
+        "gap_coherence_in": 0.09277761780516484,
+        "faithful_out": 0.8376111111111111,
+        "gap_faithful_out": 0.07638816738816728,
+        "relevance_out": 3.756666666666667,
+        "gap_relevance_out": 0.12571428571428567,
+        "coherence_out": 4.206666666666667,
+        "gap_coherence_out": 0.12930735930735948
+       },
+       "real": {
+        "faithful": 0.825111111111111,
+        "relevance": 3.8333333333333335,
+        "coherence": 4.273333333333333
+       }
+      },
+      "theguardian.com": {
+       "judge": {
+        "faithful_in": 0.9138888888888889,
+        "gap_faithful_in": 0.025481614214313164,
+        "relevance_in": 3.6296296296296298,
+        "gap_relevance_in": -0.05985998974753293,
+        "coherence_in": 4.307407407407407,
+        "gap_coherence_in": 0.10097512861353675,
+        "faithful_out": 0.8740388007054675,
+        "gap_faithful_out": 0.08512929417460158,
+        "relevance_out": 3.8716049382716045,
+        "gap_relevance_out": 0.2158028115956919,
+        "coherence_out": 4.348148148148148,
+        "gap_coherence_out": 0.20919663579857758
+       },
+       "real": {
+        "faithful": 0.9086419753086419,
+        "relevance": 3.762962962962963,
+        "coherence": 4.162962962962963
+       }
+      },
+      "wsj.com": {
+       "judge": {
+        "faithful_in": 0.8701851851851852,
+        "gap_faithful_in": -0.003513875313435203,
+        "relevance_in": 3.6088888888888895,
+        "gap_relevance_in": -0.08593806340354515,
+        "coherence_in": 4.311111111111111,
+        "gap_coherence_in": 0.08611095113849832,
+        "faithful_out": 0.8086904761904762,
+        "gap_faithful_out": 0.04746753246753238,
+        "relevance_out": 3.6333333333333333,
+        "gap_relevance_out": 0.0023809523809523725,
+        "coherence_out": 4.143333333333333,
+        "gap_coherence_out": 0.06597402597402557
+       },
+       "real": {
+        "faithful": 0.8633333333333333,
+        "relevance": 3.7066666666666666,
+        "coherence": 4.226666666666667
+       }
+      }
+     }
+    }
+   ]
+  },
+  "local-off": {
+   "full": {
+    "faithful_in": 0.8283486501924002,
+    "gap_faithful_in": -0.04508397889899114,
+    "relevance_in": 3.6132291666666667,
+    "gap_relevance_in": -0.07803454773722868,
+    "coherence_in": 4.228125,
+    "gap_coherence_in": -0.013366984362987798,
+    "faithful_out": 0.7966616332637715,
+    "gap_faithful_out": 0.03167869749181862,
+    "relevance_out": 3.6163635596966315,
+    "gap_relevance_out": 0.006668261345616006,
+    "coherence_out": 4.187527190349897,
+    "gap_coherence_out": 0.09856531170751968,
+    "real_faithful": 0.8418935185185186,
+    "real_relevance": 3.659513888888889,
+    "real_coherence": 4.188958333333334,
+    "per_client": {
+     "forbes.com": {
+      "judge": {
+       "faithful_in": 0.812589466089466,
+       "gap_faithful_in": -0.06084316300192527,
+       "relevance_in": 3.528333333333333,
+       "gap_relevance_in": -0.162930381070562,
+       "coherence_in": 4.166666666666667,
+       "gap_coherence_in": -0.0748253176963211,
+       "faithful_out": 0.7429853896103895,
+       "gap_faithful_out": -0.005127628987607602,
+       "relevance_out": 3.6425,
+       "gap_relevance_out": 0.04794451256897592,
+       "coherence_out": 4.140000000000001,
+       "gap_coherence_out": 0.07937461679950975
+      },
+      "real": {
+       "faithful": 0.7793333333333333,
+       "relevance": 3.595,
+       "coherence": 4.125
+      }
+     },
+     "theguardian.com": {
+      "judge": {
+       "faithful_in": 0.8434259259259259,
+       "gap_faithful_in": -0.04350295298624196,
+       "relevance_in": 3.5666666666666664,
+       "gap_relevance_in": -0.11464638066733168,
+       "coherence_in": 4.233333333333333,
+       "gap_coherence_in": 0.01065846358496847,
+       "faithful_out": 0.8615123456790122,
+       "gap_faithful_out": 0.08062362346373475,
+       "relevance_out": 3.6703703703703705,
+       "gap_relevance_out": 0.036945029235124625,
+       "coherence_out": 4.27037037037037,
+       "gap_coherence_out": 0.1369113770392986
+      },
+      "real": {
+       "faithful": 0.9064814814814814,
+       "relevance": 3.761111111111111,
+       "coherence": 4.166666666666667
+      }
+     },
+     "people.com": {
+      "judge": {
+       "faithful_in": 0.82375,
+       "gap_faithful_in": -0.06317887891216789,
+       "relevance_in": 3.2925,
+       "gap_relevance_in": -0.38881304733399835,
+       "coherence_in": 4.06,
+       "gap_coherence_in": -0.16267486974836531,
+       "faithful_out": 0.7489722222222222,
+       "gap_faithful_out": -0.03191649999305531,
+       "relevance_out": 3.268333333333333,
+       "gap_relevance_out": -0.3650920078019125,
+       "coherence_out": 4.108333333333333,
+       "gap_coherence_out": -0.025125659997738303
+      },
+      "real": {
+       "faithful": 0.8658333333333332,
+       "relevance": 3.49,
+       "coherence": 4.11
+      }
+     },
+     "wsj.com": {
+      "judge": {
+       "faithful_in": 0.8358055555555556,
+       "gap_faithful_in": -0.037627073535835796,
+       "relevance_in": 3.6716666666666664,
+       "gap_relevance_in": -0.019597047737228774,
+       "coherence_in": 4.345,
+       "gap_coherence_in": 0.10350801563701229,
+       "faithful_out": 0.7947916666666667,
+       "gap_faithful_out": 0.046678648068669504,
+       "relevance_out": 3.6625,
+       "gap_relevance_out": 0.06794451256897616,
+       "coherence_out": 4.244999999999999,
+       "gap_coherence_out": 0.18437461679950928
+      },
+      "real": {
+       "faithful": 0.8758333333333335,
+       "relevance": 3.745,
+       "coherence": 4.28
+      }
+     },
+     "aol.com": {
+      "judge": {
+       "faithful_in": 0.8420833333333334,
+       "gap_faithful_in": -0.03134929575805797,
+       "relevance_in": 3.3633333333333333,
+       "gap_relevance_in": -0.32793038107056205,
+       "coherence_in": 4.141666666666667,
+       "gap_coherence_in": -0.09982531769632101,
+       "faithful_out": 0.8097916666666667,
+       "gap_faithful_out": 0.06167864806866952,
+       "relevance_out": 3.5,
+       "gap_relevance_out": -0.09455548743102393,
+       "coherence_out": 4.155,
+       "gap_coherence_out": 0.09437461679950965
+      },
+      "real": {
+       "faithful": 0.85375,
+       "relevance": 3.32,
+       "coherence": 4.005
+      }
+     },
+     "cbc.ca": {
+      "judge": {
+       "faithful_in": 0.883,
+       "gap_faithful_in": 0.009567370908608708,
+       "relevance_in": 3.813333333333334,
+       "gap_relevance_in": 0.12206961892943798,
+       "coherence_in": 4.336666666666667,
+       "gap_coherence_in": 0.09517468230367883,
+       "faithful_out": 0.8680416666666666,
+       "gap_faithful_out": 0.11992864806866949,
+       "relevance_out": 3.81,
+       "gap_relevance_out": 0.21544451256897612,
+       "coherence_out": 4.31,
+       "gap_coherence_out": 0.24937461679950923
+      },
+      "real": {
+       "faithful": 0.89125,
+       "relevance": 3.83,
+       "coherence": 4.36
+      }
+     },
+     "reuters.com": {
+      "judge": {
+       "faithful_in": 0.8375515873015873,
+       "gap_faithful_in": -0.03588104178980404,
+       "relevance_in": 3.885,
+       "gap_relevance_in": 0.1937362855961046,
+       "coherence_in": 4.336666666666667,
+       "gap_coherence_in": 0.09517468230367883,
+       "faithful_out": 0.7586666666666666,
+       "gap_faithful_out": 0.010553648068669486,
+       "relevance_out": 3.6875,
+       "gap_relevance_out": 0.09294451256897607,
+       "coherence_out": 4.1425,
+       "gap_coherence_out": 0.08187461679950947
+      },
+      "real": {
+       "faithful": 0.828,
+       "relevance": 3.8,
+       "coherence": 4.27
+      }
+     },
+     "nypost.com": {
+      "judge": {
+       "faithful_in": 0.7485833333333334,
+       "gap_faithful_in": -0.09785679611650488,
+       "relevance_in": 3.785,
+       "gap_relevance_in": 0.0738349514563108,
+       "coherence_in": 4.205,
+       "gap_coherence_in": -0.07412621359223337,
+       "faithful_out": 0.7885314419318816,
+       "gap_faithful_out": -0.028989506823200895,
+       "relevance_out": 3.6897047738693467,
+       "gap_relevance_out": 0.051770506486835566,
+       "coherence_out": 4.129013819095477,
+       "gap_coherence_out": -0.012636307378950162
+      },
+      "real": {
+       "faithful": 0.7346666666666667,
+       "relevance": 3.735,
+       "coherence": 4.195
+      }
+     }
+    }
+   },
+   "subsets": [
+    {
+     "faithful_in": 0.8300682619849287,
+     "gap_faithful_in": -0.04661683966579791,
+     "relevance_in": 3.6126388888888887,
+     "gap_relevance_in": -0.08383374650761705,
+     "coherence_in": 4.226666666666667,
+     "gap_coherence_in": -0.017419582019272423,
+     "faithful_out": 0.7953447871572872,
+     "gap_faithful_out": 0.029059109180635156,
+     "relevance_out": 3.6186959876543208,
+     "gap_relevance_out": -0.00026419517502102377,
+     "coherence_out": 4.1780941358024695,
+     "gap_coherence_out": 0.09899735076351687,
+     "real_faithful": 0.845496913580247,
+     "real_relevance": 3.6650925925925923,
+     "real_coherence": 4.18962962962963,
+     "per_client": {
+      "aol.com": {
+       "judge": {
+        "faithful_in": 0.8516666666666667,
+        "gap_faithful_in": -0.025018434984059867,
+        "relevance_in": 3.3800000000000003,
+        "gap_relevance_in": -0.3164726353965059,
+        "coherence_in": 4.155555555555556,
+        "gap_coherence_in": -0.08853069313038346,
+        "faithful_out": 0.8097222222222222,
+        "gap_faithful_out": 0.060125448028673756,
+        "relevance_out": 3.5033333333333334,
+        "gap_relevance_out": -0.10094273568392076,
+        "coherence_out": 4.140000000000001,
+        "gap_coherence_out": 0.09105026256564153
+       },
+       "real": {
+        "faithful": 0.8666666666666667,
+        "relevance": 3.36,
+        "coherence": 4.026666666666666
+       }
+      },
+      "cbc.ca": {
+       "judge": {
+        "faithful_in": 0.8828888888888887,
+        "gap_faithful_in": 0.006203787238162284,
+        "relevance_in": 3.8088888888888888,
+        "gap_relevance_in": 0.112416253492383,
+        "coherence_in": 4.311111111111111,
+        "gap_coherence_in": 0.06702486242517185,
+        "faithful_out": 0.8596111111111111,
+        "gap_faithful_out": 0.11001433691756268,
+        "relevance_out": 3.7933333333333334,
+        "gap_relevance_out": 0.18905726431607928,
+        "coherence_out": 4.276666666666666,
+        "gap_coherence_out": 0.2277169292323078
+       },
+       "real": {
+        "faithful": 0.89,
+        "relevance": 3.8466666666666667,
+        "coherence": 4.373333333333333
+       }
+      },
+      "forbes.com": {
+       "judge": {
+        "faithful_in": 0.8157489177489178,
+        "gap_faithful_in": -0.06093618390180885,
+        "relevance_in": 3.5244444444444447,
+        "gap_relevance_in": -0.17202819095206148,
+        "coherence_in": 4.1755555555555555,
+        "gap_coherence_in": -0.06853069313038358,
+        "faithful_out": 0.7418694083694084,
+        "gap_faithful_out": -0.0077273658241400756,
+        "relevance_out": 3.6399999999999997,
+        "gap_relevance_out": 0.03572393098274573,
+        "coherence_out": 4.136666666666667,
+        "gap_coherence_out": 0.08771692923230812
+       },
+       "real": {
+        "faithful": 0.8007777777777778,
+        "relevance": 3.6,
+        "coherence": 4.093333333333334
+       }
+      },
+      "nypost.com": {
+       "judge": {
+        "faithful_in": 0.7404444444444445,
+        "gap_faithful_in": -0.10082029296177197,
+        "relevance_in": 3.76,
+        "gap_relevance_in": 0.039742765273311775,
+        "coherence_in": 4.193333333333333,
+        "gap_coherence_in": -0.0831939978563776,
+        "faithful_out": 0.7774814814814814,
+        "gap_faithful_out": -0.044514547501783575,
+        "relevance_out": 3.665,
+        "gap_relevance_out": 0.020571797625665522,
+        "coherence_out": 4.088333333333333,
+        "gap_coherence_out": -0.050074389100872585
+       },
+       "real": {
+        "faithful": 0.725,
+        "relevance": 3.7133333333333334,
+        "coherence": 4.166666666666667
+       }
+      },
+      "people.com": {
+       "judge": {
+        "faithful_in": 0.8049999999999999,
+        "gap_faithful_in": -0.08939528377298162,
+        "relevance_in": 3.29,
+        "gap_relevance_in": -0.3945803357314148,
+        "coherence_in": 4.053333333333333,
+        "gap_coherence_in": -0.17453237410071987,
+        "faithful_out": 0.739925925925926,
+        "gap_faithful_out": -0.04022683600517848,
+        "relevance_out": 3.2688888888888887,
+        "gap_relevance_out": -0.37404756869817657,
+        "coherence_out": 4.0888888888888895,
+        "gap_coherence_out": -0.03592004646392052
+       },
+       "real": {
+        "faithful": 0.8577777777777779,
+        "relevance": 3.473333333333333,
+        "coherence": 4.113333333333333
+       }
+      },
+      "reuters.com": {
+       "judge": {
+        "faithful_in": 0.8494021164021163,
+        "gap_faithful_in": -0.027282985248610243,
+        "relevance_in": 3.908888888888889,
+        "gap_relevance_in": 0.21241625349238294,
+        "coherence_in": 4.3311111111111105,
+        "gap_coherence_in": 0.087024862425172,
+        "faithful_out": 0.7746111111111111,
+        "gap_faithful_out": 0.025014336917562663,
+        "relevance_out": 3.716666666666667,
+        "gap_relevance_out": 0.11239059764941262,
+        "coherence_out": 4.163333333333333,
+        "gap_coherence_out": 0.11438359589897473
+       },
+       "real": {
+        "faithful": 0.8462222222222222,
+        "relevance": 3.8266666666666667,
+        "coherence": 4.26
+       }
+      },
+      "theguardian.com": {
+       "judge": {
+        "faithful_in": 0.854320987654321,
+        "gap_faithful_in": -0.04007429611866059,
+        "relevance_in": 3.533333333333333,
+        "gap_relevance_in": -0.15124700239808164,
+        "coherence_in": 4.233333333333333,
+        "gap_coherence_in": 0.005467625899280293,
+        "faithful_out": 0.8692592592592593,
+        "gap_faithful_out": 0.08910649732815486,
+        "relevance_out": 3.6790123456790127,
+        "gap_relevance_out": 0.036075888091946805,
+        "coherence_out": 4.264197530864197,
+        "gap_coherence_out": 0.1393885955113879
+       },
+       "real": {
+        "faithful": 0.9086419753086419,
+        "relevance": 3.740740740740741,
+        "coherence": 4.17037037037037
+       }
+      },
+      "wsj.com": {
+       "judge": {
+        "faithful_in": 0.8410740740740742,
+        "gap_faithful_in": -0.03561102757665243,
+        "relevance_in": 3.6955555555555555,
+        "gap_relevance_in": -0.0009170798409502782,
+        "coherence_in": 4.359999999999999,
+        "gap_coherence_in": 0.11591375131406097,
+        "faithful_out": 0.7902777777777779,
+        "gap_faithful_out": 0.040681003584229436,
+        "relevance_out": 3.6833333333333336,
+        "gap_relevance_out": 0.07905726431607918,
+        "coherence_out": 4.266666666666667,
+        "gap_coherence_out": 0.217716929232308
+       },
+       "real": {
+        "faithful": 0.8688888888888889,
+        "relevance": 3.76,
+        "coherence": 4.3133333333333335
+       }
+      }
+     }
+    },
+    {
+     "faithful_in": 0.8232333854417188,
+     "gap_faithful_in": -0.04805238011944285,
+     "relevance_in": 3.609861111111111,
+     "gap_relevance_in": -0.09256367696018583,
+     "coherence_in": 4.2225,
+     "gap_coherence_in": -0.025969363669557988,
+     "faithful_out": 0.79633275132858,
+     "gap_faithful_out": 0.02864543370214713,
+     "relevance_out": 3.625107506835695,
+     "gap_relevance_out": -0.005412100015059627,
+     "coherence_out": 4.184980891126026,
+     "gap_coherence_out": 0.096026726051672,
+     "real_faithful": 0.8406111111111112,
+     "real_relevance": 3.6737962962962962,
+     "real_coherence": 4.194814814814815,
+     "per_client": {
+      "aol.com": {
+       "judge": {
+        "faithful_in": 0.826111111111111,
+        "gap_faithful_in": -0.04517465445005053,
+        "relevance_in": 3.3666666666666667,
+        "gap_relevance_in": -0.3357581214046303,
+        "coherence_in": 4.131111111111111,
+        "gap_coherence_in": -0.1173582525584469,
+        "faithful_out": 0.7980555555555555,
+        "gap_faithful_out": 0.04678103734202549,
+        "relevance_out": 3.496666666666667,
+        "gap_relevance_out": -0.11951964316349284,
+        "coherence_out": 4.116666666666667,
+        "gap_coherence_out": 0.05846628924343822
+       },
+       "real": {
+        "faithful": 0.8366666666666667,
+        "relevance": 3.34,
+        "coherence": 3.986666666666667
+       }
+      },
+      "cbc.ca": {
+       "judge": {
+        "faithful_in": 0.8827037037037037,
+        "gap_faithful_in": 0.011417938142542031,
+        "relevance_in": 3.813333333333334,
+        "gap_relevance_in": 0.11090854526203649,
+        "coherence_in": 4.317777777777778,
+        "gap_coherence_in": 0.06930841410821979,
+        "faithful_out": 0.871,
+        "gap_faithful_out": 0.11972548178646986,
+        "relevance_out": 3.833333333333333,
+        "gap_relevance_out": 0.2171470235031736,
+        "coherence_out": 4.303333333333333,
+        "gap_coherence_out": 0.24513295591010476
+       },
+       "real": {
+        "faithful": 0.9083333333333333,
+        "relevance": 3.86,
+        "coherence": 4.386666666666667
+       }
+      },
+      "forbes.com": {
+       "judge": {
+        "faithful_in": 0.8123044733044734,
+        "gap_faithful_in": -0.05898129225668832,
+        "relevance_in": 3.5444444444444443,
+        "gap_relevance_in": -0.15798034362685254,
+        "coherence_in": 4.188888888888889,
+        "gap_coherence_in": -0.05958047478066882,
+        "faithful_out": 0.740536075036075,
+        "gap_faithful_out": -0.010738443177455093,
+        "relevance_out": 3.6733333333333333,
+        "gap_relevance_out": 0.05714702350317369,
+        "coherence_out": 4.166666666666667,
+        "gap_coherence_out": 0.10846628924343849
+       },
+       "real": {
+        "faithful": 0.7807777777777777,
+        "relevance": 3.6266666666666665,
+        "coherence": 4.16
+       }
+      },
+      "nypost.com": {
+       "judge": {
+        "faithful_in": 0.7408888888888889,
+        "gap_faithful_in": -0.1094911328266377,
+        "relevance_in": 3.7933333333333334,
+        "gap_relevance_in": 0.05717698154180262,
+        "coherence_in": 4.22,
+        "gap_coherence_in": -0.08618892508143361,
+        "faithful_out": 0.7869119438230177,
+        "gap_faithful_out": -0.02959463402573692,
+        "relevance_out": 3.6812304250559285,
+        "gap_relevance_out": 0.03035776703525861,
+        "coherence_out": 4.135402684563759,
+        "gap_coherence_out": -0.0035022956296659746
+       },
+       "real": {
+        "faithful": 0.7412222222222222,
+        "relevance": 3.7466666666666666,
+        "coherence": 4.22
+       }
+      },
+      "people.com": {
+       "judge": {
+        "faithful_in": 0.8116666666666666,
+        "gap_faithful_in": -0.07007197081731242,
+        "relevance_in": 3.283333333333333,
+        "gap_relevance_in": -0.40222567287784683,
+        "coherence_in": 4.033333333333333,
+        "gap_coherence_in": -0.186276249630287,
+        "faithful_out": 0.7582592592592593,
+        "gap_faithful_out": -0.02605042678826963,
+        "relevance_out": 3.28,
+        "gap_relevance_out": -0.37617632381728344,
+        "coherence_out": 4.102222222222223,
+        "gap_coherence_out": -0.03864100442040789
+       },
+       "real": {
+        "faithful": 0.8611111111111113,
+        "relevance": 3.473333333333333,
+        "coherence": 4.1
+       }
+      },
+      "reuters.com": {
+       "judge": {
+        "faithful_in": 0.844142857142857,
+        "gap_faithful_in": -0.02714290841830454,
+        "relevance_in": 3.893333333333333,
+        "gap_relevance_in": 0.1909085452620364,
+        "coherence_in": 4.346666666666667,
+        "gap_coherence_in": 0.09819730299710876,
+        "faithful_out": 0.7629444444444444,
+        "gap_faithful_out": 0.01166992623091434,
+        "relevance_out": 3.6966666666666663,
+        "gap_relevance_out": 0.0804803568365069,
+        "coherence_out": 4.16,
+        "gap_coherence_out": 0.10179962257677166
+       },
+       "real": {
+        "faithful": 0.8278888888888889,
+        "relevance": 3.8133333333333335,
+        "coherence": 4.273333333333333
+       }
+      },
+      "theguardian.com": {
+       "judge": {
+        "faithful_in": 0.8419753086419752,
+        "gap_faithful_in": -0.03976332884200379,
+        "relevance_in": 3.5555555555555554,
+        "gap_relevance_in": -0.13000345065562446,
+        "coherence_in": 4.2444444444444445,
+        "gap_coherence_in": 0.024834861480824255,
+        "faithful_out": 0.8647325102880657,
+        "gap_faithful_out": 0.08042282424053689,
+        "relevance_out": 3.696296296296296,
+        "gap_relevance_out": 0.04011997247901281,
+        "coherence_out": 4.288888888888889,
+        "gap_coherence_out": 0.14802566224625865
+       },
+       "real": {
+        "faithful": 0.9,
+        "relevance": 3.77037037037037,
+        "coherence": 4.185185185185185
+       }
+      },
+      "wsj.com": {
+       "judge": {
+        "faithful_in": 0.8260740740740741,
+        "gap_faithful_in": -0.045211691487087514,
+        "relevance_in": 3.628888888888889,
+        "gap_relevance_in": -0.07353589918240806,
+        "coherence_in": 4.297777777777777,
+        "gap_coherence_in": 0.04930841410821962,
+        "faithful_out": 0.7882222222222222,
+        "gap_faithful_out": 0.03694770400869213,
+        "relevance_out": 3.6433333333333335,
+        "gap_relevance_out": 0.027147023503173662,
+        "coherence_out": 4.206666666666667,
+        "gap_coherence_out": 0.14846628924343808
+       },
+       "real": {
+        "faithful": 0.8688888888888889,
+        "relevance": 3.76,
+        "coherence": 4.246666666666667
+       }
+      }
+     }
+    },
+    {
+     "faithful_in": 0.8276052990219658,
+     "gap_faithful_in": -0.04609376147665474,
+     "relevance_in": 3.6221296296296295,
+     "gap_relevance_in": -0.07269732266280456,
+     "coherence_in": 4.225833333333333,
+     "gap_coherence_in": 0.0008331733607203993,
+     "faithful_out": 0.7941333389221392,
+     "gap_faithful_out": 0.01803973381273795,
+     "relevance_out": 3.625541003811418,
+     "gap_relevance_out": -0.0152823909733951,
+     "coherence_out": 4.180574353716132,
+     "gap_coherence_out": 0.07974993439459871,
+     "real_faithful": 0.8457191358024692,
+     "real_relevance": 3.672037037037037,
+     "real_coherence": 4.181203703703703,
+     "per_client": {
+      "aol.com": {
+       "judge": {
+        "faithful_in": 0.8416666666666667,
+        "gap_faithful_in": -0.03203239383195374,
+        "relevance_in": 3.3555555555555556,
+        "gap_relevance_in": -0.3392713967368787,
+        "coherence_in": 4.12,
+        "gap_coherence_in": -0.10500015997261307,
+        "faithful_out": 0.8016666666666667,
+        "gap_faithful_out": 0.04044372294372289,
+        "relevance_out": 3.48,
+        "gap_relevance_out": -0.15095238095238095,
+        "coherence_out": 4.13,
+        "gap_coherence_out": 0.05264069264069238
+       },
+       "real": {
+        "faithful": 0.8783333333333333,
+        "relevance": 3.32,
+        "coherence": 3.986666666666667
+       }
+      },
+      "cbc.ca": {
+       "judge": {
+        "faithful_in": 0.8825185185185185,
+        "gap_faithful_in": 0.008819458019898141,
+        "relevance_in": 3.8444444444444446,
+        "gap_relevance_in": 0.14961749215201037,
+        "coherence_in": 4.351111111111111,
+        "gap_coherence_in": 0.12611095113849835,
+        "faithful_out": 0.8672777777777777,
+        "gap_faithful_out": 0.1060548340548339,
+        "relevance_out": 3.8166666666666664,
+        "gap_relevance_out": 0.18571428571428572,
+        "coherence_out": 4.3133333333333335,
+        "gap_coherence_out": 0.23597402597402595
+       },
+       "real": {
+        "faithful": 0.8772222222222221,
+        "relevance": 3.8066666666666666,
+        "coherence": 4.3133333333333335
+       }
+      },
+      "forbes.com": {
+       "judge": {
+        "faithful_in": 0.8444526214526213,
+        "gap_faithful_in": -0.029246439045998995,
+        "relevance_in": 3.6133333333333333,
+        "gap_relevance_in": -0.08149361895910075,
+        "coherence_in": 4.235555555555556,
+        "gap_coherence_in": 0.010555395582942495,
+        "faithful_out": 0.7528694083694083,
+        "gap_faithful_out": -0.008353535353535446,
+        "relevance_out": 3.71,
+        "gap_relevance_out": 0.07904761904761926,
+        "coherence_out": 4.173333333333334,
+        "gap_coherence_out": 0.09597402597402582
+       },
+       "real": {
+        "faithful": 0.8181111111111111,
+        "relevance": 3.7,
+        "coherence": 4.166666666666667
+       }
+      },
+      "nypost.com": {
+       "judge": {
+        "faithful_in": 0.737111111111111,
+        "gap_faithful_in": -0.1071715210355988,
+        "relevance_in": 3.7666666666666666,
+        "gap_relevance_in": 0.061165048543689426,
+        "coherence_in": 4.193333333333333,
+        "gap_coherence_in": -0.06880258899676406,
+        "faithful_out": 0.7795121178225204,
+        "gap_faithful_out": -0.04530299137623928,
+        "relevance_out": 3.681241610738255,
+        "gap_relevance_out": 0.021020610573483256,
+        "coherence_out": 4.118668903803132,
+        "gap_coherence_out": -0.023226889273456952
+       },
+       "real": {
+        "faithful": 0.7138888888888889,
+        "relevance": 3.7133333333333334,
+        "coherence": 4.206666666666667
+       }
+      },
+      "people.com": {
+       "judge": {
+        "faithful_in": 0.8233333333333333,
+        "gap_faithful_in": -0.06507394134124239,
+        "relevance_in": 3.3200000000000003,
+        "gap_relevance_in": -0.3694896193771626,
+        "coherence_in": 4.066666666666666,
+        "gap_coherence_in": -0.13976561212720418,
+        "faithful_out": 0.7577777777777778,
+        "gap_faithful_out": -0.031131728753088006,
+        "relevance_out": 3.2999999999999994,
+        "gap_relevance_out": -0.35580212667591304,
+        "coherence_out": 4.12,
+        "gap_coherence_out": -0.01895151234957071
+       },
+       "real": {
+        "faithful": 0.8811111111111111,
+        "relevance": 3.533333333333333,
+        "coherence": 4.113333333333333
+       }
+      },
+      "reuters.com": {
+       "judge": {
+        "faithful_in": 0.8345132275132275,
+        "gap_faithful_in": -0.039185832985392945,
+        "relevance_in": 3.888888888888889,
+        "gap_relevance_in": 0.19406193659645465,
+        "coherence_in": 4.32888888888889,
+        "gap_coherence_in": 0.10388872891627621,
+        "faithful_out": 0.7448888888888889,
+        "gap_faithful_out": -0.016334054834054923,
+        "relevance_out": 3.66,
+        "gap_relevance_out": 0.02904761904761899,
+        "coherence_out": 4.1066666666666665,
+        "gap_coherence_out": 0.02930735930735917
+       },
+       "real": {
+        "faithful": 0.825111111111111,
+        "relevance": 3.8333333333333335,
+        "coherence": 4.273333333333333
+       }
+      },
+      "theguardian.com": {
+       "judge": {
+        "faithful_in": 0.8265432098765432,
+        "gap_faithful_in": -0.061864064798032525,
+        "relevance_in": 3.525925925925926,
+        "gap_relevance_in": -0.16356369345123678,
+        "coherence_in": 4.188888888888888,
+        "gap_coherence_in": -0.017543389904981943,
+        "faithful_out": 0.8562962962962962,
+        "gap_faithful_out": 0.0673867897654304,
+        "relevance_out": 3.6864197530864202,
+        "gap_relevance_out": 0.030617626410506766,
+        "coherence_out": 4.2592592592592595,
+        "gap_coherence_out": 0.12030774690968842
+       },
+       "real": {
+        "faithful": 0.9086419753086419,
+        "relevance": 3.762962962962963,
+        "coherence": 4.162962962962963
+       }
+      },
+      "wsj.com": {
+       "judge": {
+        "faithful_in": 0.8307037037037038,
+        "gap_faithful_in": -0.04299535679491669,
+        "relevance_in": 3.6622222222222223,
+        "gap_relevance_in": -0.032604730070212064,
+        "coherence_in": 4.322222222222222,
+        "gap_coherence_in": 0.09722206224960939,
+        "faithful_out": 0.7927777777777778,
+        "gap_faithful_out": 0.03155483405483406,
+        "relevance_out": 3.67,
+        "gap_relevance_out": 0.03904761904761922,
+        "coherence_out": 4.223333333333333,
+        "gap_coherence_out": 0.14597402597402565
+       },
+       "real": {
+        "faithful": 0.8633333333333333,
+        "relevance": 3.7066666666666666,
+        "coherence": 4.226666666666667
+       }
+      }
+     }
+    }
+   ]
+  }
+ }
+}

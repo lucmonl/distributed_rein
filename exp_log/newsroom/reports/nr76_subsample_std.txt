@@ -1,0 +1,124 @@
+== E1 steering metrics, mean +- std over 3 subsets x 75% of test articles (full-test value in brackets)
+   arms on identical test articles: fed-aligned-off-cnt, fed-shared-soff-sadapter, local-off, fed-linear-off, B3-merge-local, B3-merge-local-off, B4-CAA, B1-k3-base; 1580 articles, 8 clients
+   articles per client (full / per subset): aol.com 200/150, cbc.ca 200/150, forbes.com 200/150, nypost.com 200/150, people.com 200/150, reuters.com 200/150, theguardian.com 180/135, wsj.com 200/150
+
+-- pct_err
+   fed-aligned-off-cnt        0.143 +- 0.001   [0.143]
+   fed-shared-soff-sadapter   0.171 +- 0.001   [0.171]
+   local-off                  0.178 +- 0.001   [0.178]
+   fed-linear-off             0.148 +- 0.000   [0.148]
+   B3-merge-local             0.182 +- 0.000   [0.181]
+   B3-merge-local-off         0.227 +- 0.001   [0.227]
+   B4-CAA                     0.253 +- 0.000   [0.253]
+   B1-k3-base                 0.340 +- 0.001   [0.341]
+
+-- pct_err_worst
+   fed-aligned-off-cnt        0.190 +- 0.002   [0.191]
+   fed-shared-soff-sadapter   0.192 +- 0.001   [0.191]
+   local-off                  0.266 +- 0.005   [0.266]
+   fed-linear-off             0.193 +- 0.002   [0.195]
+   B3-merge-local             0.255 +- 0.005   [0.256]
+   B3-merge-local-off         0.279 +- 0.004   [0.280]
+   B4-CAA                     0.303 +- 0.001   [0.301]
+   B1-k3-base                 0.353 +- 0.003   [0.355]
+
+-- in_support
+   fed-aligned-off-cnt        0.133 +- 0.001   [0.132]
+   fed-shared-soff-sadapter   0.183 +- 0.002   [0.183]
+   local-off                  0.153 +- 0.000   [0.154]
+   fed-linear-off             0.133 +- 0.000   [0.132]
+   B3-merge-local             0.152 +- 0.001   [0.152]
+   B3-merge-local-off         0.201 +- 0.002   [0.203]
+   B4-CAA                     0.212 +- 0.001   [0.213]
+   B1-k3-base                 0.242 +- 0.000   [0.243]
+
+-- out_support
+   fed-aligned-off-cnt        0.147 +- 0.002   [0.147]
+   fed-shared-soff-sadapter   0.154 +- 0.001   [0.154]
+   local-off                  0.186 +- 0.002   [0.186]
+   fed-linear-off             0.157 +- 0.001   [0.157]
+   B3-merge-local             0.198 +- 0.001   [0.198]
+   B3-merge-local-off         0.242 +- 0.001   [0.243]
+   B4-CAA                     0.287 +- 0.000   [0.289]
+   B1-k3-base                 0.467 +- 0.001   [0.467]
+
+-- out_support_worst
+   fed-aligned-off-cnt        0.178 +- 0.000   [0.178]
+   fed-shared-soff-sadapter   0.170 +- 0.002   [0.171]
+   local-off                  0.301 +- 0.006   [0.300]
+   fed-linear-off             0.182 +- 0.002   [0.180]
+   B3-merge-local             0.287 +- 0.007   [0.286]
+   B3-merge-local-off         0.342 +- 0.002   [0.342]
+   B4-CAA                     0.357 +- 0.001   [0.359]
+   B1-k3-base                 0.520 +- 0.005   [0.519]
+
+-- reach
+   fed-aligned-off-cnt        0.435 +- 0.003   [0.435]
+   fed-shared-soff-sadapter   0.500 +- 0.004   [0.500]
+   local-off                  0.369 +- 0.004   [0.370]
+   fed-linear-off             0.415 +- 0.005   [0.414]
+   B3-merge-local             0.295 +- 0.001   [0.294]
+   B3-merge-local-off         0.240 +- 0.001   [0.240]
+   B4-CAA                     0.232 +- 0.004   [0.231]
+   B1-k3-base                 0.118 +- 0.001   [0.117]
+
+-- spearman
+   fed-aligned-off-cnt        0.933 +- 0.002   [0.934]
+   fed-shared-soff-sadapter   0.948 +- 0.001   [0.948]
+   local-off                  0.885 +- 0.002   [0.886]
+   fed-linear-off             0.932 +- 0.001   [0.933]
+   B3-merge-local             0.882 +- 0.002   [0.881]
+   B3-merge-local-off         0.810 +- 0.003   [0.811]
+   B4-CAA                     0.781 +- 0.001   [0.780]
+   B1-k3-base                 0.073 +- 0.003   [0.077]
+
+-- spearman_worst
+   fed-aligned-off-cnt        0.897 +- 0.006   [0.898]
+   fed-shared-soff-sadapter   0.908 +- 0.002   [0.908]
+   local-off                  0.732 +- 0.019   [0.730]
+   fed-linear-off             0.903 +- 0.004   [0.908]
+   B3-merge-local             0.713 +- 0.029   [0.701]
+   B3-merge-local-off         0.567 +- 0.023   [0.579]
+   B4-CAA                     0.693 +- 0.007   [0.700]
+   B1-k3-base                 -0.056 +- 0.023   [-0.047]
+
+-- near_tie
+   fed-aligned-off-cnt        0.181 +- 0.001   [0.181]
+   fed-shared-soff-sadapter   0.194 +- 0.002   [0.193]
+   local-off                  0.266 +- 0.003   [0.265]
+   fed-linear-off             0.191 +- 0.002   [0.192]
+   B3-merge-local             0.166 +- 0.001   [0.168]
+   B3-merge-local-off         0.231 +- 0.006   [0.232]
+   B4-CAA                     0.042 +- 0.001   [0.042]
+   B1-k3-base                 0.003 +- 0.000   [0.003]
+
+-- cell_a0
+   fed-aligned-off-cnt        0.188 +- 0.003   [0.189]
+   fed-shared-soff-sadapter   0.256 +- 0.001   [0.257]
+   local-off                  0.246 +- 0.001   [0.246]
+   fed-linear-off             0.200 +- 0.002   [0.201]
+   B3-merge-local             0.189 +- 0.001   [0.188]
+   B3-merge-local-off         0.216 +- 0.001   [0.216]
+   B4-CAA                     0.096 +- 0.001   [0.096]
+   B1-k3-base                 0.322 +- 0.002   [0.320]
+
+-- cell_a1
+   fed-aligned-off-cnt        0.101 +- 0.002   [0.102]
+   fed-shared-soff-sadapter   0.050 +- 0.001   [0.051]
+   local-off                  0.134 +- 0.001   [0.134]
+   fed-linear-off             0.116 +- 0.000   [0.115]
+   B3-merge-local             0.208 +- 0.002   [0.208]
+   B3-merge-local-off         0.262 +- 0.002   [0.262]
+   B4-CAA                     0.475 +- 0.001   [0.477]
+   B1-k3-base                 0.660 +- 0.004   [0.660]
+
+-- per-subset difference in mean pct err vs fed-aligned-off-cnt (mean +- std over 3 subsets x 75% of test articles; negative = arm better). A gap is real only if it clearly exceeds its std.
+   fed-shared-soff-sadapter   +0.0281 +- 0.0011   (full test +0.0282)
+   local-off                  +0.0352 +- 0.0005   (full test +0.0352)
+   fed-linear-off             +0.0051 +- 0.0007   (full test +0.0045)
+   B3-merge-local             +0.0389 +- 0.0007   (full test +0.0382)
+   B3-merge-local-off         +0.0838 +- 0.0011   (full test +0.0842)
+   B4-CAA                     +0.1095 +- 0.0007   (full test +0.1103)
+   B1-k3-base                 +0.1975 +- 0.0014   (full test +0.1976)
+
+wrote exp_log/newsroom/reports/nr76_subsample_std.json

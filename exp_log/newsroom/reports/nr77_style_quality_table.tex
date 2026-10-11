@@ -1,0 +1,36 @@
+% House style, summary quality and LLM judge on Newsroom (test). Sources: exp_log/newsroom/reports/nr77_quality_style_std.json, nr77_judge_std.json (NR-77).
+% Needs \usepackage{booktabs} and \usepackage{graphicx}.
+\providecommand{\std}[1]{{\scriptsize$\pm$#1}}
+\begin{table}[t]
+\centering
+\caption{House style and summary quality on Newsroom (test set, 8 publications). Mean $\pm$ std over 3 random subsets of 75\% of the test articles, shared by all methods and by the real summaries (std reflects test-set sampling only, not training-seed variation). \emph{Attribution}: share of a publication's generated summaries that a density-matched publication classifier assigns to that publication (chance 0.125). \emph{Style-feature gap}: mean absolute standardized difference of 11 surface-style features from the publication's own summaries at the same extractiveness. AlignScore measures consistency with the article; BERTScore F1 similarity to the reference summary; the length gap is relative to real summaries at the same extractiveness. LLM judge: Qwen2.5-7B-Instruct, every test summary; faithfulness is the fraction of summary sentences supported by the article. \emph{Real summaries}: the publications' own test summaries of the same articles (all extractiveness levels). Bold: best method on the house-style rows.}
+\label{tab:style-quality-newsroom}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+ & Ours & FedAvg (shared adapter) & Local training & Real summaries \\
+\midrule
+\multicolumn{5}{l}{\textit{House style (in-support levels)}} \\
+\quad Attribution accuracy $\uparrow$ & 0.569\std{0.002} & 0.407\std{0.002} & \textbf{0.572}\std{0.004} & 0.588\std{0.001} \\
+\quad P(own publication) $\uparrow$ & \textbf{0.381}\std{0.002} & 0.293\std{0.004} & 0.379\std{0.003} & 0.387\std{0.001} \\
+\quad Style-feature gap $\downarrow$ & \textbf{0.106}\std{0.001} & 0.187\std{0.002} & 0.125\std{0.001} & -- \\
+\midrule
+\multicolumn{5}{l}{\textit{Automatic quality (in-support / out-of-support levels)}} \\
+\quad AlignScore, in & 0.785\std{0.004} & 0.892\std{0.003} & 0.805\std{0.005} & 0.762\std{0.004} \\
+\quad AlignScore, out & 0.729\std{0.004} & 0.819\std{0.002} & 0.761\std{0.004} & 0.762\std{0.004} \\
+\quad BERTScore F1, in & 0.900\std{0.000} & 0.897\std{0.000} & 0.902\std{0.000} & -- \\
+\quad BERTScore F1, out & 0.888\std{0.000} & 0.885\std{0.000} & 0.890\std{0.000} & -- \\
+\quad Length gap to real (words), in & 2.4\std{0.2} & 6.3\std{0.2} & 3.3\std{0.2} & -- \\
+\quad Length gap to real (words), out & 4.0\std{0.4} & 12.1\std{0.3} & 4.5\std{0.5} & -- \\
+\midrule
+\multicolumn{5}{l}{\textit{LLM judge (in-support / out-of-support levels)}} \\
+\quad Faithfulness, in & 0.827\std{0.002} & 0.879\std{0.002} & 0.827\std{0.003} & 0.844\std{0.003} \\
+\quad Faithfulness, out & 0.780\std{0.001} & 0.848\std{0.002} & 0.795\std{0.001} & 0.844\std{0.003} \\
+\quad Relevance (1--5), in & 3.591\std{0.008} & 3.642\std{0.002} & 3.615\std{0.006} & 3.670\std{0.005} \\
+\quad Relevance (1--5), out & 3.612\std{0.006} & 3.701\std{0.001} & 3.623\std{0.004} & 3.670\std{0.005} \\
+\quad Coherence (1--5), in & 4.201\std{0.005} & 4.288\std{0.002} & 4.225\std{0.002} & 4.189\std{0.007} \\
+\quad Coherence (1--5), out & 4.169\std{0.001} & 4.218\std{0.003} & 4.181\std{0.003} & 4.189\std{0.007} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
