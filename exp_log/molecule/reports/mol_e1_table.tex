@@ -1,0 +1,29 @@
+% E1, pruned ChEMBL (data/chembl_deco_skew_pruned), test split, strict scorer
+% clogp_residual_deco_strict, round 100, dev-selected on pct_calib_err_penalized, 150 prompts x 8 clients.
+% Uncertainties: 3 subsets x 75\% of test PROMPTS (CAL-31); scripts/subsample_std.py.
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{lccccc}
+    \toprule
+    & \multicolumn{4}{c}{percentile error $\downarrow$} & \\
+    \cmidrule(lr){2-5}
+    Method & mean & worst & in-sup. & out-of-sup. & Spearman $\uparrow$ \\
+    \midrule
+    fed-aligned-off ($\tau{=}1000$) & $\mathbf{0.162} \pm 0.001$ & $\mathbf{0.231} \pm 0.001$ & $\mathbf{0.155} \pm 0.002$ & $\mathbf{0.163} \pm 0.002$ & $\mathbf{0.915} \pm 0.002$ \\
+    fed-aligned-off ($\tau{=}100$) & $0.173 \pm 0.001$ & $0.249 \pm 0.007$ & $0.163 \pm 0.002$ & $0.179 \pm 0.001$ & $0.896 \pm 0.003$ \\
+    fed-shared-soff-sadapter & $0.177 \pm 0.001$ & $0.243 \pm 0.002$ & $0.162 \pm 0.001$ & $0.186 \pm 0.001$ & $0.902 \pm 0.004$ \\
+    fed-shared-off & $0.180 \pm 0.001$ & $0.240 \pm 0.003$ & $0.162 \pm 0.002$ & $0.195 \pm 0.003$ & $0.880 \pm 0.003$ \\
+    fed-linear-off & $0.191 \pm 0.001$ & $0.270 \pm 0.005$ & $0.163 \pm 0.001$ & $0.218 \pm 0.002$ & $0.860 \pm 0.008$ \\
+    local-off & $0.192 \pm 0.002$ & $0.289 \pm 0.006$ & $0.159 \pm 0.001$ & $0.218 \pm 0.004$ & $0.838 \pm 0.005$ \\
+    \midrule
+    B3 (merged local directions) & $0.249 \pm 0.001$ & $0.308 \pm 0.000$ & $0.197 \pm 0.002$ & $0.301 \pm 0.002$ & $0.723 \pm 0.004$ \\
+    B1 prompting, $k{=}0$, client & $0.352 \pm 0.001$ & $0.417 \pm 0.004$ & $0.224 \pm 0.001$ & $0.477 \pm 0.002$ & $0.044 \pm 0.005$ \\
+    B1 prompting, $k{=}3$, client & $0.313 \pm 0.001$ & $0.407 \pm 0.002$ & $0.188 \pm 0.001$ & $0.424 \pm 0.004$ & $0.275 \pm 0.013$ \\
+    B1 prompting, $k{=}3$, base & $0.204 \pm 0.030$ & $0.240 \pm 0.006$ & $0.393 \pm 0.079$ & $0.127 \pm 0.038$ & $0.727 \pm 0.005$ \\
+    B4 federated CAA & $0.364 \pm 0.000$ & $0.418 \pm 0.001$ & $0.227 \pm 0.002$ & $0.497 \pm 0.000$ & $-0.098 \pm 0.003$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{Knob calibration on pruned ChEMBL (E1): 8 participating clients, test split, strict scorer, checkpoint selected on the failure-penalized dev metric. Values are mean $\pm$ standard deviation over 3 subsets $\times$ 75\% of test prompts, drawn once and applied to every method so that differences are paired. Errors are percentile errors (lower is better); \emph{worst} is the worst client. Best per column in bold, excluding methods whose standard deviation exceeds $0.01$. The large uncertainty on B1 $k{=}3$ (base) is diagnostic rather than incidental: that method fails to produce a scorable decoration for $98\%$ of prompts, so its error is computed on the few easy cases that survive and is unstable under resampling (its subsample mean, $0.204$, differs from the full-test value, $0.186$, by far more than any other method). Under the failure-penalized metric it is last at $0.766$. Because the $75\%$ subsets overlap, these standard deviations understate the full-test sampling spread (by roughly $0.58\times$); they do not capture seed variance, which is unmeasured, as every run is a single seed.}
+  \label{tab:chembl-e1}
+\end{table}

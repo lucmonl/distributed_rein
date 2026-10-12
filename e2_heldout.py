@@ -150,7 +150,18 @@ def main():
            "warp": fc.get("lr_warp", 1e-2)}
     warmup = fc.get("warmup_steps", 20)
     alphas = [0.0, 0.25, 0.5, 0.75, 1.0]
-    score = SCORERS["density"]
+    # The run's own attribute, not Newsroom's (CAL-33). This was hardcoded to "density", so an E2
+    # run on ChEMBL would have scored decoration sets by extractive fragment density -- completing
+    # normally and producing confidently meaningless percentiles. Every Newsroom config has
+    # monitor.scorer = density, so the default leaves NR-72/NR-78 bit-identical.
+    # All scorers share the (text, rec) signature and evaluate.py:35 calls score(o[0], rec), so the
+    # strict deco scorers already receive the record they need for core_attached; nothing else here
+    # is attribute-specific (line ~162 and the support at ~219 both use the stored r["score"]).
+    score_name = (cfg.get("monitor") or {}).get("scorer", "density")
+    if score_name not in SCORERS:
+        raise SystemExit(f"unknown monitor.scorer {score_name!r}; choose from {sorted(SCORERS)}")
+    score = SCORERS[score_name]
+    print(f"E2 scorer: {score_name}", flush=True)
     wtag = f"_w{args.alpha_window[0]:g}-{args.alpha_window[1]:g}" if args.alpha_window else ""
 
     records = read_jsonl(cfg["data_path"])

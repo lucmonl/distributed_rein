@@ -1181,3 +1181,80 @@ and agree to four decimals, so the table is not an artefact of either route.
 
 **Caveats.** Single seed. All five arms share ccc0284, so none of the above is hardware-confounded —
 unlike MOL-25b's aligned-vs-shared contrast.
+
+## MOL-29. E2 held-out-client portability on ChEMBL: submitted (2026-10-11)
+
+First E2 ever run on this dataset. Spec CAL-33; std protocol CAL-31 via newsroom-iter1's NR-78 route.
+Launch [MOL-29.sh](launch/MOL-29.sh), smoke [MOL-29_smoke.sh](launch/MOL-29_smoke.sh).
+Rotation 0 held-out clients: CHEMBL205, CHEMBL236, CHEMBL4005, CHEMBL4409.
+
+| job | arm |
+|---|---|
+| **11326451** | `mol29-e2-tp1000-nsmall` — frozen_D + local_D, `--ns 16+64+256+1024` |
+| **11326453** | `mol29-e2-tp1000-nall` — frozen_D + local_D, `--ns all` |
+| **11326454** | `mol29-e2-sadapter-zeroshot` — sadapter, zero-shot, no per-client training |
+
+All `--max_prompts 150 --max_new_tokens 96` (MOL-25's test settings; the defaults are 200/128).
+
+### Shared-code change under the CAL-33 grant (now closed): e2_heldout.py scorer
+
+`e2_heldout.py:153` hardcoded `score = SCORERS["density"]`, the **Newsroom** attribute. An E2 run on
+ChEMBL would have scored decoration sets by extractive fragment density — **completing normally and
+emitting confidently meaningless percentiles**, which is worse than failing. It now reads
+`cfg["monitor"]["scorer"]`, defaults to `density` so every Newsroom config is bit-identical, raises on
+an unknown name, and logs its choice. Suite **84/84**.
+
+Two things the coordinator asked me to verify turned out to need **no** change, checked at source:
+- **the strict deco scorer already receives its record** — all scorers are `(text, rec)` and
+  `fedsteer/evaluate.py:35` calls `score(o[0], rec)`, so `core_attached` reaches it;
+- **the support already uses stored scores** — `e2_heldout.py:219` is
+  `client_support(ClientQuantiles.fit([r["score"] for r in ex]), ref)`; the α assignment at ~162 too.
+
+New file (mine): `sbatch/eval_settings_chembl.sbatch`. Newsroom's `eval_settings.sbatch` logs to
+`sbatch/logs/newsroom/` and defaults `QUALITY=1`/`JUDGE=1`, which would run `score_quality.py` and
+`judge_quality.py` against records with no `article`/`target`/`url`. **Diff excluding comments is
+exactly two lines** (the two defaults); the `e2_heldout.py`/`e3_drift.py` invocation is byte-identical,
+so both datasets run the same code path.
+
+### local_D is a valid stand-in for local-off — checked key by key (CAL-33)
+
+`e2_heldout.py` **exits for `mode=local`**, so `local_D` cannot be a separate run on `mol25-local-off`;
+it runs inside the fed job via `--settings frozen_D+local_D`. It ignores the fed run's weights but
+*does* use its config, so every key it reads was compared: all `lora.*`, `lr_private`/`lr_shared`/
+`lr_gain`/`lr_warp`, `batch_size`, `grad_accum`, `rounds`, `local_steps`, `warmup_steps`,
+`gain_warmup_rounds`, `warp_warmup_rounds`, `fix_gain`, `warp_reg`, `seed`, `max_train_per_client`,
+token caps, `model_name`, `data_path`, `rotation`, `tie_break`, `alpha_mode` — **all identical**. The
+only differences are `fed.calibration` (aligned vs private), the four `cov_*` keys, `fed.mode` and the
+out_dir strings: arm-defining, none read by `local_D`.
+
+### Smoke 11325513 (COMPLETED, 10m19s) — and what it already shows
+
+Logged **`E2 scorer: clogp_residual_deco_strict`**. `--max_prompts 30`, not the sbatch `SMOKE=1`
+default of 4: at 4 prompts the strict scorer can return all-nan and a null result would prove nothing
+(MOL-26's smoke did exactly that). 2 clients, n=16, 20 steps — **not a result**, but discriminating:
+
+| setting | CHEMBL205 pct err | mean percentile across α | unscorable |
+|---|---:|---|---:|
+| frozen_D | **0.128** | 0.008 → 0.278 → 0.45 → 0.605 → **0.977** | **0.60** |
+| local_D | 0.488 | 0.016 → 0.017 → 0.017 → 0.019 → 0.024 | 0.00 |
+
+CHEMBL205's own support is **[0.005, 0.358]**. With the frozen federated direction it spans nearly the
+full percentile range; training its own direction from 16 pairs gives a **flat** curve (0.016–0.024),
+i.e. no usable knob. That is claim C2 in miniature.
+
+⚠️ **Open question for the real run (coordinator asked for this explicitly):** frozen_D's unscorable
+rate was **0.60** against local_D's 0.00. Likely undertraining — 20 steps against the real 200–512 —
+but **if it persists at full steps, frozen_D's reach is being bought with validity**, and the
+comparison then lives entirely in the penalized rows rather than the strict ones. Report unscorable
+**per n** beside penalized error, and say plainly if validity stays poor.
+
+### Pending when picked up
+
+Jobs left RUNNING; no waiters armed (user asked for no monitoring). On resume:
+1. Check 11326451 / 11326453 / 11326454 reached `DONE` with no traceback.
+2. Aggregate with `scripts/subsample_std.py` — explicit files, never globs; **penalized rows primary**
+   (CAL-33 ruling 1: newsroom-iter1 added `pct_err_penalized` mean/worst, `unscorable_rows` and a
+   paired penalized-difference block vs `--ref`). Protocol label: "3 subsets × 75% of test prompts".
+3. Report frozen_D vs local_D per n, and **zeroshot on overall penalized error, Spearman and reach
+   ONLY** — its support is the client's full pool, so its in/out-of-support split is **not** comparable
+   with n < all (CAL-33 ruling 2).

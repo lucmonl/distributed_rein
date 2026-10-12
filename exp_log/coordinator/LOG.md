@@ -661,3 +661,44 @@ Analysis only; a proposal, not yet decided by the user. Notation as in CONVENTIO
   - Pct err ± std: fed-aligned-off-cnt 0.143±0.001; fed-linear-off 0.148±0.000; sadapter 0.171±0.001; local-off 0.178±0.001; B3-local 0.182±0.000; B3-local-off 0.227±0.001; B4 0.253±0.000; B1-k3-base 0.340±0.001.
   - Difference vs fed-aligned-off-cnt: linear-off +0.0051±0.0007, sadapter +0.028, local-off +0.035, B3 +0.039 / +0.084, B4 +0.110, B1 +0.198.
   - Test-sampling std (≈ 0.001) is far below every gap. It excludes seed and GPU-type variation (±0.003–0.005, NR-64/66), so design-level gaps ≤ 0.005 (e.g. linear-off) stay unresolved until seed replicates. Baseline gaps are far beyond either source.
+
+## CAL-33. ChEMBL E2 (MOL-29, user request to molecule-iter1): grant for the E2 scorer, and rulings (2026-10-11)
+
+- newsroom-iter1 ran NR-77 (std of style / quality / judge) and NR-78 (E2 with std, sadapter zero-shot) on the user's direct instructions.
+- **Blocker:** `e2_heldout.py:153` hard-codes `SCORERS["density"]`. Grant to molecule-iter1 (`e2_heldout.py`, tests) to read `cfg["monitor"]["scorer"]`. The default stays density for Newsroom configs.
+  - Also check that the scorer receives the record (the deco scorers need `core_attached`). Pass `--max_prompts 150 --max_new_tokens 96` to match MOL-25's test settings.
+- **Ruling 1:** `subsample_std.py` (newsroom's file) adds `pct_calib_err_penalized` and the unscorable rate. On Newsroom these equal pct err and 0. ChEMBL E2 tables lead with penalized.
+- **Ruling 2:** sadapter E2 is zero-shot on ChEMBL too (user: "follow the same route"). Its in/out-of-support split is not comparable with n < all; the overall metrics are.
+- `subsample_std.py` now reports pct_err_penalized (mean and worst), the unscorable rate, and paired penalized differences (newsroom-iter1). Newsroom NR-76/78 outputs reproduce exactly; penalized = pct err and unscorable = 0 on Newsroom. Ready for molecule reuse.
+- **MOL-29 submitted (cc):** tp1000 E2 n = 16 / 64 / 256 / 1024 (11326451), n = all (11326453), sadapter zero-shot (11326454); 150 prompts, max_new_tokens 96.
+  - `e2_heldout.py` now reads the scorer from the config (default density); 84/84 tests. Grant closed.
+  - The scorer already receives the record, and the support uses stored scores (verified).
+  - Smoke (2 clients, n = 16, 30 prompts): frozen_D pct err 0.128 vs local_D 0.488, with local_D's curve flat.
+  - Watch frozen_D's unscorable rate: 0.60 in the 20-step smoke.
+  - local_D's config matches mol25-local-off on every key it reads.
+  - Delta/dtai do not have the e2_heldout change; math-cot-iter1 is not running, so sync on its return.
+
+## CAL-34. NR-79 assigned: house style with neural classifiers (2026-10-12)
+
+**User request:** the tf-idf + logistic-regression attribution classifier (`style_eval.py`) may be too weak. Redo the attribution with BERT-class or contemporary LMs, reporting accuracy and p(own) for fed-aligned-off, fed-shared-soff-sadapter, local-off and real summaries.
+- **Classifiers** (cached offline on cc):
+  - (a) RoBERTa-large fine-tuned for 8-way publication classification;
+  - (b) a contemporary decoder LM, Qwen3-4B-Instruct-2507 with LoRA and a classification head.
+  - The tf-idf classifier is kept as a reference row.
+- **Same protocol as style_eval:** train on the participants' real training summaries, density-matched within 5 global-α bins; validation from training data only; apply to generated test summaries at in-support α; real test summaries give the ceiling. Std over 3 subsets × 75% of test articles (CAL-31).
+- **User: NR-79 reports a std for every number** (CAL-31 subsets, same as NR-76/77): acc and p(own) for both neural classifiers and the tf-idf row, per arm and the real ceiling, mean and per client, plus per-subset differences vs fed-aligned-off-cnt. Classifiers are trained once; only the test set is subsampled.
+- **User: the neural classifiers learn on the full summary sequence.** The input is the raw summary text through each model's own tokenizer, with no n-gram or tf-idf features. No truncation: max_length is at least the longest summary, and the truncation rate is reported. tf-idf stays only as the old reference row.
+- **NR-79 submitted:** cc 11364417 (`scripts/style_neural.py`).
+  - Classifiers: RoBERTa-large full fine-tune (lr 1e-5 / 2e-5) and Qwen3-4B + LoRA r16 + head (lr 5e-5 / 1e-4); ≤ 4 epochs, early stopping on a 10% validation split of training summaries; raw text, no truncation.
+  - The tf-idf reference is recomputed in-script, and its full-test values must reproduce NR-68/75/77.
+  - Arms: aligned-off-cnt (ref), aligned-off τ = 100, sadapter, local-off, real.
+- **NR-79 done** (cc 11364638; Qwen LoRA is built in because peft clashed with SteerLinear; no truncation).
+  - Validation acc: RoBERTa 0.799, Qwen 0.789 (0.65–0.87 by α bin).
+  - Acc / P(own), RoBERTa:
+    - real 0.801 / 0.751;
+    - aligned-off-cnt 0.794 / 0.743;
+    - aligned-off τ = 100 0.799 / 0.746;
+    - local-off 0.773 / 0.728;
+    - sadapter 0.532 / 0.487.
+  - Qwen: real 0.792 / 0.735; cnt 0.777 / 0.722; local-off 0.771 / 0.717; sadapter 0.482 / 0.452.
+  - Std ≤ 0.007. The ranking real ≥ ours ≈ local-off ≫ sadapter holds under all three classifiers, and the sadapter gap widens: −0.16 (tf-idf), −0.26 (RoBERTa), −0.30 (Qwen).

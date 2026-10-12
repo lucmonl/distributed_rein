@@ -1,4 +1,5 @@
-% Per-publication steering results on Newsroom (test). Source: exp_log/newsroom/reports/nr76_perclient_std.json (NR-76).
+% Per-publication steering results on Newsroom (test). Source: exp_log/newsroom/reports/nr76_perclient_std_localoff.json (NR-76).
+% Local training = local-off (NR-60, local training with a private offset, dev-selected round 60).
 % Needs \usepackage{booktabs}, \usepackage{multirow} and \usepackage{graphicx}.
 \providecommand{\std}[1]{{\scriptsize$\pm$#1}}
 \begin{table}[t]
@@ -10,37 +11,37 @@
 \toprule
 Publication & Method & Pct err $\downarrow$ & In-supp.\ $\downarrow$ & Out-of-supp.\ $\downarrow$ & Spearman $\uparrow$ \\
 \midrule
-\multirow{3}{*}{\shortstack[l]{forbes.com\\ \scriptsize $[0.03, 0.99]$}} & Ours & 0.129\std{0.001} & \textbf{0.151}\std{0.002} & 0.096\std{0.000} & 0.934\std{0.003} \\
+\multirow{3}{*}{\shortstack[l]{forbes.com\\ \scriptsize $[0.03, 0.99]$}} & Ours & 0.129\std{0.001} & 0.151\std{0.002} & \textbf{0.096}\std{0.000} & 0.934\std{0.003} \\
  & FedAvg (shared adapter) & 0.160\std{0.002} & 0.177\std{0.004} & 0.133\std{0.003} & \textbf{0.964}\std{0.001} \\
- & Local training & \textbf{0.124}\std{0.003} & 0.153\std{0.003} & \textbf{0.081}\std{0.004} & 0.928\std{0.004} \\
+ & Local training & \textbf{0.127}\std{0.002} & \textbf{0.142}\std{0.003} & 0.103\std{0.003} & 0.936\std{0.003} \\
 \midrule
 \multirow{3}{*}{\shortstack[l]{people.com\\ \scriptsize $[0.03, 0.70]$}} & Ours & \textbf{0.142}\std{0.002} & \textbf{0.107}\std{0.002} & \textbf{0.166}\std{0.001} & \textbf{0.920}\std{0.006} \\
  & FedAvg (shared adapter) & 0.160\std{0.001} & 0.145\std{0.002} & 0.170\std{0.002} & 0.908\std{0.002} \\
- & Local training & 0.153\std{0.002} & 0.118\std{0.002} & 0.176\std{0.002} & \textbf{0.920}\std{0.001} \\
+ & Local training & 0.171\std{0.000} & 0.113\std{0.002} & 0.209\std{0.001} & 0.891\std{0.004} \\
 \midrule
-\multirow{3}{*}{\shortstack[l]{wsj.com\\ \scriptsize $[0.04, 0.89]$}} & Ours & 0.131\std{0.002} & \textbf{0.121}\std{0.001} & 0.146\std{0.006} & 0.944\std{0.002} \\
- & FedAvg (shared adapter) & 0.169\std{0.002} & 0.188\std{0.002} & 0.140\std{0.004} & \textbf{0.963}\std{0.002} \\
- & Local training & \textbf{0.129}\std{0.002} & 0.124\std{0.003} & \textbf{0.135}\std{0.002} & 0.940\std{0.002} \\
+\multirow{3}{*}{\shortstack[l]{wsj.com\\ \scriptsize $[0.04, 0.89]$}} & Ours & \textbf{0.131}\std{0.002} & \textbf{0.121}\std{0.001} & 0.146\std{0.006} & 0.944\std{0.002} \\
+ & FedAvg (shared adapter) & 0.169\std{0.002} & 0.188\std{0.002} & \textbf{0.140}\std{0.004} & \textbf{0.963}\std{0.002} \\
+ & Local training & 0.152\std{0.004} & 0.149\std{0.004} & 0.155\std{0.005} & 0.946\std{0.007} \\
 \midrule
-\multirow{3}{*}{\shortstack[l]{theguardian.com\\ \scriptsize $[0.04, 0.55]$}} & Ours & \textbf{0.125}\std{0.000} & 0.106\std{0.001} & \textbf{0.137}\std{0.000} & 0.951\std{0.005} \\
+\multirow{3}{*}{\shortstack[l]{theguardian.com\\ \scriptsize $[0.04, 0.55]$}} & Ours & \textbf{0.125}\std{0.000} & \textbf{0.106}\std{0.001} & \textbf{0.137}\std{0.000} & 0.951\std{0.005} \\
  & FedAvg (shared adapter) & 0.167\std{0.003} & 0.192\std{0.007} & 0.150\std{0.001} & \textbf{0.954}\std{0.002} \\
- & Local training & 0.136\std{0.002} & \textbf{0.102}\std{0.003} & 0.158\std{0.003} & 0.936\std{0.002} \\
+ & Local training & 0.180\std{0.003} & 0.161\std{0.004} & 0.193\std{0.003} & 0.864\std{0.004} \\
 \midrule
-\multirow{3}{*}{\shortstack[l]{aol.com\\ \scriptsize $[0.06, 0.82]$}} & Ours & \textbf{0.124}\std{0.001} & \textbf{0.118}\std{0.002} & 0.133\std{0.002} & 0.949\std{0.002} \\
+\multirow{3}{*}{\shortstack[l]{aol.com\\ \scriptsize $[0.06, 0.82]$}} & Ours & \textbf{0.124}\std{0.001} & \textbf{0.118}\std{0.002} & \textbf{0.133}\std{0.002} & 0.949\std{0.002} \\
  & FedAvg (shared adapter) & 0.171\std{0.003} & 0.179\std{0.004} & 0.160\std{0.002} & \textbf{0.951}\std{0.005} \\
- & Local training & 0.129\std{0.002} & 0.127\std{0.001} & \textbf{0.131}\std{0.005} & \textbf{0.951}\std{0.001} \\
+ & Local training & 0.136\std{0.001} & 0.128\std{0.002} & 0.147\std{0.002} & 0.946\std{0.003} \\
 \midrule
 \multirow{3}{*}{\shortstack[l]{reuters.com\\ \scriptsize $[0.10, 0.97]$}} & Ours & \textbf{0.190}\std{0.002} & \textbf{0.212}\std{0.001} & 0.158\std{0.008} & 0.897\std{0.006} \\
  & FedAvg (shared adapter) & 0.191\std{0.002} & 0.222\std{0.004} & \textbf{0.144}\std{0.001} & \textbf{0.947}\std{0.006} \\
- & Local training & 0.194\std{0.001} & 0.227\std{0.003} & 0.145\std{0.005} & 0.870\std{0.007} \\
+ & Local training & 0.213\std{0.002} & 0.236\std{0.005} & 0.179\std{0.011} & 0.842\std{0.008} \\
 \midrule
 \multirow{3}{*}{\shortstack[l]{cbc.ca\\ \scriptsize $[0.11, 0.95]$}} & Ours & \textbf{0.136}\std{0.002} & \textbf{0.120}\std{0.003} & \textbf{0.159}\std{0.002} & \textbf{0.956}\std{0.001} \\
  & FedAvg (shared adapter) & 0.191\std{0.001} & 0.206\std{0.002} & 0.169\std{0.002} & 0.944\std{0.003} \\
- & Local training & 0.151\std{0.001} & 0.134\std{0.001} & 0.177\std{0.003} & 0.944\std{0.000} \\
+ & Local training & 0.182\std{0.001} & 0.169\std{0.003} & 0.200\std{0.004} & 0.920\std{0.003} \\
 \midrule
 \multirow{3}{*}{\shortstack[l]{nypost.com\\ \scriptsize $[0.51, 0.95]$}} & Ours & 0.167\std{0.001} & \textbf{0.126}\std{0.004} & 0.178\std{0.000} & 0.914\std{0.011} \\
  & FedAvg (shared adapter) & \textbf{0.159}\std{0.001} & 0.153\std{0.002} & \textbf{0.161}\std{0.002} & \textbf{0.953}\std{0.003} \\
- & Local training & 0.246\std{0.002} & 0.127\std{0.001} & 0.276\std{0.003} & 0.807\std{0.013} \\
+ & Local training & 0.266\std{0.005} & 0.128\std{0.003} & 0.301\std{0.006} & 0.732\std{0.019} \\
 \bottomrule
 \end{tabular}%
 }

@@ -1,0 +1,129 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\newcommand{\costeer}{\textsc{CoSteer}}
+
+% Prepared from claude/CoSteer.pdf and cross-checked against the implementation
+% and the reports that reproduce its table entries. The two sections below can
+% be copied into the manuscript; retain amsmath, amssymb and the macro above.
+%
+% Source trail:
+%   fedsteer/{data,metrics,baselines,fed,quality,molecules}.py
+%   eval_baselines.py; e2_heldout.py; scripts/merge_local_directions.py
+%   scripts/{style_eval,judge_quality,subsample_std,subsample_quality_style,
+%            subsample_judge,summarize_sweep,e2_zeroshot}.py
+%   exp_log/newsroom/reports/nr76_subsample_std{,_extra}.{txt,json}
+%   exp_log/newsroom/reports/nr77_tables_final.tex
+%   exp_log/newsroom/reports/nr78_e2_std_n{256,1024,all}.{txt,json}
+%   exp_log/newsroom/launch/NR-{60,68_e2,71_baselines,74}.sh
+%   exp_log/molecule/reports/mol_e1_table.tex
+%
+% Manuscript reconciliation notes (not rendered):
+% 1. Table 1's local baseline is local-off (0.178); Table 4's local baseline
+%    matches the no-offset local run (0.158 overall). These are different arms.
+% 2. "Task Arithmetic" is B3-merge-local, a one-shot average of independently
+%    learned directions; it is not subtraction of separately fine-tuned endpoints.
+% 3. "Identity g" retains a private offset; "global avg g" averages calibration
+%    parameters, not function values. The actual runs use module-wise shapes.
+%    The prose below makes these implementation choices explicit.
+% 4. E2 frozen_D also fits a new private offset. Only the transferred direction
+%    and nonlinear calibration table remain frozen, not every control parameter.
+% 5. PDF Table 5 is the half-sum of in/out-support means, not a uniform average
+%    of the five requests.
+% 6. The molecular table uses strict scoring on pruned training data. Its plain
+%    calibration errors condition on complete, scorable request sweeps.
+
+\begin{document}
+
+\section{Baseline Training and Testing}
+\label{sec:costeer-baseline-protocol}
+
+\paragraph{Shared experimental setup.}
+The main experiment studies extractiveness control in Newsroom summarization, with publications serving as simulated clients. Eight publications participate in training, and four additional publications are reserved for the new-client experiment. Articles are truncated to 400 words, reference extractiveness is recomputed against the truncated article, and pairs whose summaries depend on removed text are excluded. The participant experiments use a frozen Llama-3.2-1B-Instruct backbone and up to 4,000 training pairs per publication. Weight-based methods train rank-16 task adapters and rank-16 steering directions by minimizing the reference summary's token-level negative log-likelihood, with steering active at the reference's observed attribute level. The attribute labels use the same global percentile scale across clients. The main training budget is 100 rounds of 20 local optimizer steps per client, with batch size 8 and full client participation; local-only runs receive the same number of local steps without communicating. Adapter and direction learning rates are $2\times10^{-4}$, and learned calibration shapes use $10^{-2}$. These are matched local optimization budgets; a federated model additionally benefits from information supplied by other clients.
+
+\paragraph{Local training.}
+Each client independently learns its own task adapter, steering direction, and nonlinear calibration function using only its local training pairs. No direction or calibration update is exchanged between clients. At test time, a requested level $\alpha$ is passed through that client's calibration, and the resulting coefficient scales its locally learned direction before generation. This baseline tests whether collaboration improves control beyond what a client can learn from its own attribute coverage. The local baseline in the main aggregate table includes a learned private scalar offset in the steering coefficient. The per-publication table in the supplied draft instead uses a separately trained local variant without this offset; those two local configurations should be identified separately when presenting their results.
+
+\paragraph{Fed-Share.}
+Fed-Share uses federated averaging to learn one common task adapter, steering direction, and calibration mechanism. Clients optimize these components on their own data, and the server uniformly averages the shared parameters after each round. At inference, every publication uses the resulting common model with the requested control level. In the reported implementation, both the nonlinear calibration parameters and its scalar offset are shared. Unlike a method with private task adapters, Fed-Share has no client-specific adapter at inference. Its comparison with \costeer{} tests the effect of retaining private adaptation on control accuracy and publication-specific characteristics; the same baseline is called ``FedAvg (shared adapter)'' in the style tables.
+
+\paragraph{Task Arithmetic.}
+The baseline labeled Task Arithmetic is implemented as a one-shot merge of independently trained local steering directions. After local training, the server computes $W_D^{\mathrm{merge}}=I^{-1}\sum_{i=1}^{I}W_{D_i}$, where $I$ is the number of participating clients. Each client then replaces its own direction with this average while retaining its own task adapter and calibration. The low-rank directions share a fixed input factor, so averaging their trainable output factors implements the average of the corresponding weight updates. There is no alternating collaborative training and no calibration refit after merging. This tests whether a single post-training exchange of directions can provide the benefits of joint federated learning. The Newsroom row uses the local run without an offset as its source; it does not average the directions from the offset-enabled local row in the main table.
+
+\paragraph{Activation steering.}
+The activation baseline retains each client's trained private task adapter but disables the learned weight-space direction. For each client, up to 200 examples from each of the upper and lower quartiles of its own training attribute distribution are teacher-forced through this model. Hidden states are averaged over summary tokens and then over examples, and the difference between the upper- and lower-quartile means defines a local activation vector. The server uniformly averages these vectors and normalizes the result to a unit vector $\widehat v$. During generation, the intervention added at every position of the selected decoder layer is $s_i(2\alpha-1)\bar h_i\widehat v$, where $\bar h_i$ is the client's measured mean hidden-state norm. The Newsroom experiment uses the middle decoder layer (zero-based index 8) and selects each client's gain $s_i$ by minimizing percentile error on 30 development articles over the grid $\{0.05,0.1,0.2,0.3,0.5,0.8,1.2,1.6,2.4,3.2\}$. The selected gain is then fixed for testing. This compares weight-space control with a shared activation intervention; its private adapters were already trained in the federated setting, so it is not an entirely local-data-only baseline.
+
+\paragraph{Prompting.}
+The prompting baseline expresses the requested extractiveness as an integer from 0 to 100, explaining that low values request paraphrasing and high values request verbatim copying. The reported Newsroom row uses the pretrained instruction model without a learned task adapter or steering direction, together with three demonstrations from the requesting client's training data. Demonstrations are selected by proximity of their observed attribute labels to the requested $\alpha$; examples from other clients are not used. No gradient-based fitting is performed for this baseline. At test time, the target article, control instruction, and selected demonstrations are provided in the prompt. This evaluates instruction-based control with locally available examples, whose attribute coverage may not extend to the requested level.
+
+\paragraph{Calibration ablations.}
+The identity-calibration ablation removes the learned nonlinear shape while retaining the shared steering direction and private task adapters. In the evaluated implementation its coefficient is $o_i+\alpha$, where $o_i$ is a learned private offset, so ``identity'' refers specifically to the request-dependent shape. The global-average calibration ablation retains a learned nonlinear shape but averages its parameters uniformly across clients after each round, irrespective of which attribute levels each client observes; its offset remains private. By contrast, \costeer{} pools local function values using attribute-dependent evidence and applies a monotone projection. These comparisons assess the usefulness of learning the calibration shape and of using local coverage when combining calibration information. The implemented shapes are learned separately for the adapted linear modules.
+
+\paragraph{Checkpoint selection and participant testing.}
+For the trained Newsroom weight-based methods, checkpoints are evaluated every ten rounds on up to 100 development articles per client, and the checkpoint with the lowest mean development percentile error is selected. Final testing uses the same articles across methods and generates one summary for each request in $\mathcal A=\{0,0.25,0.5,0.75,1\}$. Generation is greedy with a maximum of 128 new tokens. The participant test comparison contains 1,580 articles: 200 per publication except for 180 from \texttt{theguardian.com}. All five requests are evaluated for every article, allowing both target accuracy and within-article ordering to be measured. Baseline gain fitting uses development data, and prompting demonstrations and activation statistics use training data.
+
+\paragraph{Testing transfer to new clients.}
+The held-out experiment evaluates four publications that did not participate in federated training, using local data budgets of 256, 1,024, or all available training pairs in the paper's table. \costeer{} transfers the learned direction and global nonlinear calibration table, freezes both, and learns the new client's private adapter with steering active at each training example's observed level. The implementation also learns a new private scalar offset. Local training instead learns a fresh adapter, direction, and calibration from the same local examples. These two adaptation settings use the same budget rule, $\min(2000,\max(200,\lceil4n/8\rceil))$ optimizer steps for $n$ training pairs, with batch size 8. Fed-Share applies its global model directly without adaptation, which explains why its reported result is unchanged across local data budgets. Testing uses 200 articles per held-out publication and the same five control requests. This measures reuse and local data efficiency after federated training, rather than equal total training-data consumption across methods.
+
+\paragraph{Molecular extension.}
+The pruned ChEMBL experiment applies the same families of weight-based, merged-direction, activation, and prompting controls to scaffold decoration, with eight participating clients and 150 test prompts per client. The output is a set of attachment-labeled molecular fragments to be assembled onto the supplied core. The prompting row in the molecular table differs from the Newsroom row: it uses the client's trained adapter, disables its learned direction, and supplies a target lipophilicity instruction without demonstrations. Molecular checkpoints are selected using failure-penalized development percentile error. This distinction is necessary because malformed decorations cannot receive a meaningful attribute score. The molecular table uses strict assembly checks at evaluation even though its training dataset is described as pruned.
+
+\section{Metric Computation and Interpretation}
+\label{sec:costeer-metrics}
+
+\paragraph{Extractiveness and the common percentile scale.}
+For an article $A$ and summary $S$, fragment density is
+\begin{equation}
+ d(A,S)=\frac{1}{|S|}\sum_{f\in\mathcal F(A,S)}|f|^2,
+\end{equation}
+where $\mathcal F(A,S)$ contains the extractive fragments shared by the article and summary, and lengths are measured in tokens. Squaring fragment lengths assigns more weight to long copied spans than to isolated matching words. Density therefore measures how strongly a summary copies contiguous source text; it is neither a factuality score nor simply the fraction of words copied. The same regex-tokenized scorer labels training summaries and evaluates generated summaries. To put this heavy-tailed attribute on a common control scale, let $F_i$ be the empirical training density distribution of participant $i$ and define the equal-client mixture $F(d)=I^{-1}\sum_i F_i(d)$. Training labels and achieved output levels are $\alpha=F(d(A,S))$ and $\widehat\alpha=F(d(A,\widehat S))$, respectively. Empirical ties use mid-ranks, and finite-sample endpoints are clipped slightly inside $[0,1]$. The participant reference distribution is also retained when evaluating new clients. Thus a requested level of $0.75$ refers to the 75th percentile on a shared reference scale, not to copying 75\% of the article or summary.
+
+\paragraph{Percentile error and worst-client error.}
+For test article $j$ from client $i$, let $\widehat\alpha_{ij}(a)$ denote the achieved percentile when requesting $a\in\mathcal A$. The per-client error and the reported macro-average are
+\begin{equation}
+ E_i=\frac{1}{N_i|\mathcal A|}\sum_{j=1}^{N_i}\sum_{a\in\mathcal A}
+       |\widehat\alpha_{ij}(a)-a|,
+ \qquad
+ E=\frac{1}{I}\sum_{i=1}^{I}E_i.
+\end{equation}
+Lower error indicates more accurate targeting; an error of $0.10$ corresponds to an average discrepancy of ten percentile points. Equal client weighting prevents publications with more test articles from dominating the result. Worst-client error is $\max_i E_i$, the largest client-average error. It measures performance for the least accurately controlled publication, not the maximum error of any individual test example. Percentile error evaluates calibration of the request to the achieved attribute and does not by itself establish summary quality.
+
+\paragraph{In-support and out-of-support error.}
+Client $i$'s operational support interval is $[\ell_i,u_i]=[F(Q_i(0.05)),F(Q_i(0.95))]$, where $Q_i$ is the quantile function of its own training attribute distribution. Requests within this closed interval are in support; requests below $\ell_i$ or above $u_i$ are out of support. Each error is computed by restricting the inner sum above to the corresponding request subset and renormalizing by its size, before averaging client scores. Clients with no requests in a category do not contribute to that category's mean. The split tests control within the client's central training range and in its underrepresented tails. Because support is defined by the 5th--95th percentiles rather than the minimum and maximum, out-of-support requests are not necessarily completely absent from training. They are also not necessarily outside the range represented by the federation as a whole.
+
+\paragraph{Reach beyond local support.}
+Reach is the fraction of out-of-support requests for which the achieved percentile crosses the appropriate boundary of the client's training interval. A request $a<\ell_i$ succeeds if $\widehat\alpha_{ij}(a)<\ell_i$, and a request $a>u_i$ succeeds if $\widehat\alpha_{ij}(a)>u_i$. Successes are averaged over the client's out-of-support article--request pairs and then across clients with such requests. Higher reach indicates that control can move generation beyond the client's central observed range in the requested direction. It does not require the output to reach the exact requested percentile, so reach and out-of-support error measure different aspects of coverage expansion.
+
+\paragraph{Spearman rank correlation.}
+For each article, Spearman's correlation is computed between the five requested levels and the corresponding measured output densities. Equivalently, it is the Pearson correlation between their ranks, with tied values assigned average ranks. Articles whose measured attributes are constant across all requests receive a score of zero. The resulting correlations are averaged within each client and then across clients. Values range from $-1$ to $1$: a high positive value indicates that increasing the requested level consistently increases the attribute, while negative values indicate movement in the opposite direction. This measures ordering rather than target accuracy. A method can have almost perfect Spearman correlation while systematically overshooting every target or changing the attribute by only a small amount. Likewise, a monotone calibration function in weight space does not guarantee a monotone sequence of generated attributes.
+
+\paragraph{Publication attribution: Acc. and P(own).}
+Publication-specific characteristics are assessed with a classifier trained on real training summaries from the eight participating publications. It combines character 2--5-gram and word 1--2-gram TF--IDF features with logistic regression. Training examples are balanced across eligible publications within five bins of the global extractiveness scale, reducing the extent to which attribution can rely on extractiveness alone. For a generated summary from client $i$, Acc. is the indicator that the classifier's highest-probability label is publication $i$, whereas P(own) is the probability it assigns to $i$. These quantities are averaged over articles and in-support requests within each client, then across clients. Higher values indicate stronger recognizability as the client's publication; uniform guessing has accuracy $1/8=0.125$. Real test summaries provide an empirical reference for classifier performance, rather than a strict upper bound on generated-summary scores. Density matching and common test articles reduce confounding, but publication attribution is still a diagnostic of publication-associated text patterns, not a pure measurement of style independent of topic.
+
+\paragraph{Style-feature gap.}
+The feature gap compares eleven interpretable characteristics: sentence count, words per sentence, mean word length, quotation-mark rate, ellipsis presence, opening-parenthesis rate, numeral rate, capitalized-word rate, first-person pronoun rate, second-person pronoun rate, and question/exclamation-mark rate. For client $i$ and request $a$, the generated feature means are compared with that client's real training summaries whose observed percentile lies within $a\pm0.125$. If this neighborhood is empty, all of that client's training summaries are used. With feature index $k$, the score is
+\begin{equation}
+ G_{i,a}=\frac{1}{11}\sum_{k=1}^{11}
+ \frac{|\mu^{\mathrm{gen}}_{i,a,k}-\mu^{\mathrm{ref}}_{i,a,k}|}
+      {\sigma_k+10^{-6}},
+\end{equation}
+where $\sigma_k$ is the standard deviation of feature $k$ over the participating clients' real training summaries. The reported Gap averages these scores over in-support requests and then clients. Lower values mean that the measured surface characteristics are closer to the publication's reference behavior at comparable extractiveness. This is a gap between feature means, so it does not imply that the full distributions or all aspects of writing style match.
+
+\paragraph{AlignScore.}
+AlignScore evaluates factual consistency against the input article. The implementation uses the AlignScore-large checkpoint with a RoBERTa-large encoder and alignment head. The article is divided into approximately 350-word chunks and the summary into sentences. Each summary sentence receives its highest alignment probability over article chunks, and those sentence scores are averaged to obtain the summary score. Higher scores indicate stronger estimated support from the article. Because this metric checks source support rather than correspondence to a particular reference summary, it complements reference-based similarity. It does not directly measure whether the most important information was selected, and more extractive summaries can obtain higher consistency scores simply by copying supported source text.
+
+\paragraph{BERTScore F1.}
+BERTScore compares each generated summary with the publication's reference summary for the same article. The implementation uses layer-17 RoBERTa-large token representations, without inverse-document-frequency weighting or baseline rescaling. Precision averages, over generated tokens, the maximum cosine similarity to any reference token; recall reverses the matching direction. Their harmonic mean, $2PR/(P+R)$, gives BERTScore F1. Higher values indicate closer semantic correspondence to the reference despite differences in surface wording. This metric measures reference similarity rather than direct factual support from the article, and a valid summary that selects different content may receive a lower score. Reference-versus-itself BERTScore is omitted because it is a trivial comparison.
+
+\paragraph{LLM-judged faithfulness, relevance, and coherence.}
+Qwen2.5-7B-Instruct evaluates every generated test summary and the real summaries of the same articles, using greedy decoding. The judge sees the article and summary, but not the producing method or requested control level. For faithfulness, it checks each summary sentence and returns ``yes'' only if every claim in that sentence is supported by the article; the summary score is the fraction of judged sentences marked supported. Relevance is a 1--5 rating of how well the summary captures the article's most important information. Coherence is a separate 1--5 rating of clarity, well-formedness, and freedom from repetition. Higher values are better for all three measures. Unparseable judge responses are excluded from the aggregate. These are model-based assessments, so agreement with the reference summaries provides context rather than a guarantee of factual correctness.
+
+\paragraph{Quality aggregation.}
+Quality scores are first averaged over articles at each client and request. In-support and out-of-support means are then formed within each client and macro-averaged across clients. The single quality value shown in the supplied paper's quality table is the equally weighted mean of these two group means, $(Q_{\mathrm{in}}+Q_{\mathrm{out}})/2$; it is not necessarily the uniform average over all five requested levels. Reporting these quality measures alongside control accuracy distinguishes successful attribute targeting from changes that reduce the usefulness of the generated summaries.
+
+\paragraph{Molecular attribute and invalid outputs.}
+For scaffold decoration, the controlled attribute is the change in computed lipophilicity relative to the supplied core, $r=\mathrm{cLogP}(\mathrm{assembled\ ligand})-\mathrm{cLogP}(\mathrm{core})$, using RDKit's Crippen descriptor. Larger values indicate that the generated decorations increase this descriptor more strongly relative to the fixed core. The same percentile-error, support, reach, and Spearman definitions apply after replacing density with $r$ and fitting the reference distribution on the molecular training data. The strict scorer requires a valid, connected assembly with matching attachment labels and the requested core preserved; extra unattached fragments or failed assemblies are unscorable. For the ordinary metrics, a prompt is retained only if all five requested outputs are scorable. Consequently, the molecular table's ordinary errors and correlations are conditional on complete successful sweeps. The unscorable-row rate records the fraction of excluded prompts. A complementary failure-penalized error averages over every original prompt--request pair, using $|F(r)-a|$ for a scorable output and assigning error $1$ otherwise; valid cells in incomplete sweeps still contribute. This distinguishes reliable generation from apparently accurate control on a small surviving subset. Lipophilicity control itself does not measure binding affinity or overall molecular usefulness.
+
+\end{document}

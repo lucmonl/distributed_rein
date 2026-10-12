@@ -30,22 +30,32 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fedsteer.data import alpha_reference_from_json  # noqa: E402
 from fedsteer.metrics import metrics_for_client, summarize, text_tie_metrics  # noqa: E402
 
+def _g(S, key, stat):
+    """summarize() omits a key when every client's value is None (e.g. all rows unscorable)."""
+    return S[key][stat] if key in S else float("nan")
+
+
 KEYS = [  # (label, how to get it from one subset's per-client results)
-    ("pct_err", lambda S, T, C: S["pct_calib_err"]["mean"]),
-    ("pct_err_worst", lambda S, T, C: S["pct_calib_err"]["worst"]),
-    ("in_support", lambda S, T, C: S["pct_err_in_support"]["mean"]),
-    ("out_support", lambda S, T, C: S["pct_err_out_support"]["mean"]),
-    ("out_support_worst", lambda S, T, C: S["pct_err_out_support"]["worst"]),
-    ("reach", lambda S, T, C: S["reach_rate"]["mean"]),
-    ("spearman", lambda S, T, C: S["spearman"]["mean"]),
-    ("spearman_worst", lambda S, T, C: S["spearman"]["worst"]),
+    ("pct_err", lambda S, T, C: _g(S, "pct_calib_err", "mean")),
+    ("pct_err_worst", lambda S, T, C: _g(S, "pct_calib_err", "worst")),
+    # CAL-33: pct_calib_err is nullable (unscorable outputs); the penalized version always exists
+    ("pct_err_penalized", lambda S, T, C: _g(S, "pct_calib_err_penalized", "mean")),
+    ("pct_err_penalized_worst", lambda S, T, C: _g(S, "pct_calib_err_penalized", "worst")),
+    ("unscorable_rows", lambda S, T, C: _g(S, "unscorable_row_rate", "mean")),
+    ("in_support", lambda S, T, C: _g(S, "pct_err_in_support", "mean")),
+    ("out_support", lambda S, T, C: _g(S, "pct_err_out_support", "mean")),
+    ("out_support_worst", lambda S, T, C: _g(S, "pct_err_out_support", "worst")),
+    ("reach", lambda S, T, C: _g(S, "reach_rate", "mean")),
+    ("spearman", lambda S, T, C: _g(S, "spearman", "mean")),
+    ("spearman_worst", lambda S, T, C: _g(S, "spearman", "worst")),
     ("near_tie", lambda S, T, C: float(np.mean(T))),
     ("cell_a0", lambda S, T, C: float(np.mean([c[0] for c in C]))),
     ("cell_a1", lambda S, T, C: float(np.mean([c[-1] for c in C]))),
 ]
 
 
-PER_CLIENT_KEYS = ("pct_calib_err", "pct_err_in_support", "pct_err_out_support", "reach_rate", "spearman")
+PER_CLIENT_KEYS = ("pct_calib_err", "pct_calib_err_penalized", "unscorable_row_rate", "pct_err_in_support",
+                   "pct_err_out_support", "reach_rate", "spearman")
 
 
 def draw_subsets(n: dict, seeds, frac):
@@ -67,19 +77,26 @@ def load(path):
     return ev, ref_json
 
 
-def subset_metrics(ev, ref, idx):
+def subset_metrics(ev, ref, idx, support_of=None):
     """idx: client -> array of row indices (into that client's grid/outputs)."""
     alphas = ev["alphas"]
     per, ties, cells = {}, [], []
     for c, ix in idx.items():
         r = ev["clients"][c]
         g = np.asarray(r["grid"], dtype=float)[ix]
-        per[c] = metrics_for_client(g, alphas, ref, support=tuple(r["support"]))
+        # metrics_for_client returns a truncated dict (no "support") for a client with no complete
+        # alpha sweep, so a hard-failing arm's eval may lack it: fall back to the client's support from
+        # another arm (it is a property of the client's data, identical across arms), else no split
+        sup = r.get("support") or (support_of or {}).get(c)
+        per[c] = metrics_for_client(g, alphas, ref, support=tuple(sup) if sup else None)
         outs = [r["outputs"][i] for i in ix]
         ties.append(text_tie_metrics(outs, g, alphas)["near_tie_rate"])
-        err = np.abs(np.vectorize(ref.cdf)(g) - np.asarray(alphas)[None, :])     # compare_runs.per_article
-        cells.append(err.mean(0))
-    S = summarize(per, keys=["pct_calib_err", "pct_err_in_support", "pct_err_out_support", "reach_rate", "spearman"])
+        pct = np.full(g.shape, np.nan)                                          # compare_runs.per_article,
+        fin = np.isfinite(g)                                                     # unscorable cells skipped
+        pct[fin] = np.vectorize(ref.cdf, otypes=[float])(g[fin])
+        cells.append(np.nanmean(np.abs(pct - np.asarray(alphas)[None, :]), axis=0))
+    S = summarize(per, keys=["pct_calib_err", "pct_calib_err_penalized", "unscorable_row_rate",
+                             "pct_err_in_support", "pct_err_out_support", "reach_rate", "spearman"])
     out = {k: f(S, ties, cells) for k, f in KEYS}
     out["per_client"] = {c: {k: per[c].get(k) for k in PER_CLIENT_KEYS} | {"support": per[c].get("support")}
                          for c in per}
@@ -143,8 +160,13 @@ def main():
     subsets = draw_subsets(n, seeds, args.frac)
     full = {c: np.arange(n[c]) for c in clients}
 
-    res = {name: {"full": subset_metrics(ev, ref, full),
-                  "subsets": [subset_metrics(ev, ref, subsets[s]) for s in seeds]}
+    support_of = {}
+    for _, (ev, _, _) in arms.items():
+        for c in clients:
+            if c not in support_of and ev["clients"][c].get("support"):
+                support_of[c] = ev["clients"][c]["support"]
+    res = {name: {"full": subset_metrics(ev, ref, full, support_of),
+                  "subsets": [subset_metrics(ev, ref, subsets[s], support_of) for s in seeds]}
            for name, (ev, _, _) in arms.items()}
 
     label = f"{len(seeds)} subsets x {args.frac:.0%} of test articles"
@@ -164,7 +186,7 @@ def main():
             print(f"\n-- {k}")
             print(f"   {'client':16s} {'support':>13s}" + "".join(f"{name:>28s}" for name in arms))
             for c in clients:
-                sup = res[args.ref]["full"]["per_client"][c]["support"]
+                sup = support_of.get(c)
                 cells = []
                 for name in arms:
                     v = [r["per_client"][c][k] for r in res[name]["subsets"]]
@@ -174,7 +196,8 @@ def main():
                     else:
                         v = np.array(v, dtype=float)
                         cells.append(f"{v.mean():.3f} +- {v.std(ddof=1):.3f} [{f:.3f}]".rjust(28))
-                print(f"   {c:16s} [{sup[0]:.2f},{sup[1]:.2f}]  " + "".join(cells))
+                stxt = f"[{sup[0]:.2f},{sup[1]:.2f}]" if sup else f"{'n/a':>11s}"
+                print(f"   {c:16s} {stxt}  " + "".join(cells))
     print(f"\n-- per-subset difference in mean pct err vs {args.ref} (mean +- std over {label}; "
           f"negative = arm better). A gap is real only if it clearly exceeds its std.")
     refv = np.array([r["pct_err"] for r in res[args.ref]["subsets"]])
@@ -186,6 +209,16 @@ def main():
         diffs[name] = d.tolist()
         print(f"   {name:26s} {d.mean():+.4f} +- {d.std(ddof=1):.4f}   "
               f"(full test {res[name]['full']['pct_err'] - res[args.ref]['full']['pct_err']:+.4f})")
+    print(f"\n-- per-subset difference in failure-penalized pct err vs {args.ref} (CAL-33; equals the above "
+          f"when every output is scorable)")
+    refp = np.array([r["pct_err_penalized"] for r in res[args.ref]["subsets"]])
+    for name in arms:
+        if name == args.ref:
+            continue
+        d = np.array([r["pct_err_penalized"] for r in res[name]["subsets"]]) - refp
+        diffs[name + "__penalized"] = d.tolist()
+        print(f"   {name:26s} {d.mean():+.4f} +- {d.std(ddof=1):.4f}   "
+              f"(full test {res[name]['full']['pct_err_penalized'] - res[args.ref]['full']['pct_err_penalized']:+.4f})")
     if args.json:
         json.dump({"label": label, "seeds": seeds, "frac": args.frac, "ref": args.ref,
                    "files": {k: v[2] for k, v in arms.items()}, "results": res, "pct_err_diff_vs_ref": diffs},

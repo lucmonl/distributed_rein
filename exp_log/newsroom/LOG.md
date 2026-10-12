@@ -1835,3 +1835,111 @@ Reach: `fed-aligned-off-cnt` 0.53 / 0.36 / 0.40 / 0.40 / 0.40; `local-off` 0.18�
      - rotation 0's held-out clients are broad, which favours a global model; a copy-heavy newcomer is untested;
      - zero-shot has no house style by construction (shared adapter; NR-75: attribution 0.41 for participants). House style cannot be measured for held-out publications with the participants-only classifier.
 3. **In/out-of-support split:** the zero-shot evaluation uses each client's full-data support (it has no n), while frozen_D and local_D at n < all use the support of their n pairs. Its in/out numbers are therefore not comparable at n < all; overall pct err, Spearman and reach are.
+
+**Correction: GPU types (2026-10-11).**
+- ccc0284 (dali) is an **NVIDIA A100 80GB PCIe** (`nvidia-smi` in job logs 11209264, 11241907, 11206105, 11222319), **not "A100-40GB"** as written from NR-60 on.
+- ccc0390 / ccc0388 (IllinoisComputes-GPU) are **A100-SXM4-80GB**; ccc0465 is an H200.
+- So in the E1 table `fed-aligned-off-cnt` (ccc0390, SXM4) and the arms on ccc0284 (PCIe) differ in A100 variant, not memory size. CAL-13's caution applies unchanged.
+- All NR-78 E2 jobs (frozen_D, zero-shot, the `local-off` reference) ran on ccc0284. The *training* runs behind them differ: `fed-aligned-off-cnt` on ccc0390, the other two on ccc0284.
+- `scripts/e2_zeroshot.py` now takes `--scorer` (default: the run config's `monitor.scorer`, else density), so it works for ChEMBL. Newsroom behaviour is unchanged.
+
+**`scripts/subsample_std.py`: failure-penalized and unscorable rows added (coordinator, CAL-33; for molecule-iter1's ChEMBL E2).**
+- New rows: `pct_err_penalized` (mean and worst; `pct_calib_err_penalized`), `unscorable_rows` (`unscorable_row_rate`), and a paired per-subset difference block for the penalized error. Per-client output includes both.
+- A metric missing because every client's value is None now prints `nan` instead of crashing.
+- The α = 0 / α = 1 cells skip unscorable cells (`nanmean`).
+- **Validation:** NR-78 n = 16 and NR-76's three-arm report were rerun. Every previously reported line is reproduced exactly. On Newsroom the penalized error equals pct err and the unscorable rate is 0.000.
+
+**Per-publication table switched to `local-off` (user request).**
+- Report: `reports/nr76_perclient_std_localoff.txt/.json` (`subsample_std.py --per_client`; the same 3 subsets × 75%). The LaTeX table `reports/nr76_perclient_table.tex` is regenerated from it, with "Local training" = `local-off` (r60).
+- The `fed-aligned-off-cnt` and `fed-shared-soff-sadapter` per-client values reproduce the earlier per-client run exactly, so the support-fallback change to the script left the Newsroom path unchanged.
+- **With `local-off`, "Ours" is best overall on 6/8 publications.** `local-off` is best overall on forbes.com, `fed-shared-soff-sadapter` on nypost.com. With `local` (no offset) "Ours" was best on 5/8; `local-off` loses wsj.com, where `local` was best.
+
+## NR-79. House-style attribution with neural classifiers (RoBERTa-large, Qwen3-4B + LoRA), launched (2026-10-12)
+
+**Assigned by the coordinator (user request, CAL-34 + two addenda).** Question: is `style_eval.py`'s tf-idf + logistic-regression classifier too weak to measure house style?
+
+**New script `scripts/style_neural.py`** (new file; no shared code modified). Same task and data as `style_eval.py`; only the classifier changes.
+- **Training data:** real training summaries of the 8 participants, density-matched exactly as `style_eval.train_classifier`: 5 global-α bins, ≤ 400 per publication and bin, the same `random.Random(0)` draw.
+  - 10% is held out as validation, stratified by publication × bin, from these *training* summaries only; it is used for early stopping (patience 1) and learning-rate choice.
+  - Test is never used for tuning. Seed fixed at 0.
+- **Classifiers, all on the raw summary text only** (own tokenizer; no hand-built features, no article):
+  - `roberta`: FacebookAI/roberta-large, fully fine-tuned, 8-way; lr ∈ {1e-5, 2e-5}, ≤ 4 epochs, batch 32.
+  - `qwen`: Qwen/Qwen3-4B-Instruct-2507 + LoRA (r = 16, all attention and MLP projections) + classification head, bf16, gradient checkpointing; lr ∈ {5e-5, 1e-4}, ≤ 4 epochs, batch 16 × 2.
+  - `tfidf`: the existing cached classifier as the reference row. It was trained on all density-matched summaries, so its validation accuracy is in-sample.
+- **No truncation:** `max_length` = the longest tokenized text (training, validation, generated and real) under each tokenizer. The truncation count is logged (expected 0; RoBERTa's limit is 512).
+- **Diagnostics logged:** validation accuracy, accuracy per α bin (does density matching control extractiveness?) and the confusion matrix.
+- **Evaluation as `style_eval.py`:** in-support α, non-empty generated summaries, accuracy (argmax = own publication) and mean P(own), the mean over clients, plus per client. Ceiling: the real test summaries of the same articles.
+- **Std:** for every number, over 3 subsets × 75% of test articles (`draw_subsets`, the same subsets as NR-76/77). Per-subset differences vs. `fed-aligned-off-cnt` for accuracy and P(own). Classifiers are trained once.
+- The tf-idf full-test values must reproduce NR-68/75/77; that check validates the aggregation.
+
+**Arms:**
+- `fed-aligned-off-cnt` (reference; NR-66 11215859, r100);
+- `fed-aligned-off` τ = 100 (NR-62 11209264, r100; secondary);
+- `fed-shared-soff-sadapter` (NR-74 11241907, r70);
+- `local-off` (NR-60 11206105, r60);
+- the real test summaries.
+
+**Job:** cc **11364417** (`nr79-style-neural`; `--gres=gpu:A100:1`, `--exclude=ccc0387`, 16 h). Output: `reports/nr79_style_neural.txt/.json`; models cached in `runs/_style/neural_{roberta,qwen}_<key>/`.
+
+**NR-79 first attempt (11364417) failed after 4 min, in Qwen training; RoBERTa completed and is cached.**
+- RoBERTa-large: 5296 density-matched training summaries (4770 train / 526 validation; theguardian.com 571, the others 675 each). Max token length 186, **0 of 30,907 texts truncated**.
+- RoBERTa validation accuracy: 0.7985 at both lr 1e-5 and 2e-5 (1e-5 selected; still rising at epoch 4). Cached in `runs/_style/neural_roberta_330fec64bc`.
+- **Validation accuracy by α bin: 0.812 / 0.700 / 0.777 / 0.844 / 0.857.** It varies by up to 0.16 across bins, so density matching balances bin membership but extractiveness still changes how separable the publications are.
+- Qwen token lengths: max 159, 0 truncated.
+- **Cause of the failure:** the `steer` env's `peft` 0.14.0 wraps `q_proj` with a foreign `SteerLinear` (`forward()` expects `alpha`, `ft_method`), apparently from another project in the shared env.
+- **Fix:** I did not modify the environment. `style_neural.py` now uses a minimal built-in LoRA (r = 16, α = 32, dropout 0.05, the same seven projection types, B = 0 at init; head `score` trainable). Resubmitted; the cached RoBERTa is reused.
+
+### NR-79 results (job cc 11364638, ccc0284 A100 80GB PCIe, 18 min)
+
+Reports: `reports/nr79_style_neural.txt/.json`.
+
+**Classifiers:**
+
+| | RoBERTa-large (full FT) | Qwen3-4B + LoRA | tf-idf (reference) |
+|---|---|---|---|
+| Validation accuracy (density-matched real *training* summaries, held out) | **0.799** (lr 1e-5) | **0.789** (lr 1e-4, epoch 2) | in-sample, 1.000 (not meaningful) |
+| Validation accuracy by α bin 0–4 | 0.81 / 0.70 / 0.78 / 0.84 / 0.86 | 0.80 / 0.65 / 0.77 / 0.84 / 0.87 | — |
+| Max tokens; truncated | 186; 0 of 30,907 | 159; 0 of 30,907 | — |
+
+- **Validation:** the tf-idf full-test values reproduce NR-68/75/77 exactly: 0.567 / 0.381, 0.562 / 0.381, 0.406 / 0.293, 0.570 / 0.378, real 0.587 / 0.388.
+- **Sanity check:** accuracy varies by up to 0.22 across α bins (lowest in bin 1, α 0.2–0.4). Density matching balances bin membership, but extractiveness still changes how separable the publications are. Since every arm is scored at its own in-support α, the comparisons are like for like; the absolute level depends on the α mix.
+
+**Attribution, in-support α, mean over 8 clients, mean ± std over 3 subsets × 75% of test articles:**
+
+| Arm | RoBERTa acc | RoBERTa P(own) | Qwen acc | Qwen P(own) | tf-idf acc | tf-idf P(own) |
+|---|---|---|---|---|---|---|
+| Real summaries (ceiling) | 0.801 ± 0.006 | 0.751 ± 0.003 | 0.792 ± 0.007 | 0.735 ± 0.006 | 0.588 ± 0.001 | 0.387 ± 0.001 |
+| **`fed-aligned-off-cnt`** | **0.794 ± 0.001** | **0.743 ± 0.003** | **0.777 ± 0.005** | **0.722 ± 0.004** | 0.569 ± 0.002 | 0.381 ± 0.002 |
+| `fed-aligned-off` τ = 100 | 0.799 ± 0.003 | 0.746 ± 0.003 | 0.777 ± 0.007 | 0.722 ± 0.005 | 0.562 ± 0.010 | 0.382 ± 0.004 |
+| `local-off` | 0.773 ± 0.001 | 0.728 ± 0.003 | 0.771 ± 0.002 | 0.717 ± 0.004 | 0.572 ± 0.004 | 0.379 ± 0.003 |
+| `fed-shared-soff-sadapter` | 0.532 ± 0.003 | 0.487 ± 0.004 | 0.482 ± 0.005 | 0.452 ± 0.005 | 0.407 ± 0.002 | 0.293 ± 0.004 |
+
+**Per-subset differences vs. `fed-aligned-off-cnt`** (accuracy / P(own); negative = arm lower):
+
+| Arm | RoBERTa | Qwen | tf-idf |
+|---|---|---|---|
+| real summaries | +0.007 ± 0.005 / +0.007 ± 0.003 | +0.014 ± 0.002 / +0.013 ± 0.002 | +0.020 ± 0.003 / +0.006 ± 0.002 |
+| `fed-aligned-off` τ = 100 | +0.005 ± 0.003 / +0.002 ± 0.002 | −0.000 ± 0.004 / −0.000 ± 0.003 | −0.006 ± 0.008 / +0.001 ± 0.002 |
+| `local-off` | **−0.021 ± 0.001** / −0.016 ± 0.003 | −0.007 ± 0.004 / −0.005 ± 0.003 | +0.004 ± 0.003 / −0.003 ± 0.001 |
+| `fed-shared-soff-sadapter` | **−0.261 ± 0.004** / −0.256 ± 0.003 | **−0.295 ± 0.005** / −0.270 ± 0.004 | −0.162 ± 0.002 / −0.088 ± 0.001 |
+
+**Per client, accuracy** (`fed-aligned-off-cnt` / `local-off` / `fed-shared-soff-sadapter` / real):
+
+| Client | RoBERTa | Qwen |
+|---|---|---|
+| **nypost.com** | 0.958 / 0.962 / **0.180** / 0.982 | 0.971 / 0.964 / **0.062** / 0.971 |
+| **reuters.com** | 0.746 / 0.783 / 0.605 / 0.807 | 0.720 / 0.755 / 0.538 / 0.767 |
+| **theguardian.com** | 0.906 / 0.879 / **0.322** / 0.941 | 0.893 / 0.856 / **0.225** / 0.931 |
+
+Full per-client tables (all 8, all classifiers) are in the report. The other five clients are 0.52–0.92 for the private-adapter arms and 0.39–0.75 for the shared adapter.
+
+**Findings:**
+1. **The stronger classifiers find much more house style:** real summaries are attributed at about 0.80 vs. 0.59 with tf-idf, and validation accuracy is about 0.79–0.80. tf-idf was indeed too weak to measure the style.
+2. **The ranking real ≥ ours ≈ local-off ≫ shared adapter holds under all three classifiers.**
+   - `fed-aligned-off-cnt` is within 0.007 (RoBERTa) and 0.014 (Qwen) of the real-summary ceiling.
+   - **Against `local-off`:** with RoBERTa ours is higher by 0.021 ± 0.001 (clear, about 20 std); with Qwen by 0.007 ± 0.004 (marginal); with tf-idf they are level.
+   - So the federated private-adapter design keeps the house style at least as well as purely local training.
+3. **The shared-adapter gap widens with a stronger classifier:** −0.16 (tf-idf), −0.26 (RoBERTa), −0.30 (Qwen) in accuracy.
+   - **Pure FedAvg loses house style much more than tf-idf suggested.** nypost.com falls to 0.18 (RoBERTa) / 0.06 (Qwen) against 0.96–0.97 for the private-adapter arms, and theguardian.com to 0.32 / 0.23.
+4. **The NR-68 nypost.com flag:** with the neural classifiers `fed-aligned-off` τ = 100 attributes nypost.com at 0.938 / 0.909, against 0.958 / 0.971 for count pooling. That is a small gap in the same direction as NR-68's feature-gap flag (single seed).
+5. **Caveat:** single training seed per arm and per classifier; the std is test sampling only.

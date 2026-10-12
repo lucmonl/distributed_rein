@@ -1,0 +1,162 @@
+== E1 steering metrics, mean +- std over 3 subsets x 75% of test articles (full-test value in brackets)
+   arms on identical test articles: fed-aligned-off-cnt, fed-shared-soff-sadapter, local-off; 1580 articles, 8 clients
+   articles per client (full / per subset): aol.com 200/150, cbc.ca 200/150, forbes.com 200/150, nypost.com 200/150, people.com 200/150, reuters.com 200/150, theguardian.com 180/135, wsj.com 200/150
+
+-- pct_err
+   fed-aligned-off-cnt        0.143 +- 0.001   [0.143]
+   fed-shared-soff-sadapter   0.171 +- 0.001   [0.171]
+   local-off                  0.178 +- 0.001   [0.178]
+
+-- pct_err_worst
+   fed-aligned-off-cnt        0.190 +- 0.002   [0.191]
+   fed-shared-soff-sadapter   0.192 +- 0.001   [0.191]
+   local-off                  0.266 +- 0.005   [0.266]
+
+-- pct_err_penalized
+   fed-aligned-off-cnt        0.143 +- 0.001   [0.143]
+   fed-shared-soff-sadapter   0.171 +- 0.001   [0.171]
+   local-off                  0.178 +- 0.001   [0.178]
+
+-- pct_err_penalized_worst
+   fed-aligned-off-cnt        0.190 +- 0.002   [0.191]
+   fed-shared-soff-sadapter   0.192 +- 0.001   [0.191]
+   local-off                  0.266 +- 0.005   [0.266]
+
+-- unscorable_rows
+   fed-aligned-off-cnt        0.000 +- 0.000   [0.000]
+   fed-shared-soff-sadapter   0.000 +- 0.000   [0.000]
+   local-off                  0.000 +- 0.000   [0.000]
+
+-- in_support
+   fed-aligned-off-cnt        0.133 +- 0.001   [0.132]
+   fed-shared-soff-sadapter   0.183 +- 0.002   [0.183]
+   local-off                  0.153 +- 0.000   [0.154]
+
+-- out_support
+   fed-aligned-off-cnt        0.147 +- 0.002   [0.147]
+   fed-shared-soff-sadapter   0.154 +- 0.001   [0.154]
+   local-off                  0.186 +- 0.002   [0.186]
+
+-- out_support_worst
+   fed-aligned-off-cnt        0.178 +- 0.000   [0.178]
+   fed-shared-soff-sadapter   0.170 +- 0.002   [0.171]
+   local-off                  0.301 +- 0.006   [0.300]
+
+-- reach
+   fed-aligned-off-cnt        0.435 +- 0.003   [0.435]
+   fed-shared-soff-sadapter   0.500 +- 0.004   [0.500]
+   local-off                  0.369 +- 0.004   [0.370]
+
+-- spearman
+   fed-aligned-off-cnt        0.933 +- 0.002   [0.934]
+   fed-shared-soff-sadapter   0.948 +- 0.001   [0.948]
+   local-off                  0.885 +- 0.002   [0.886]
+
+-- spearman_worst
+   fed-aligned-off-cnt        0.897 +- 0.006   [0.898]
+   fed-shared-soff-sadapter   0.908 +- 0.002   [0.908]
+   local-off                  0.732 +- 0.019   [0.730]
+
+-- near_tie
+   fed-aligned-off-cnt        0.181 +- 0.001   [0.181]
+   fed-shared-soff-sadapter   0.194 +- 0.002   [0.193]
+   local-off                  0.266 +- 0.003   [0.265]
+
+-- cell_a0
+   fed-aligned-off-cnt        0.188 +- 0.003   [0.189]
+   fed-shared-soff-sadapter   0.256 +- 0.001   [0.257]
+   local-off                  0.246 +- 0.001   [0.246]
+
+-- cell_a1
+   fed-aligned-off-cnt        0.101 +- 0.002   [0.102]
+   fed-shared-soff-sadapter   0.050 +- 0.001   [0.051]
+   local-off                  0.134 +- 0.001   [0.134]
+
+== per client, mean +- std over 3 subsets x 75% of test articles (full-test value in brackets); support = the client's 5th-95th percentile on the global alpha scale
+
+-- pct_calib_err
+   client                 support         fed-aligned-off-cnt    fed-shared-soff-sadapter                   local-off
+   aol.com          [0.06,0.82]        0.124 +- 0.001 [0.124]      0.171 +- 0.003 [0.172]      0.136 +- 0.001 [0.136]
+   cbc.ca           [0.11,0.95]        0.136 +- 0.002 [0.136]      0.191 +- 0.001 [0.190]      0.182 +- 0.001 [0.181]
+   forbes.com       [0.03,0.99]        0.129 +- 0.001 [0.129]      0.160 +- 0.002 [0.162]      0.127 +- 0.002 [0.128]
+   nypost.com       [0.51,0.95]        0.167 +- 0.001 [0.167]      0.159 +- 0.001 [0.160]      0.266 +- 0.005 [0.266]
+   people.com       [0.03,0.70]        0.142 +- 0.002 [0.141]      0.160 +- 0.001 [0.160]      0.171 +- 0.000 [0.170]
+   reuters.com      [0.10,0.97]        0.190 +- 0.002 [0.191]      0.191 +- 0.002 [0.191]      0.213 +- 0.002 [0.213]
+   theguardian.com  [0.04,0.55]        0.125 +- 0.000 [0.124]      0.167 +- 0.003 [0.168]      0.180 +- 0.003 [0.179]
+   wsj.com          [0.04,0.89]        0.131 +- 0.002 [0.131]      0.169 +- 0.002 [0.169]      0.152 +- 0.004 [0.153]
+
+-- pct_calib_err_penalized
+   client                 support         fed-aligned-off-cnt    fed-shared-soff-sadapter                   local-off
+   aol.com          [0.06,0.82]        0.124 +- 0.001 [0.124]      0.171 +- 0.003 [0.172]      0.136 +- 0.001 [0.136]
+   cbc.ca           [0.11,0.95]        0.136 +- 0.002 [0.136]      0.191 +- 0.001 [0.190]      0.182 +- 0.001 [0.181]
+   forbes.com       [0.03,0.99]        0.129 +- 0.001 [0.129]      0.160 +- 0.002 [0.162]      0.127 +- 0.002 [0.128]
+   nypost.com       [0.51,0.95]        0.167 +- 0.001 [0.167]      0.159 +- 0.001 [0.160]      0.266 +- 0.005 [0.266]
+   people.com       [0.03,0.70]        0.142 +- 0.002 [0.141]      0.160 +- 0.001 [0.160]      0.171 +- 0.000 [0.170]
+   reuters.com      [0.10,0.97]        0.190 +- 0.002 [0.191]      0.191 +- 0.002 [0.191]      0.213 +- 0.002 [0.213]
+   theguardian.com  [0.04,0.55]        0.125 +- 0.000 [0.124]      0.167 +- 0.003 [0.168]      0.180 +- 0.003 [0.179]
+   wsj.com          [0.04,0.89]        0.131 +- 0.002 [0.131]      0.169 +- 0.002 [0.169]      0.152 +- 0.004 [0.153]
+
+-- unscorable_row_rate
+   client                 support         fed-aligned-off-cnt    fed-shared-soff-sadapter                   local-off
+   aol.com          [0.06,0.82]        0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]
+   cbc.ca           [0.11,0.95]        0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]
+   forbes.com       [0.03,0.99]        0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]
+   nypost.com       [0.51,0.95]        0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]
+   people.com       [0.03,0.70]        0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]
+   reuters.com      [0.10,0.97]        0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]
+   theguardian.com  [0.04,0.55]        0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]
+   wsj.com          [0.04,0.89]        0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]      0.000 +- 0.000 [0.000]
+
+-- pct_err_in_support
+   client                 support         fed-aligned-off-cnt    fed-shared-soff-sadapter                   local-off
+   aol.com          [0.06,0.82]        0.118 +- 0.002 [0.116]      0.179 +- 0.004 [0.178]      0.128 +- 0.002 [0.128]
+   cbc.ca           [0.11,0.95]        0.120 +- 0.003 [0.121]      0.206 +- 0.002 [0.204]      0.169 +- 0.003 [0.169]
+   forbes.com       [0.03,0.99]        0.151 +- 0.002 [0.150]      0.177 +- 0.004 [0.178]      0.142 +- 0.003 [0.145]
+   nypost.com       [0.51,0.95]        0.126 +- 0.004 [0.124]      0.153 +- 0.002 [0.156]      0.128 +- 0.003 [0.130]
+   people.com       [0.03,0.70]        0.107 +- 0.002 [0.106]      0.145 +- 0.002 [0.144]      0.113 +- 0.002 [0.113]
+   reuters.com      [0.10,0.97]        0.212 +- 0.001 [0.213]      0.222 +- 0.004 [0.223]      0.236 +- 0.005 [0.235]
+   theguardian.com  [0.04,0.55]        0.106 +- 0.001 [0.104]      0.192 +- 0.007 [0.192]      0.161 +- 0.004 [0.161]
+   wsj.com          [0.04,0.89]        0.121 +- 0.001 [0.120]      0.188 +- 0.002 [0.187]      0.149 +- 0.004 [0.150]
+
+-- pct_err_out_support
+   client                 support         fed-aligned-off-cnt    fed-shared-soff-sadapter                   local-off
+   aol.com          [0.06,0.82]        0.133 +- 0.002 [0.135]      0.160 +- 0.002 [0.163]      0.147 +- 0.002 [0.149]
+   cbc.ca           [0.11,0.95]        0.159 +- 0.002 [0.158]      0.169 +- 0.002 [0.168]      0.200 +- 0.004 [0.200]
+   forbes.com       [0.03,0.99]        0.096 +- 0.000 [0.098]      0.133 +- 0.003 [0.137]      0.103 +- 0.003 [0.103]
+   nypost.com       [0.51,0.95]        0.178 +- 0.000 [0.178]      0.161 +- 0.002 [0.161]      0.301 +- 0.006 [0.300]
+   people.com       [0.03,0.70]        0.166 +- 0.001 [0.165]      0.170 +- 0.002 [0.171]      0.209 +- 0.001 [0.209]
+   reuters.com      [0.10,0.97]        0.158 +- 0.008 [0.157]      0.144 +- 0.001 [0.142]      0.179 +- 0.011 [0.179]
+   theguardian.com  [0.04,0.55]        0.137 +- 0.000 [0.138]      0.150 +- 0.001 [0.151]      0.193 +- 0.003 [0.191]
+   wsj.com          [0.04,0.89]        0.146 +- 0.006 [0.149]      0.140 +- 0.004 [0.141]      0.155 +- 0.005 [0.157]
+
+-- reach_rate
+   client                 support         fed-aligned-off-cnt    fed-shared-soff-sadapter                   local-off
+   aol.com          [0.06,0.82]        0.483 +- 0.006 [0.475]      0.450 +- 0.003 [0.453]      0.434 +- 0.015 [0.432]
+   cbc.ca           [0.11,0.95]        0.333 +- 0.007 [0.333]      0.396 +- 0.011 [0.395]      0.263 +- 0.012 [0.263]
+   forbes.com       [0.03,0.99]        0.338 +- 0.011 [0.347]      0.413 +- 0.000 [0.415]      0.360 +- 0.012 [0.360]
+   nypost.com       [0.51,0.95]        0.503 +- 0.008 [0.499]      0.694 +- 0.003 [0.693]      0.289 +- 0.004 [0.300]
+   people.com       [0.03,0.70]        0.418 +- 0.004 [0.422]      0.481 +- 0.005 [0.477]      0.316 +- 0.004 [0.318]
+   reuters.com      [0.10,0.97]        0.350 +- 0.013 [0.362]      0.407 +- 0.009 [0.417]      0.270 +- 0.013 [0.273]
+   theguardian.com  [0.04,0.55]        0.671 +- 0.004 [0.669]      0.669 +- 0.000 [0.669]      0.619 +- 0.003 [0.622]
+   wsj.com          [0.04,0.89]        0.386 +- 0.007 [0.378]      0.490 +- 0.006 [0.482]      0.399 +- 0.012 [0.395]
+
+-- spearman
+   client                 support         fed-aligned-off-cnt    fed-shared-soff-sadapter                   local-off
+   aol.com          [0.06,0.82]        0.949 +- 0.002 [0.953]      0.951 +- 0.005 [0.951]      0.946 +- 0.003 [0.946]
+   cbc.ca           [0.11,0.95]        0.956 +- 0.001 [0.955]      0.944 +- 0.003 [0.944]      0.920 +- 0.003 [0.921]
+   forbes.com       [0.03,0.99]        0.934 +- 0.003 [0.934]      0.964 +- 0.001 [0.963]      0.936 +- 0.003 [0.931]
+   nypost.com       [0.51,0.95]        0.914 +- 0.011 [0.913]      0.953 +- 0.003 [0.952]      0.732 +- 0.019 [0.730]
+   people.com       [0.03,0.70]        0.920 +- 0.006 [0.920]      0.908 +- 0.002 [0.908]      0.891 +- 0.004 [0.898]
+   reuters.com      [0.10,0.97]        0.897 +- 0.006 [0.898]      0.947 +- 0.006 [0.946]      0.842 +- 0.008 [0.848]
+   theguardian.com  [0.04,0.55]        0.951 +- 0.005 [0.951]      0.954 +- 0.002 [0.955]      0.864 +- 0.004 [0.870]
+   wsj.com          [0.04,0.89]        0.944 +- 0.002 [0.945]      0.963 +- 0.002 [0.965]      0.946 +- 0.007 [0.946]
+
+-- per-subset difference in mean pct err vs fed-aligned-off-cnt (mean +- std over 3 subsets x 75% of test articles; negative = arm better). A gap is real only if it clearly exceeds its std.
+   fed-shared-soff-sadapter   +0.0281 +- 0.0011   (full test +0.0282)
+   local-off                  +0.0352 +- 0.0005   (full test +0.0352)
+
+-- per-subset difference in failure-penalized pct err vs fed-aligned-off-cnt (CAL-33; equals the above when every output is scorable)
+   fed-shared-soff-sadapter   +0.0281 +- 0.0011   (full test +0.0282)
+   local-off                  +0.0352 +- 0.0005   (full test +0.0352)
+
+wrote exp_log/newsroom/reports/nr76_perclient_std_localoff.json

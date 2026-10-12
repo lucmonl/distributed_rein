@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--max_new_tokens", type=int, default=128)
     ap.add_argument("--batch_size", type=int, default=16)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--scorer", default=None, help="default: the run config's monitor.scorer (else density)")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(os.path.join(args.run, "config.yaml")))
@@ -44,7 +45,8 @@ def main():
     train, _ = build_clients(records, held, seed=fc["seed"])
     test = {c: [r for r in records if r["client"] == c and r.get("split") == "test"][: args.max_prompts] for c in held}
     alphas = [0.0, 0.25, 0.5, 0.75, 1.0]
-    score = SCORERS["density"]
+    scorer = args.scorer or (cfg.get("monitor") or {}).get("scorer") or "density"
+    score = SCORERS[scorer]                                    # Newsroom: density; ChEMBL: the run's monitor.scorer
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(args.seed)
@@ -69,7 +71,7 @@ def main():
         res[c] = r
         print(c, "zeroshot", brief(r), flush=True)
     out = assemble(res, alphas, "test", args.snapshot, snap["round"])
-    out["e2"] = {"setting": "zeroshot", "n": "all", "held_out": held, "calibration": f"global ({fc.get('calibration')})",
+    out["e2"] = {"setting": "zeroshot", "n": "all", "scorer": scorer, "held_out": held, "calibration": f"global ({fc.get('calibration')})",
                  "adapter": fc.get("adapter"), "args": vars(args)}
     out["provenance"] = provenance(args=vars(args))
     path = os.path.join(args.run, "evals", f"eval_round_{snap['round']:04d}_e2_zeroshot_nall__{make_stamp()}.json")

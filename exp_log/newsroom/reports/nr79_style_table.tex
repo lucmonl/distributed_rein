@@ -1,0 +1,24 @@
+% House style on Newsroom with three classifiers + style-feature gap.
+% Sources: exp_log/newsroom/reports/nr79_style_neural.txt (acc, P(own); NR-79), nr77_quality_style_std.txt (gap; NR-77).
+% Needs \usepackage{booktabs} and \usepackage{graphicx}.
+\providecommand{\std}[1]{{\scriptsize$\pm$#1}}
+\begin{table}[t]
+\centering
+\caption{House style on Newsroom (test set, 8 publications; requested levels inside each publication's support). \emph{Acc.}: share of a publication's generated summaries that a publication classifier assigns to that publication (chance 0.125). \emph{P(own)}: the classifier's mean probability of the right publication. Classifiers are trained on density-matched real training summaries of the 8 publications (equal numbers per publication within each extractiveness bin) and read only the summary text: RoBERTa-large (fully fine-tuned), Qwen3-4B (LoRA + classification head), and a character/word tf-idf logistic regression. \emph{Gap}: mean absolute standardized difference of 11 surface-style features from the publication's own summaries at the same extractiveness ($\downarrow$). Mean $\pm$ std over 3 random subsets of 75\% of the test articles, shared by all rows (std reflects test-set sampling only). Real summaries: the publications' own test summaries of the same articles (ceiling). Bold: best method.}
+\label{tab:style-newsroom}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+ & \multicolumn{2}{c}{RoBERTa-large} & \multicolumn{2}{c}{Qwen3-4B} & \multicolumn{2}{c}{tf-idf} & \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+Method & Acc.\ $\uparrow$ & P(own) $\uparrow$ & Acc.\ $\uparrow$ & P(own) $\uparrow$ & Acc.\ $\uparrow$ & P(own) $\uparrow$ & Gap $\downarrow$ \\
+\midrule
+Ours & \textbf{0.794}\std{.001} & \textbf{0.743}\std{.003} & \textbf{0.777}\std{.005} & \textbf{0.722}\std{.004} & 0.569\std{.002} & \textbf{0.381}\std{.002} & \textbf{0.106}\std{.001} \\
+FedAvg (shared adapter) & 0.532\std{.003} & 0.487\std{.004} & 0.482\std{.005} & 0.452\std{.005} & 0.407\std{.002} & 0.293\std{.004} & 0.187\std{.002} \\
+Local training & 0.773\std{.001} & 0.728\std{.003} & 0.771\std{.002} & 0.717\std{.004} & \textbf{0.572}\std{.004} & 0.379\std{.003} & 0.125\std{.001} \\
+\midrule
+Real summaries & 0.801\std{.006} & 0.751\std{.003} & 0.792\std{.007} & 0.735\std{.006} & 0.588\std{.001} & 0.387\std{.001} & -- \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

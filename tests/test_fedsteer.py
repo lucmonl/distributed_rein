@@ -1725,6 +1725,35 @@ def test_compare_runs_per_client_cell_handles_a_null_pct_calib_err():
     assert cell(None).strip() == "n/a"
     assert cell(True).strip() != "n/a"   # bools are ints; harmless, documented
 
+
+def test_e2_scorer_comes_from_the_run_config_not_hardcoded_density():
+    """CAL-33: e2_heldout.py:153 hardcoded SCORERS["density"], the Newsroom attribute.
+
+    An E2 run on ChEMBL would have scored decoration sets by extractive fragment density --
+    completing normally and emitting meaningless percentiles, which is worse than failing. The
+    scorer now comes from the run's monitor.scorer, defaulting to density so every existing
+    Newsroom config behaves identically.
+    """
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "e2_heldout.py")).read()
+    assert 'SCORERS["density"]' not in src, "the Newsroom scorer must not be hardcoded"
+    assert 'get("scorer", "density")' in src, "monitor.scorer must default to density"
+
+    # the resolution rule itself, on both datasets' configs
+    def resolve(cfg):
+        return (cfg.get("monitor") or {}).get("scorer", "density")
+    assert resolve({"monitor": {"scorer": "clogp_residual_deco_strict"}}) == "clogp_residual_deco_strict"
+    assert resolve({"monitor": {"scorer": "density"}}) == "density"
+    assert resolve({"monitor": {}}) == "density", "a config without a scorer keeps Newsroom behaviour"
+    assert resolve({}) == "density", "a config without a monitor block keeps Newsroom behaviour"
+
+    # every scorer the resolution can return takes (text, rec), which is what evaluate.py passes
+    from fedsteer.metrics import SCORERS
+    for name in ("density", "clogp_residual_deco_strict", "clogp_residual_deco"):
+        assert name in SCORERS, f"{name} must be a known scorer"
+        assert SCORERS[name].__code__.co_argcount == 2, f"{name} must take (text, rec)"
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_") and callable(f)]
     failed = 0
